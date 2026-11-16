@@ -289,10 +289,10 @@ These acquisition-time records do not establish immutable snapshots or byte iden
 
 The first paired attempt ran from commit `80f4036d` and timed out during the Climate Engine read.
 The configured HTTP timeout is 180 seconds, and one timeout discarded the whole reference B block.
-Commit `50c197c9` retries a transient read failure up to three times with a growing wait.
-The completed run used that commit, reproduced every reference A metric, and read all twelve reference B series.
-Two of the twelve series needed one retry; the other ten succeeded on the first attempt.
-The reference B baseline control matched #1569 within `1e-10`, so the API returned the same values as the earlier run.
+Commit `50c197c9` allows three attempts for a transient read failure, with 15- and 30-second waits between them.
+Attempt counts are printed to standard error only; the metrics do not record them.
+The completed run used that commit, reproduced every reference A metric, and read all twelve reference B series after transient timeouts.
+The reference B baseline control matched #1569 within `1e-10`, so the API's summary metrics matched the earlier run.
 A provider HTTP failure still keeps the completed reference A results and records the sanitized status instead of aborting the write.
 The client also refuses redirects, so it cannot forward the credential to another host.
 Both credentials were present; neither credential nor a raw Climate Engine response entered the outputs.
@@ -464,14 +464,14 @@ Each cell contains **SEI / Tukey / change**, where change is Tukey minus SEI.
 
 ### Reference B outcome
 
-Tukey moves the SPI and SPEI bias further negative at every timescale and period.
+Tukey moves the SPI and SPEI bias further negative at every timescale over the full and calibration periods.
 Over 1981–2024 the bias moves from a −0.052 to −0.069 range to a −0.082 to −0.092 range.
 That change is −0.023 to −0.030, not the −0.05 that the calibration period alone gives.
 Over 1981–2016 the change is exactly −0.053831 for all eight variants, which matches the distinct-rank expectation.
-Over 2017–2024 the change is positive (+0.077 to +0.116), so the Tukey bias there is −0.014 to +0.008.
+Over 2017–2024 the change is positive (+0.076 to +0.116), so the Tukey bias there is −0.014 to +0.008.
 MAE and RMSE rise by 0.004 to 0.013 over 1981–2024, because the bias magnitude grows.
-They fall by 0.027 to 0.104 over 2017–2024, where the bias approaches zero.
-Correlation changes by at most 0.0048, and class agreement by at most 0.024 in the full period.
+They fall by 0.028 to 0.104 over 2017–2024, where the bias approaches zero.
+Correlation changes by at most 0.0024, and class agreement by at most 0.024, over the full period.
 
 The registered range of −0.10 to −0.12 therefore holds for the calibration period only.
 The full-period bias stops at −0.092, which is the same shortfall that reference A shows.
