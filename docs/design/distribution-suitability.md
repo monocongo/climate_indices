@@ -158,7 +158,7 @@ def category_agreement(index_categories, reference_categories) -> tuple[float, f
 |---|---|---|
 | GEV | CDF/PPF parity with `scipy.stats.genextreme` on both bounded branches. Hosking's k equals SciPy's c in sign; the test pins this. L-moment recovery against closed-form population L-moments. Optional R `lmom::pelgev/cdfgev` fixture (OQ-8). | "Cross-implementation comparison, same estimator lineage" with the lmom fixture, otherwise "Specification-level" |
 | Log-likelihood and criteria | `sum(logpdf)` checked against SciPy (`gamma`, `pearson3`, `genextreme`; GLO through `fisk` on the k < 0 branch, per ADR-0016) at the same parameters. Round trip: comparison parameters fed as `fitting_params` to `spi`/`spei` give identical output. Synthetic recovery rate reported, not asserted tightly. | Specification-level plus synthetic characterization |
-| Bootstrap GoF | Size under H0 within a binomial MC interval of α. Naive K–S shown to under-reject. | Synthetic characterization |
+| Bootstrap GoF | Size under H0 within a binomial MC interval of α for every candidate that supports the bootstrap (gamma, Pearson Type III, GLO, GEV), on continuous and rounded samples. Naive K–S shown to under-reject. | Synthetic characterization |
 | Categories | Edges match the USDM table ("-0.5 to -0.79" … "-2.0 or less"), including exact boundary values. | Specification-level |
 | Concordance | Hand-built `RunSet` fixtures. | Specification-level |
 | Reproduction | nClimGrid workflow. | "Workflow reproduction; not reference reproduction" |
@@ -389,12 +389,12 @@ Shared footer, used in every child:
 **Scientific core:**
 - **Edge cases:**
   - Bootstrap refits that fail are counted and excluded, and their share is reported.
-  - The p-value floor is (1 + #≥)/(B + 1).
-  - Ties and zeros are excluded from the continuous statistics, as `fit_diagnostics` does today.
+  - The p-value is (1 + #≥)/(B_ok + 1), where B_ok is the number of successful refits, so failed draws leave the denominator as well as the statistics. The p-value is NaN when B_ok = 0, and its floor is 1/(B_ok + 1).
+  - Exact zeros are excluded from the continuous statistics, as `fit_diagnostics` does today (it filters missing values and exact zeros only). Repeated positive observations are retained with their frequency. Bootstrap draws are rounded to the record's resolution so the observed and simulated samples share the same tie structure, and the p-values are calibrated against that tie-aware null.
 - **Determinism:** the same seed gives an identical result.
 
 **Acceptance criteria:**
-- [ ] Size under H0 within a binomial MC interval of α for gamma, Pearson and GLO.
+- [ ] Size under H0 within a binomial MC interval of α for gamma, Pearson Type III, GLO and GEV, including a rounded (tied) record.
 - [ ] Test showing naive K–S under-rejecting.
 - [ ] Cross-check of AD and bootstrap against `scipy.stats.goodness_of_fit` for gamma (distribution-level agreement only).
 - [ ] Cost benchmark noted in `docs/performance.md`.
