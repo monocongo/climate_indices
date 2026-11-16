@@ -57,6 +57,19 @@ def _read_toml(relative_path: Path) -> dict[str, Any]:
         return tomllib.load(file)
 
 
+# Newest Python whose locked dependencies all ship wheels. Python 3.15 is tested on Linux only
+# while pyyaml, numcodecs and h5py lack cp315 wheels (#1579), so the macOS, Windows, wheel-build,
+# release-smoke and Docker "latest" pins stay here. Once they publish wheels, set this to the
+# newest classifier (the guard test below fails until it matches) and move those pins up.
+NEWEST_WHEEL_COVERED_PYTHON = "3.14"
+
+
+def test_newest_wheel_covered_python_is_a_supported_minor() -> None:
+    """The wheel-limited "latest" pin must stay a classified minor, and may only lag the newest by one."""
+    versions = _declared_python_versions()
+    assert NEWEST_WHEEL_COVERED_PYTHON in versions[-2:]
+
+
 def _declared_python_versions() -> list[str]:
     """Return supported Python minors from package classifiers."""
     classifiers = _read_toml(Path("pyproject.toml"))["project"]["classifiers"]
@@ -431,7 +444,7 @@ def test_pull_request_legs_cover_both_boundaries_on_linux_and_the_newest_on_maco
 
     assert (versions[0], "ubuntu-latest") in pull_request_legs
     assert (versions[-1], "ubuntu-latest") in pull_request_legs
-    assert (versions[-1], "macos-latest") in pull_request_legs
+    assert (NEWEST_WHEEL_COVERED_PYTHON, "macos-latest") in pull_request_legs
 
 
 def test_macos_covers_minimum_and_maximum_python() -> None:
@@ -440,7 +453,7 @@ def test_macos_covers_minimum_and_maximum_python() -> None:
     versions = _declared_python_versions()
 
     macos_versions = {python for python, system in pull_request_legs | full_legs if system == "macos-latest"}
-    assert macos_versions == {versions[0], versions[-1]}
+    assert macos_versions == {versions[0], NEWEST_WHEEL_COVERED_PYTHON}
 
 
 def test_full_matrix_runs_beyond_pull_requests_and_the_pull_request_job_is_ungated() -> None:
@@ -465,7 +478,8 @@ def test_full_matrix_runs_beyond_pull_requests_and_the_pull_request_job_is_ungat
 def test_test_full_job_runs_the_same_core_command_as_the_pull_request_job() -> None:
     """A leg must mean the same thing in `test` and `test-full`: locked dev install, same core command.
 
-    Both jobs install from wheels only (`--no-build`): every locked package ships a wheel for each leg.
+    Both jobs install from wheels only (`--no-build`) except the Python 3.15 leg of `test`, which builds
+    the few locked packages without cp315 wheels (#1579): every other locked package ships a wheel per leg.
     """
     workflow = (ROOT / UNIT_TESTS_WORKFLOW).read_text(encoding="utf-8")
     pull_request_job = _workflow_job(workflow, "test")
@@ -1039,8 +1053,9 @@ def test_native_pytest_legs_are_the_pull_request_boundary_legs_of_the_core_job()
 
     assert native_legs == {
         (versions[0], "ubuntu-latest"),
+        (NEWEST_WHEEL_COVERED_PYTHON, "ubuntu-latest"),
         (versions[-1], "ubuntu-latest"),
-        (versions[-1], "macos-latest"),
+        (NEWEST_WHEEL_COVERED_PYTHON, "macos-latest"),
     }
     assert native_legs <= pull_request_legs
 
@@ -1086,8 +1101,10 @@ def test_native_wheel_job_checks_built_wheels_outside_the_checkout() -> None:
     versions = _declared_python_versions()
 
     assert _job_legs(wheel_job) == {
-        (python, system) for python in (versions[0], versions[-1]) for system in ("ubuntu-latest", "macos-latest")
-    } | {(versions[-1], "windows-latest")}
+        (python, system)
+        for python in (versions[0], NEWEST_WHEEL_COVERED_PYTHON)
+        for system in ("ubuntu-latest", "macos-latest")
+    } | {(NEWEST_WHEEL_COVERED_PYTHON, "windows-latest")}
     assert (
         "run: uv run --no-sync --no-build maturin build --release --interpreter python --out dist-native" in wheel_job
     )
@@ -1242,11 +1259,11 @@ def test_climate_py_builds_abi3_wheels() -> None:
 
 
 def test_docker_uses_latest_supported_python() -> None:
-    """Every Docker build stage must use the latest classified Python minor."""
+    """Every Docker build stage must use the newest Python minor whose dependencies all ship wheels."""
     dockerfile = (ROOT / "Dockerfile").read_text(encoding="utf-8")
     base_versions = re.findall(r"^FROM python:(\d+\.\d+)-slim", dockerfile, re.MULTILINE)
     assert base_versions, "Dockerfile must use an official python:<minor>-slim base image"
-    assert set(base_versions) == {_declared_python_versions()[-1]}
+    assert set(base_versions) == {NEWEST_WHEEL_COVERED_PYTHON}
 
 
 def test_front_page_python_support_matches_classifiers() -> None:
@@ -1535,13 +1552,13 @@ def test_release_workflow_installs_wheel_on_boundary_pythons() -> None:
 
     assert re.findall(r"- os: (\S+)\n\s+python-version: '(\d+\.\d+)'", wheel_check) == [
         ("ubuntu-latest", versions[0]),
-        ("ubuntu-latest", versions[-1]),
-        ("ubuntu-24.04-arm", versions[-1]),
-        ("macos-latest", versions[-1]),
-        ("macos-15-intel", versions[-1]),
-        ("windows-latest", versions[-1]),
+        ("ubuntu-latest", NEWEST_WHEEL_COVERED_PYTHON),
+        ("ubuntu-24.04-arm", NEWEST_WHEEL_COVERED_PYTHON),
+        ("macos-latest", NEWEST_WHEEL_COVERED_PYTHON),
+        ("macos-15-intel", NEWEST_WHEEL_COVERED_PYTHON),
+        ("windows-latest", NEWEST_WHEEL_COVERED_PYTHON),
     ], "one leg per platform wheel, and both boundaries on Linux"
-    assert re.findall(r"- python-version: '(\d+\.\d+)'", no_rust) == [versions[0], versions[-1]]
+    assert re.findall(r"- python-version: '(\d+\.\d+)'", no_rust) == [versions[0], NEWEST_WHEEL_COVERED_PYTHON]
     assert "needs: [build, build-wheels, wheel-check, no-rust-install]" in workflow, (
         "publishing must wait for every installation check"
     )

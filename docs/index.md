@@ -2,7 +2,7 @@
 [![Coverage](https://coveralls.io/repos/github/monocongo/climate_indices/badge.svg?branch=main)](https://coveralls.io/github/monocongo/climate_indices?branch=main)
 [![Quality](https://api.codacy.com/project/badge/Grade/48563cbc37504fc6aa72100370e71f58)](https://www.codacy.com/app/monocongo/climate_indices?utm_source=github.com&amp;utm_medium=referral&amp;utm_content=monocongo/climate_indices&amp;utm_campaign=Badge_Grade)
 [![License](https://img.shields.io/badge/license-BSD%203--Clause-green.svg)](https://opensource.org/licenses/BSD-3-Clause)
-![Python | 3.11-3.14](https://img.shields.io/badge/Python-3.11--3.14-blue?logo=python)
+![Python | 3.11-3.15](https://img.shields.io/badge/Python-3.11--3.15-blue?logo=python)
 
 # Climate Indices in Python
 
@@ -31,7 +31,7 @@ for the full release history.
 
 | Component | Version | Support |
 | --- | --- | --- |
-| `climate_indices` (Python) | {sub-ref}`release` | Python 3.11–3.14 |
+| `climate_indices` (Python) | {sub-ref}`release` | Python 3.11–3.15 |
 | `climate-indices` (Rust crate) | 0.1.1 | Rust 1.85 or later |
 
 This documentation uses the Python version from `pyproject.toml`, shown above.

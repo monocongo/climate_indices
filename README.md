@@ -6,7 +6,7 @@
 [//]: # ([![Codacy Status]&#40;https://api.codacy.com/project/badge/Grade/48563cbc37504fc6aa72100370e71f58&#41;]&#40;https://www.codacy.com/app/monocongo/climate_indices?utm_source=github.com&amp;utm_medium=referral&amp;utm_content=monocongo/climate_indices&amp;utm_campaign=Badge_Grade&#41;)
 [![Actions Status](https://github.com/monocongo/climate_indices/workflows/tests/badge.svg)](https://github.com/monocongo/climate_indices/actions)
 [![License](https://img.shields.io/badge/License-BSD%203--Clause-green.svg)](https://opensource.org/licenses/BSD-3-Clause)
-[![Python | 3.11-3.14](https://img.shields.io/badge/Python-3.11--3.14-blue?logo=python)](#supported-python-versions)
+[![Python | 3.11-3.15](https://img.shields.io/badge/Python-3.11--3.15-blue?logo=python)](#supported-python-versions)
 
 #### Python library of climate indices for drought, wildfire, and flood monitoring
 
@@ -318,7 +318,7 @@ git push origin vX.Y.Z
 
 ## Supported Python Versions
 
-Supports Python **3.11–3.14**.
+Supports Python **3.11–3.15**.
 
 Python 3.10 support ended in v3.1.1. Version 3.1.0 is the last release that supports it.
 
@@ -326,6 +326,9 @@ All supported versions are tested on Linux (ubuntu-latest) for every pull reques
 to `main`. Python 3.14 is additionally tested on macOS on every event, and 3.11 on macOS on
 pushes to `main`, merge groups, the weekly schedule, and manual dispatch. Both latest and
 minimum declared dependency versions are tested in CI.
+
+Python 3.15 is tested on Linux only until `pyyaml`, `numcodecs` and `h5py` publish
+Python 3.15 wheels; those CI legs build them from source.
 
 ### Version Support Policy
 

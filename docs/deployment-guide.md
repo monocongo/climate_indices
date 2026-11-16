@@ -48,12 +48,13 @@ ENTRYPOINT ["python", "-m", "climate_indices"]
 schedule (Mondays), and manual dispatch
 
 **Core test matrix** (`pytest -n auto`, split across two jobs):
-- `test` (every event): ubuntu-latest on Python 3.11, 3.12, 3.13, and 3.14,
+- `test` (every event): ubuntu-latest on Python 3.11, 3.12, 3.13, 3.14, and 3.15,
   plus macOS on 3.14
+  (the 3.15 leg builds `pyyaml`, `numcodecs` and `h5py` from source until they ship cp315 wheels)
 - `test-full` (everything except pull requests): macOS on Python 3.11
 
 `uv.lock` resolves two distinct dependency stacks (3.11; and 3.12
-through 3.14, which install identical packages), yet interpreter behavior
+through 3.15, which install identical packages), yet interpreter behavior
 differs, so a pull request still exercises every supported minor on Linux.
 Together the two jobs cover every supported Python on Linux and both boundaries
 on macOS, and `tests/test_release_integrity.py` enforces that the two never
@@ -95,7 +96,7 @@ Backend*.
 6. Build the five binary wheels that carry `climate_indices._native` with maturin:
    manylinux\_2\_28 x86-64 and aarch64, macOS arm64 and x86-64, and Windows x86-64.
    They are abi3 (`cp311-abi3-*`), so each one installs on every supported Python
-   (3.11 through 3.14); musllinux is not published
+   (3.11 through 3.15); musllinux is not published
 7. Validate package metadata: `twine check dist/*`
 8. Install the artifacts outside the checkout: `wheel-check` installs each platform
    wheel on the platform it was built for, asserts pip prefers it over the pure wheel,
@@ -146,7 +147,7 @@ git push origin vX.Y.Z
 - **Name**: `climate_indices`
 - **Version**: Defined in `pyproject.toml`
 - **License**: BSD 3-Clause
-- **Python**: >=3.11,<3.15
+- **Python**: >=3.11,<3.16
 
 ### Installation
 ```bash

@@ -23,7 +23,7 @@ The **climate_indices** library implements a **layered library architecture** op
 ### Core Dependencies
 | Dependency | Version | Purpose |
 |------------|---------|---------|
-| **Python** | 3.11-3.14 | Language runtime |
+| **Python** | 3.11-3.15 | Language runtime |
 | **scipy** | >=1.15.3 | Statistical distributions, numerical optimization |
 | **xarray** | >=2025.6.1 | Labeled multi-dimensional arrays, CF metadata |
 | **dask** | >=2025.7.0 | Parallel computation, lazy evaluation |
@@ -916,7 +916,7 @@ climate_indices/
 │   └── *.md                      # AI-readable project docs
 │
 ├── .github/workflows/            # CI/CD pipelines
-│   ├── unit-tests-workflow.yml   # Test matrix (Python 3.11-3.14)
+│   ├── unit-tests-workflow.yml   # Test matrix (Python 3.11-3.15)
 │   ├── release.yml               # Automated PyPI releases
 │   └── benchmarks.yml            # Performance tracking
 │
@@ -1118,7 +1118,7 @@ uv run pytest tests/test_property_based.py
 ```yaml
 Matrix (core suite):
   test (every event):
-    - ubuntu-latest: Python 3.11, 3.12, 3.13, 3.14
+    - ubuntu-latest: Python 3.11, 3.12, 3.13, 3.14, 3.15
     - macos-latest: Python 3.14
   test-full (everything except pull requests):
     - macos-latest: Python 3.11

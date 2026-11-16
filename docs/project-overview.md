@@ -7,7 +7,7 @@
 ### Project Status
 - **Maturity**: Production/Stable (Development Status 5)
 - See [PyPI](https://pypi.org/project/climate-indices/) for published Python releases.
-- **Python Support**: 3.11, 3.12, 3.13, 3.14
+- **Python Support**: 3.11, 3.12, 3.13, 3.14, 3.15
 - **License**: BSD 3-Clause
 - **Documentation**: [ReadTheDocs](https://climate-indices.readthedocs.io/)
 - **Repository**: [GitHub](https://github.com/monocongo/climate_indices)
@@ -226,7 +226,7 @@ uv run pytest -m benchmark
 
 ### Dependencies and Constraints
 - **Core dependencies**: cftime>=1.6.4.post1, dask>=2025.7.0, h5netcdf>=1.6.3, numpy>=1.24.0, pandas>=2.0.0, scipy>=1.15.3, structlog>=24.1.0, xarray>=2025.6.1
-- **Python version**: Must support Python 3.11-3.14 (`requires-python = ">=3.11,<3.15"`)
+- **Python version**: Must support Python 3.11-3.15 (`requires-python = ">=3.11,<3.16"`)
 - **Line length**: 120 characters (ruff configuration)
 - **Import order**: stdlib → third-party → local (enforced by ruff)
 - **Test markers**: Use `@pytest.mark.benchmark` for performance tests, `@pytest.mark.slow` for long-running tests
