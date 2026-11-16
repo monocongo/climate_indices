@@ -128,7 +128,8 @@ class GoodnessOfFit:
     rejection_share: np.ndarray | None    # (candidate, step, statistic): share of cells with p < alpha
     n_bootstrap: int
 
-def drought_category(index_values) -> np.ndarray | xr.DataArray   # int8: 0 none, 1..5 = D0..D4, -1 missing
+def drought_category(index_values, *, output_scale: Literal["normal", "probability", "bounded"]) -> np.ndarray | xr.DataArray
+    # int8: 0 none, 1..5 = D0..D4, -1 missing; output_scale is required and only "normal" classifies
 def compare_categories(reference, alternative, *, dims=None) -> CategoryComparison | xr.Dataset
     # confusion (6x6), n_valid, share_changed, share_changed_in_drought
 
@@ -418,14 +419,14 @@ Shared footer, used in every child:
 **Problem.** "Which distribution fits best" does not tell managers whether the answer changes.
 
 **Solution.**
-- `drought_category()`: USDM SPI/SPEI ranges, giving None and D0 to D4, verified against the USDM classification table.
+- `drought_category(index_values, *, output_scale)`: USDM SPI/SPEI ranges, giving None and D0 to D4, verified against the USDM classification table. `output_scale` is required, with no default, because a bare array cannot show whether it holds probabilities or normal-scale values.
 - `compare_categories()`: a 6×6 confusion matrix, `share_changed`, `share_changed_in_drought` and per-category counts, for NumPy and xarray.
 
 **Scientific core:**
 - **Edges:** −0.5 → D0; −0.8 → D1; −1.3 → D2; −1.6 → D3; −2.0 → D4; −0.49 → None.
 - **Edge cases:**
   - NaN gives −1 and is excluded from the denominators.
-  - Probability-scale input is rejected; a clipped ±3.09 value classifies normally.
+  - `output_scale="normal"` classifies; `"probability"` and `"bounded"` raise, so probability-scale input is rejected by declaration rather than by guessing from its range. A clipped ±3.09 value classifies normally.
 
 **Acceptance criteria:**
 - [ ] Boundary-value tests.
