@@ -43,7 +43,7 @@ All references are to `origin/main`.
 | Area | Finding | Reuse |
 |---|---|---|
 | `Distribution` (`vocabulary.py:19`) | Members: `pearson`, `gamma`, `loglogistic`, `empirical`, `beta`, `t_location_scale`, `normal`. **No GEV** (grep for `gev\|genextreme` finds nothing). | Add `gev`. |
-| Accepted sets | `spi`: gamma, pearson. `spei`: gamma, pearson, loglogistic (no gamma fallback). `standardized_index`: gamma, pearson, empirical, beta. `spai`: t_location_scale, pearson, normal. `fit_diagnostics`: gamma, pearson only. | The comparison candidate set equals the index's accepted set. |
+| Accepted sets | `spi`: gamma, pearson. `spei`: gamma, pearson, loglogistic (no gamma fallback). `standardized_index`: gamma, pearson, empirical, beta. `spai`: t_location_scale, pearson, normal. `fit_diagnostics`: gamma, pearson only. | Likelihood-based comparison candidates (the default `candidates=None`) are gamma/pearson for `spi` and `standardized_index`, and gamma/pearson/loglogistic (plus GEV once SUIT-02 lands) for `spei`. Empirical, beta and SPAI-only families are excluded. |
 | Estimators | Gamma: Thom's MLE approximation (`compute.gamma_parameters:1988`; the code comment wrongly says "method of moments"). Pearson III: L-moments (`lmoments.fit`) on the non-zero values, at least 4 non-zero values, falls back to gamma; the 0.0005 trace rule is applied in the transform, not in the fit. Log-logistic: Hosking GLO with ub-pwm L-moments (`lmoments.fit_glo`, ADR-0016); SPEI adds a +1000 offset. Beta: method of moments. | Information criteria are evaluated at these estimates (see OQ-1). |
 | `fit_diagnostics` (`compute.py:4096`, `drought/indices.py:850`, `xarray_adapter.py:3402`) | Frozen `FitDiagnostics`, per step and cell: `distribution`, `parameters`, `prob_zero`, `n_valid`, `ks_statistic`, exact `ks_p_value` (`scipy.stats.kstest`), `fell_back_to_gamma`. The xarray route returns a Dataset built with `apply_ufunc`. No AIC, BIC, log-likelihood or AD. | Its block-packing pattern, calibration slicing and `distribution_used` handling. |
 | `output_scale` (`vocabulary.py:143`) | `"normal"`, `"probability"` (the CDF, i.e. the PIT) or `"bounded"`. Accepted by spi, spei, spai and standardized_index. | Seasonal PIT diagnostics take `"probability"` output from any index. |
@@ -204,7 +204,7 @@ Follow-on, not part of this epic: a Rust GEV kernel and comparison-loop accelera
 
 **Decision:**
 1. **Candidate set.**
-   - The candidates are the distributions the target index accepts.
+   - The candidates are the likelihood-based families, and `candidates=None` selects them: gamma and Pearson Type III for `spi` and `standardized_index`; gamma, Pearson Type III, log-logistic and, once SUIT-02 lands, GEV for `spei`. Naming a family outside this set (such as empirical or beta) in `candidates` raises.
    - SPEI gains `Distribution.gev`: Hosking's GEV fitted by L-moments, with `fitting_params` keys `loc`, `scale` and `shape`. The shape is Hosking's k, equal to SciPy's `c`.
    - All values are fitted with no zero mass, as for GLO.
    - `spi`, `standardized_index` and `fit_diagnostics` reject GEV.
@@ -335,7 +335,7 @@ Shared footer, used in every child:
 **Problem.** No per-cell relative-fit evidence (log-likelihood, AIC, AICc, BIC, best) exists.
 
 **Solution.**
-- Add the `DistributionComparison` dataclass and the NumPy `compare_distributions` described in the plan's API sketch. It covers the `spi`, `spei` and `standardized_index` routes, scores every candidate on a shared sample, and returns parameters that can be reused as `fitting_params`.
+- Add the `DistributionComparison` dataclass and the NumPy `compare_distributions` described in the plan's API sketch. It covers the `spi`, `spei` and `standardized_index` routes with the default candidate sets of ADR §1, scores every candidate on a shared sample, and returns parameters that can be reused as `fitting_params`.
 - GEV appears as a candidate automatically once SUIT-02 has landed.
 - Emits `BetaFeatureWarning`.
 
