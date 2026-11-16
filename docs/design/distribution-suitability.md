@@ -450,12 +450,17 @@ Shared footer, used in every child:
 **Scientific core:**
 - **Edge cases:**
   - Zero-mass observations are removed with the caller's zero mask, and their share is reported. The mask is an input because non-classic zero modes return p0/2 for the mass, so it cannot be inferred from the probabilities.
+  - The mask marks the transform's own zero-mass set, which is wider than the exact-zero sample of the Shared sample guardrail. For Pearson Type III it is `(values < 0.0005) & (prob_zero > 0)`, as in the transform (`compute.py`, `_pearson_fit`), so trace values are masked along with exact zeros; for gamma it is exact zeros. The report gives the exact-zero and trace shares separately. Masking only exact zeros leaves traces in the sample, where the center-of-mass mode scores them `p0/2`, a negative conditional PIT outside U(0, 1), and the classic mode scores them `p0`, a PIT of exactly 0 that breaks the AD logarithm. The traces are not recomputed from the observations: the function takes probabilities, not observations.
+  - Removing traces truncates the continuous sample to values at or above 0.0005, so the PIT is uniform on [F(0.0005), 1] rather than [0, 1] under the null. F(0.0005) is negligible for precipitation in millimetres, and the docs state this approximation.
+  - An unmasked position whose mixed-CDF value is below p0 (a negative conditional PIT) raises `ValueError` naming the mask mismatch, so a mask that misses traces is never scored silently.
   - In-sample PIT is conservative, and the docs say so.
   - Timescale dependence warning (monthly > 12, daily > 365), issued from `scale`.
 
 **Acceptance criteria:**
 - [ ] Uniform synthetic input passes at the nominal rate.
 - [ ] A correctly fitted zero-inflated series (p0 = 0.4) passes at the nominal rate after the conditional transform.
+- [ ] A zero-inflated Pearson Type III series containing trace values passes at the nominal rate with the trace-inclusive mask.
+- [ ] The same series under `zero_handling="center_of_mass"` with an exact-zero-only mask raises.
 - [ ] `distribution="empirical"` or `distribution="beta"` raises.
 - [ ] A deliberately misspecified fit, with a seasonal variance cycle given to SPAI, is detected.
 - [ ] NumPy/xarray equality.
