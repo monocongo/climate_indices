@@ -68,7 +68,7 @@ All references are to `origin/main`.
 - Drought categories and category-change metrics.
 - Seasonal PIT uniformity, including SPAI.
 - Event concordance and category agreement.
-- Provenance attributes.
+- Output Provenance attributes.
 - Workflow reproduction notebook.
 - Guide and VALIDATION rows.
 
@@ -170,7 +170,7 @@ def category_agreement(index_categories, reference_categories) -> tuple[float, f
 | Item | Evidence | Expected VALIDATION status |
 |---|---|---|
 | GEV | CDF/PPF parity with `scipy.stats.genextreme` on both bounded branches. Hosking's k equals SciPy's c in sign; the test pins this. L-moment recovery against closed-form population L-moments. Optional R `lmom::pelgev/cdfgev` fixture (OQ-8). | "Cross-implementation comparison, same estimator lineage" with the lmom fixture, otherwise "Specification-level" |
-| Log-likelihood and criteria | `sum(logpdf)` checked against SciPy (`gamma`, `pearson3`, `genextreme`; GLO through `fisk` on the k < 0 branch, per ADR-0016) at the same parameters. Round trip: comparison parameters fed as `fitting_params` to `spi`/`spei` give identical output. Synthetic recovery rate reported, not asserted tightly. | Specification-level plus synthetic characterization |
+| Log-likelihood and criteria | `sum(logpdf)` checked against SciPy (`gamma`, Pearson Type III through `scipy.stats.pearson3`, `genextreme`; GLO through `fisk` on the k < 0 branch, per ADR-0016) at the same parameters. Round trip: comparison parameters fed as `fitting_params` to `spi`/`spei` give identical output. Synthetic recovery rate reported, not asserted tightly. | Specification-level plus synthetic characterization |
 | Bootstrap GoF | Size under H0 within a binomial MC interval of α for every candidate that supports the bootstrap (gamma, Pearson Type III, GLO, GEV), on continuous and rounded samples. Naive K–S shown to under-reject. | Synthetic characterization |
 | Categories | Edges match the USDM table ("-0.5 to -0.79" … "-2.0 or less"), including exact boundary values. | Specification-level |
 | Concordance | Hand-built `RunSet` fixtures. | Specification-level |
@@ -293,7 +293,7 @@ Shared footer, used in every child:
 **Acceptance criteria:**
 - [ ] The maintainer merges the ADR before implementation starts.
 - [ ] Every child merges with its tests, docs and VALIDATION row.
-- [ ] Provenance attributes match ADR-0028 §6.
+- [ ] Output Provenance attributes match ADR-0028 §6.
 - [ ] The reproduction is labelled a workflow reproduction.
 
 **Additional context:** Motivating study: Monish & Rehana (2020), doi:10.1007/s12040-019-1271-x. Its figures are unverified and not quoted. The earthflux atlas is a separate epic, and the library has no earthflux dependency. Follow-on, not part of this epic: Rust GEV and comparison kernels.
@@ -368,7 +368,7 @@ Shared footer, used in every child:
 - **Precision:** criteria are compared to SciPy at `rtol=1e-10`.
 
 **Acceptance criteria:**
-- [ ] Log-likelihood checked against SciPy for gamma, `pearson3` and GLO-via-`fisk` (k < 0).
+- [ ] Log-likelihood checked against SciPy for gamma, Pearson Type III (through `scipy.stats.pearson3`) and GLO-via-`fisk` (k < 0).
 - [ ] Round trip: `spi()`/`spei()` with the returned params are bit-identical to direct calls.
 - [ ] Synthetic recovery-rate characterization test.
 - [ ] Tie and `best` semantics tested.
