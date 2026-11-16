@@ -641,8 +641,8 @@ def climate_engine_request(endpoint: str, body: dict[str, Any], key: str) -> dic
             message = f"Climate Engine API returned HTTP {error.code}"
             if not _retryable(error.code) or attempt == CE_ATTEMPTS:
                 raise ClimateEngineTransportError(message) from None
-            if error.headers:
-                wait = max(wait, _retry_after_seconds(error.headers.get("Retry-After", "")))
+            headers = error.headers or dict[str, str]()
+            wait = max(wait, _retry_after_seconds(headers.get("Retry-After", "")))
         except (http.client.HTTPException, OSError, UnicodeDecodeError, json.JSONDecodeError) as error:
             # A dropped connection, a TLS failure or a truncated body is a provider failure.
             # OSError covers resets, TLS, and read timeouts; the follow-up keeps the

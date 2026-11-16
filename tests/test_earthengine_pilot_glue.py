@@ -464,8 +464,9 @@ def test_climate_engine_request_retries_a_stalled_read(monkeypatch: pytest.Monke
 
 
 @pytest.mark.parametrize("status", [408, 429, 500, 503])
+@pytest.mark.parametrize("headers", [None, Message()])
 def test_climate_engine_request_stops_after_the_configured_attempts(
-    monkeypatch: pytest.MonkeyPatch, status: int
+    monkeypatch: pytest.MonkeyPatch, status: int, headers: Message | None
 ) -> None:
     calls: list[int] = []
     waits: list[float] = []
@@ -473,7 +474,9 @@ def test_climate_engine_request_stops_after_the_configured_attempts(
     def refused(request: Any, timeout: int) -> None:
         assert timeout == pilot.HTTP_TIMEOUT_SECONDS
         calls.append(1)
-        raise urllib.error.HTTPError(request.full_url, status, "Unavailable", Message(), io.BytesIO(b""))
+        error = urllib.error.HTTPError(request.full_url, status, "Unavailable", Message(), io.BytesIO(b""))
+        monkeypatch.setattr(error, "headers", headers)
+        raise error
 
     monkeypatch.setattr(pilot, "_open_request", refused)
     monkeypatch.setattr("time.sleep", waits.append)
