@@ -130,14 +130,14 @@ jobs:
         run: uv sync --locked --dev --no-build
         if: matrix.python-version != '3.15'
 
-      # pyyaml, numcodecs and h5py publish no cp315 wheels yet, so this leg builds them from
+      # pyyaml, numcodecs, h5py and lz4 publish no cp315 wheels yet, so this leg builds them from
       # source (h5py needs the HDF5 headers). Restore --no-build once they do (#1579).
       - name: Install dependencies (Python 3.15, source builds)
         if: matrix.python-version == '3.15'
         run: |
           sudo apt-get update
           sudo apt-get install -y libhdf5-dev
-          uv sync --locked --dev  # NOSONAR (S8541, S8544): no cp315 wheels for pyyaml/numcodecs/h5py yet
+          uv sync --locked --dev  # NOSONAR (S8541, S8544): no cp315 wheels for pyyaml/numcodecs/h5py/lz4 yet
 
       # Repo/meta checks are owned by the single `meta` job; validation by
       # the single `validation` job. Do not reintroduce them here: the
@@ -442,14 +442,14 @@ jobs:
         run: uv sync --locked --dev --no-build
         if: matrix.python-version != '3.15'
 
-      # pyyaml, numcodecs and h5py publish no cp315 wheels yet, so this leg builds them from
+      # pyyaml, numcodecs, h5py and lz4 publish no cp315 wheels yet, so this leg builds them from
       # source (h5py needs the HDF5 headers). Restore --no-build once they do (#1579).
       - name: Install dependencies (Python 3.15, source builds)
         if: matrix.python-version == '3.15'
         run: |
           sudo apt-get update
           sudo apt-get install -y libhdf5-dev
-          uv sync --locked --dev  # NOSONAR (S8541, S8544): no cp315 wheels for pyyaml/numcodecs/h5py yet
+          uv sync --locked --dev  # NOSONAR (S8541, S8544): no cp315 wheels for pyyaml/numcodecs/h5py/lz4 yet
 
       - name: Install Rust toolchain
         run: rustup toolchain install --no-self-update

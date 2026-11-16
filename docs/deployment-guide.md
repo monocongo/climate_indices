@@ -50,7 +50,7 @@ schedule (Mondays), and manual dispatch
 **Core test matrix** (`pytest -n auto`, split across two jobs):
 - `test` (every event): ubuntu-latest on Python 3.11, 3.12, 3.13, 3.14, and 3.15,
   plus macOS on 3.14
-  (the 3.15 leg builds `pyyaml`, `numcodecs` and `h5py` from source until they ship cp315 wheels)
+  (the 3.15 leg builds `pyyaml`, `numcodecs`, `h5py` and `lz4` from source until they ship cp315 wheels)
 - `test-full` (everything except pull requests): macOS on Python 3.11
 
 `uv.lock` resolves three dependency stacks (3.11; 3.12 through 3.14, which

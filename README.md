@@ -327,7 +327,7 @@ to `main`. Python 3.14 is additionally tested on macOS on every event, and 3.11 
 pushes to `main`, merge groups, the weekly schedule, and manual dispatch. Both latest and
 minimum declared dependency versions are tested in CI.
 
-Python 3.15 is tested on Linux only until `pyyaml`, `numcodecs` and `h5py` publish
+Python 3.15 is tested on Linux only until `pyyaml`, `numcodecs`, `h5py` and `lz4` publish
 Python 3.15 wheels; those CI legs build them from source.
 
 ### Version Support Policy

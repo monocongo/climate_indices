@@ -58,7 +58,7 @@ def _read_toml(relative_path: Path) -> dict[str, Any]:
 
 
 # Newest Python whose locked dependencies all ship wheels. Python 3.15 is tested on Linux only
-# while pyyaml, numcodecs and h5py lack cp315 wheels (#1579), so the macOS, Windows, wheel-build,
+# while pyyaml, numcodecs, h5py and lz4 lack cp315 wheels (#1579), so the macOS, Windows, wheel-build,
 # release-smoke and Docker "latest" pins stay here. Once they publish wheels, set this to the
 # newest classifier (the guard test below fails until it matches) and move those pins up.
 NEWEST_WHEEL_COVERED_PYTHON = "3.14"
