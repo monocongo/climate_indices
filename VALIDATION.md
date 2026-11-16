@@ -791,10 +791,11 @@ within the 1981–2016 Calibration Period, as the rank formulas predict. Over
 1981–2024, the reduction was only 0.0222–0.0299, with residual bias +0.0235 to
 +0.0400. Bias increased in 2017–2024 under the registered strict-below rank rule.
 Reference A EDDI stayed unchanged. The full-period hypothesis failed its pre-registered
-criteria, although the calibration-only prediction held. The reference B rerun
-remains pending; the paired attempt timed out and the completed rerun skipped it.
-The report records the period splits,
-calendar-month biases, rank rules, and image versions. This is characterization
+criteria, although the calibration-only prediction held. The completed reference B
+rerun reproduced its earlier metrics within 1e-10 and moved the SPI/SPEI bias from
+-0.052 to -0.069 down to -0.082 to -0.092 over 1981–2024, and by exactly -0.053831
+over 1981–2016. Reference B EDDI stayed unchanged. The report records the period
+splits, calendar-month biases, rank rules, and image versions. This is characterization
 only; no validation status changes.
 
 ## References

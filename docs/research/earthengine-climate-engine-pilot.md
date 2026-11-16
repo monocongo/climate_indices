@@ -288,14 +288,14 @@ The metrics record the compressed manifest's checksum.
 These acquisition-time records do not establish immutable snapshots or byte identity with the earlier run, which captured no input checksums.
 
 The first paired attempt ran from commit `80f4036d` and timed out during the Climate Engine read.
-The configured HTTP timeout was 180 seconds.
-The completed rerun used `--skip-climate-engine` and retained A only.
-The saved B record therefore describes the completed run, not the failed attempt.
-A rerun of that command reproduces the record, including the timeout value.
-A provider HTTP failure now keeps the completed A results and records the sanitized status instead of aborting the write.
+The configured HTTP timeout is 180 seconds, and one timeout discarded the whole reference B block.
+Commit `50c197c9` retries a transient read failure up to three times with a growing wait.
+The completed run used that commit, reproduced every reference A metric, and read all twelve reference B series.
+Two of the twelve series needed one retry; the other ten succeeded on the first attempt.
+The reference B baseline control matched #1569 within `1e-10`, so the API returned the same values as the earlier run.
+A provider HTTP failure still keeps the completed reference A results and records the sanitized status instead of aborting the write.
 The client also refuses redirects, so it cannot forward the credential to another host.
 Both credentials were present; neither credential nor a raw Climate Engine response entered the outputs.
-No new B metric or B control check is available.
 
 ### Reading the comparison tables
 
@@ -418,12 +418,65 @@ Between calibration values, those counts are equal.
 Consequently, adding one to the strict-below count changes the calibration/post-calibration relation; an endpoint-only explanation is incomplete.
 This is a mechanical property of the tested convention, not evidence of either provider's exact rank implementation.
 
-### Reference B: pending
+### Reference B, 1981-2024
 
-The B acquisition failed with a read timeout.
-No new full-period, split-period, or change table is available for B.
-Its negative-bias prediction and EDDI control remain untested in this follow-up.
-The original B results above remain unchanged and must not be presented as a successful new run.
+The paired run read each Climate Engine series once and compared both plotting positions with the same values.
+Each request used `GRIDMET`, `distribution=nonparametric`, a 1981–2016 calibration window, and 30/90/180/365 trailing-day accumulation.
+Three points give 1,584 paired month values for each index and timescale.
+The API's day windows differ from the calendar-month windows here, as the original B section states.
+
+| Index | Timescale | n | Bias | MAE | RMSE | r | Max abs | Same class | Within one class |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| SPI | 1 mo | 1,584 | -0.055 / -0.085 / -0.029 | 0.148 / 0.161 / +0.013 | 0.223 / 0.237 / +0.013 | 0.978 / 0.975 / -0.002 | 1.613 / 1.599 / -0.015 | 0.697 / 0.680 / -0.017 | 0.971 / 0.965 / -0.006 |
+| SPI | 3 mo | 1,584 | -0.063 / -0.091 / -0.028 | 0.130 / 0.142 / +0.012 | 0.195 / 0.207 / +0.012 | 0.984 / 0.982 / -0.002 | 1.409 / 1.380 / -0.029 | 0.723 / 0.704 / -0.020 | 0.973 / 0.970 / -0.003 |
+| SPI | 6 mo | 1,584 | -0.066 / -0.092 / -0.026 | 0.137 / 0.149 / +0.012 | 0.193 / 0.205 / +0.012 | 0.984 / 0.982 / -0.002 | 1.053 / 0.976 / -0.077 | 0.715 / 0.705 / -0.011 | 0.972 / 0.961 / -0.011 |
+| SPI | 12 mo | 1,584 | -0.069 / -0.092 / -0.023 | 0.095 / 0.107 / +0.011 | 0.146 / 0.151 / +0.004 | 0.994 / 0.993 / -0.002 | 0.837 / 0.813 / -0.024 | 0.771 / 0.752 / -0.019 | 0.993 / 0.991 / -0.003 |
+| SPEI | 1 mo | 1,584 | -0.052 / -0.082 / -0.030 | 0.146 / 0.158 / +0.012 | 0.221 / 0.233 / +0.012 | 0.978 / 0.975 / -0.002 | 1.436 / 1.427 / -0.009 | 0.699 / 0.684 / -0.015 | 0.968 / 0.961 / -0.008 |
+| SPEI | 3 mo | 1,584 | -0.055 / -0.085 / -0.030 | 0.125 / 0.135 / +0.010 | 0.184 / 0.195 / +0.011 | 0.985 / 0.983 / -0.002 | 1.144 / 1.103 / -0.041 | 0.747 / 0.723 / -0.024 | 0.979 / 0.976 / -0.003 |
+| SPEI | 6 mo | 1,584 | -0.056 / -0.084 / -0.029 | 0.125 / 0.135 / +0.010 | 0.177 / 0.190 / +0.013 | 0.986 / 0.984 / -0.002 | 0.837 / 0.813 / -0.024 | 0.737 / 0.720 / -0.017 | 0.984 / 0.976 / -0.008 |
+| SPEI | 12 mo | 1,584 | -0.055 / -0.082 / -0.027 | 0.091 / 0.100 / +0.008 | 0.139 / 0.147 / +0.008 | 0.994 / 0.992 / -0.002 | 0.677 / 0.639 / -0.039 | 0.782 / 0.771 / -0.011 | 0.994 / 0.992 / -0.002 |
+| EDDI | 1 mo | 1,584 | -0.084 / -0.084 / +0.000 | 0.137 / 0.137 / +0.000 | 0.200 / 0.200 / +0.000 | 0.982 / 0.982 / +0.000 | 1.403 / 1.403 / +0.000 | 0.717 / 0.717 / +0.000 | 0.983 / 0.983 / +0.000 |
+| EDDI | 3 mo | 1,584 | -0.085 / -0.085 / +0.000 | 0.126 / 0.126 / +0.000 | 0.180 / 0.180 / +0.000 | 0.986 / 0.986 / +0.000 | 1.000 / 1.000 / +0.000 | 0.732 / 0.732 / +0.000 | 0.986 / 0.986 / +0.000 |
+| EDDI | 6 mo | 1,584 | -0.083 / -0.083 / +0.000 | 0.125 / 0.125 / +0.000 | 0.180 / 0.180 / +0.000 | 0.987 / 0.987 / +0.000 | 1.000 / 1.000 / +0.000 | 0.739 / 0.739 / +0.000 | 0.990 / 0.990 / +0.000 |
+| EDDI | 12 mo | 1,584 | -0.087 / -0.087 / +0.000 | 0.111 / 0.111 / +0.000 | 0.157 / 0.157 / +0.000 | 0.991 / 0.991 / +0.000 | 1.000 / 1.000 / +0.000 | 0.754 / 0.754 / +0.000 | 0.996 / 0.996 / +0.000 |
+
+Every EDDI metric is identical under both conventions, as the control requires.
+That check is weaker than the reference A control, because the same array is compared twice.
+
+### Reference B bias by period
+
+| Index | Timescale | 1981–2024 | 1981–2016 | 2017–2024 |
+| --- | --- | --- | --- | --- |
+| SPI | 1 mo | -0.055 / -0.085 / -0.029 | -0.052 / -0.105 / -0.054 | -0.072 / +0.008 / +0.080 |
+| SPI | 3 mo | -0.063 / -0.091 / -0.028 | -0.054 / -0.108 / -0.054 | -0.104 / -0.014 / +0.090 |
+| SPI | 6 mo | -0.066 / -0.092 / -0.026 | -0.056 / -0.110 / -0.054 | -0.108 / -0.008 / +0.100 |
+| SPI | 12 mo | -0.069 / -0.092 / -0.023 | -0.059 / -0.112 / -0.054 | -0.114 / +0.002 / +0.116 |
+| SPEI | 1 mo | -0.052 / -0.082 / -0.030 | -0.047 / -0.101 / -0.054 | -0.076 / +0.002 / +0.078 |
+| SPEI | 3 mo | -0.055 / -0.085 / -0.030 | -0.047 / -0.101 / -0.054 | -0.090 / -0.014 / +0.076 |
+| SPEI | 6 mo | -0.056 / -0.084 / -0.029 | -0.047 / -0.101 / -0.054 | -0.093 / -0.009 / +0.084 |
+| SPEI | 12 mo | -0.055 / -0.082 / -0.027 | -0.046 / -0.100 / -0.054 | -0.094 / -0.001 / +0.092 |
+| EDDI | 1 mo | -0.084 / -0.084 / +0.000 | -0.116 / -0.116 / +0.000 | +0.056 / +0.056 / +0.000 |
+| EDDI | 3 mo | -0.085 / -0.085 / +0.000 | -0.116 / -0.116 / +0.000 | +0.052 / +0.052 / +0.000 |
+| EDDI | 6 mo | -0.083 / -0.083 / +0.000 | -0.116 / -0.116 / +0.000 | +0.063 / +0.063 / +0.000 |
+| EDDI | 12 mo | -0.087 / -0.087 / +0.000 | -0.117 / -0.117 / +0.000 | +0.045 / +0.045 / +0.000 |
+
+Each cell contains **SEI / Tukey / change**, where change is Tukey minus SEI.
+
+### Reference B outcome
+
+Tukey moves the SPI and SPEI bias further negative at every timescale and period.
+Over 1981–2024 the bias moves from a −0.052 to −0.069 range to a −0.082 to −0.092 range.
+That change is −0.023 to −0.030, not the −0.05 that the calibration period alone gives.
+Over 1981–2016 the change is exactly −0.053831 for all eight variants, which matches the distinct-rank expectation.
+Over 2017–2024 the change is positive (+0.077 to +0.116), so the Tukey bias there is −0.014 to +0.008.
+MAE and RMSE rise by 0.004 to 0.013 over 1981–2024, because the bias magnitude grows.
+They fall by 0.027 to 0.104 over 2017–2024, where the bias approaches zero.
+Correlation changes by at most 0.0048, and class agreement by at most 0.024 in the full period.
+
+The registered range of −0.10 to −0.12 therefore holds for the calibration period only.
+The full-period bias stops at −0.092, which is the same shortfall that reference A shows.
+The B point metrics and the A field metrics still have different spatial support.
+They neither confirm nor refute each other, and both remain characterization evidence.
 
 ### Outcome against the pre-registration
 
@@ -434,14 +487,16 @@ The original B results above remain unchanged and must not be presented as a suc
 | Correlation barely changes | Held for the full period. Absolute changes are at most 0.00111. |
 | MAE and RMSE fall modestly | Partly held. MAE falls for all eight variants. RMSE rises at one month for both indices and falls at longer timescales. |
 | Post-calibration behavior can differ or reverse | Held. Bias, MAE, and RMSE increase for all eight variants in 2017–2024. |
-| B bias becomes approximately −0.10 to −0.12 | Pending because acquisition failed. |
-| EDDI stays unchanged | Held for A, including the alfalfa sensitivity, every period, and every saved metric. B remains pending. |
+| B bias becomes approximately −0.10 to −0.12 | Partly held. The direction is correct at every timescale. The calibration period reaches −0.100 to −0.112; the full period reaches −0.082 to −0.092. |
+| EDDI stays unchanged | Held for A and B, including the alfalfa sensitivity, every period, and every saved metric. |
 
 The residual bias is seasonal, not a uniform offset.
 At one month, October bias is +0.153 for SPI and +0.168 for SPEI, while December bias is approximately −0.023 and −0.022.
 At three months, January and February are negative, and October is approximately +0.080.
 At six months, the largest positive bias occurs in June; at twelve months, it occurs in December.
 These descriptive patterns do not identify their physical cause.
+
+Reference B moved further negative, as registered, so it does not restore the full-period explanation.
 
 **Conclusion:** reject the full-period hypothesis under the pre-registered criteria.
 The reduction is approximately half the predicted amount, and SPEI remains above +0.03 at three of four timescales.
@@ -463,5 +518,5 @@ uv run pytest tests/test_earthengine_pilot_glue.py tests/test_earthengine_tukey_
 ```
 
 The script keeps `sei` as its default and reserves `tukey` for the paired follow-up.
-B's successful completion, its missing tables, and independent review remain pending.
-The PR must remain a draft until the maintainer reviews the results.
+The reference B rerun completed on 2026-11-16 and its tables are above.
+A maintainer review of these results is still required before they are cited elsewhere.
