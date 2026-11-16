@@ -51,6 +51,7 @@ import urllib.error
 import urllib.request
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from email.message import Message
 from email.utils import parsedate_to_datetime
 from http import HTTPStatus
 from pathlib import Path
@@ -641,7 +642,7 @@ def climate_engine_request(endpoint: str, body: dict[str, Any], key: str) -> dic
             message = f"Climate Engine API returned HTTP {error.code}"
             if not _retryable(error.code) or attempt == CE_ATTEMPTS:
                 raise ClimateEngineTransportError(message) from None
-            headers = error.headers or dict[str, str]()
+            headers: Message | dict[str, str] = error.headers or {}
             wait = max(wait, _retry_after_seconds(headers.get("Retry-After", "")))
         except (http.client.HTTPException, OSError, UnicodeDecodeError, json.JSONDecodeError) as error:
             # A dropped connection, a TLS failure or a truncated body is a provider failure.
