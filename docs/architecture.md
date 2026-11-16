@@ -848,8 +848,8 @@ no Rust toolchain, so they keep proving the fallback.
   parity suite as a named step, so a leg that collected nothing from it fails visibly
   rather than passing silently, and writes the measured parity maxima
   (`scripts/native_parity_maxima.py`, the table above) into the job summary.
-- `native-wheel`: `maturin build --release` on Linux and macOS at both boundary
-  Pythons, plus a Windows smoke build on the newest. Each wheel is installed
+- `native-wheel`: `maturin build --release` on Linux and macOS at Python 3.11 and
+  3.14, plus a Windows smoke build on 3.14. Python 3.15 is not in this matrix yet. Each wheel is installed
   into a fresh venv and imported from outside the checkout, and SPI must reach
   the bundled `gamma_parameters`, `gamma_probabilities`, and `norm_ppf` kernels.
   This validates the developer build; the published wheel matrix, its abi3 tag,
@@ -1118,14 +1118,14 @@ uv run pytest tests/test_property_based.py
 ```yaml
 Matrix (core suite):
   test (every event):
-    - ubuntu-latest: Python 3.11, 3.12, 3.13, 3.14, 3.15
+    - ubuntu-latest: Python 3.11, 3.12, 3.13, 3.14, 3.15   # 3.15 builds pyyaml, numcodecs, h5py, lz4 from source
     - macos-latest: Python 3.14
   test-full (everything except pull requests):
     - macos-latest: Python 3.11
 Steps:
   1. Checkout code
   2. Setup Python + uv
-  3. uv sync --locked --dev --no-build   # wheels only
+  3. uv sync --locked --dev --no-build   # wheels only (Linux 3.15: source builds, no --no-build)
   4. Run pytest -n auto
 Rust jobs (every event; see "Rust in CI" under Optional Rust Backend):
   rust, test-native, native-wheel

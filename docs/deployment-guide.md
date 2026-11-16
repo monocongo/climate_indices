@@ -67,7 +67,7 @@ Single-owner jobs run once per event: `lint` (ruff, mypy), `docs`, `validation`
 
 Three Rust jobs run on every event next to the pure-Python legs: `rust` (cargo
 fmt, clippy, and tests), `test-native` (the core suite with the extension built and
-`CLIMATE_INDICES_REQUIRE_NATIVE=1`, on Linux 3.11, 3.14 and 3.15 and macOS 3.14, all legs of `test`), and
+`CLIMATE_INDICES_REQUIRE_NATIVE=1`, on Linux 3.11, 3.14 and 3.15 and macOS 3.14, a subset of the `test` legs), and
 `native-wheel` (maturin wheels at Python 3.11 and 3.14 on Linux and macOS, plus a
 Windows 3.14 smoke build, each installed and checked outside the checkout). They
 validate wheels but publish nothing. See `docs/architecture.md` § *Optional Rust
@@ -77,7 +77,9 @@ Backend*.
 1. Checkout code
 2. Setup Python and uv
 3. Install dependencies: `uv sync --locked --dev --no-build` (wheels only; no
-   source builds)
+   source builds). The Linux 3.15 leg is the exception: it installs `libhdf5-dev` and
+   runs `uv sync --locked --dev`, building `pyyaml`, `numcodecs`, `h5py` and `lz4`
+   from source
 4. Run core tests: `pytest -n auto` (validation and repo checks are excluded;
    their own jobs run them)
 
