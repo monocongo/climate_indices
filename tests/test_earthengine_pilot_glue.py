@@ -463,7 +463,7 @@ def test_climate_engine_request_retries_a_stalled_read(monkeypatch: pytest.Monke
     assert len(calls) == 2
 
 
-@pytest.mark.parametrize("status", [429, 500, 503])
+@pytest.mark.parametrize("status", [408, 429, 500, 503])
 def test_climate_engine_request_stops_after_the_configured_attempts(
     monkeypatch: pytest.MonkeyPatch, status: int
 ) -> None:
@@ -481,6 +481,44 @@ def test_climate_engine_request_stops_after_the_configured_attempts(
         pilot.climate_engine_request(pilot.CE_ENDPOINT, {}, "not-a-real-key")
     assert len(calls) == pilot.CE_ATTEMPTS
     assert waits == [pilot.CE_RETRY_DELAY_SECONDS * 2**index for index in range(pilot.CE_ATTEMPTS - 1)]
+
+
+@pytest.mark.parametrize(
+    ("retry_after", "expected_wait"),
+    [
+        ("60", 60),
+        ("1", 15),
+        ("Wed, 01 Jan 2025 00:01:30 GMT", 90),
+        ("Tue, 31 Dec 2024 23:59:00 GMT", 15),
+        ("invalid", 15),
+        ("-1", 15),
+        ("inf", 15),
+        ("NaN", 15),
+        ("9" * 400, 15),
+    ],
+)
+def test_climate_engine_request_honors_retry_after(
+    monkeypatch: pytest.MonkeyPatch, retry_after: str, expected_wait: float
+) -> None:
+    calls: list[int] = []
+    waits: list[float] = []
+    headers = Message()
+    headers["Retry-After"] = retry_after
+
+    def flaky(request: Any, timeout: int) -> _FakeResponse:
+        calls.append(1)
+        if len(calls) == 1:
+            raise urllib.error.HTTPError(request.full_url, 429, "Throttled", headers, io.BytesIO(b""))
+        if len(calls) == 2:
+            raise TimeoutError("read timed out")
+        return _FakeResponse({"Data": []})
+
+    monkeypatch.setattr(pilot, "_open_request", flaky)
+    monkeypatch.setattr("time.time", lambda: 1735689600.0)  # 2025-01-01 00:00:00 UTC
+    monkeypatch.setattr("time.sleep", waits.append)
+    assert pilot.climate_engine_request(pilot.CE_ENDPOINT, {}, "not-a-real-key") == {"Data": []}
+    assert len(calls) == 3
+    assert waits == [expected_wait, 30], "a later failure must not reuse the previous response's delay"
 
 
 @pytest.mark.parametrize(

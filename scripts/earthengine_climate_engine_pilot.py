@@ -51,6 +51,7 @@ import urllib.error
 import urllib.request
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from email.utils import parsedate_to_datetime
 from http import HTTPStatus
 from pathlib import Path
 from typing import Any
@@ -595,15 +596,30 @@ def compare(
 
 
 def _retryable(status: int) -> bool:
-    """A throttled or upstream failure may recover; a request error will not."""
-    return status == HTTPStatus.TOO_MANY_REQUESTS or status >= HTTPStatus.INTERNAL_SERVER_ERROR
+    """A timeout, throttling, or upstream failure may recover."""
+    return (
+        status in (HTTPStatus.REQUEST_TIMEOUT, HTTPStatus.TOO_MANY_REQUESTS)
+        or status >= HTTPStatus.INTERNAL_SERVER_ERROR
+    )
+
+
+def _retry_after_seconds(value: str) -> float:
+    """Read a Retry-After delay or HTTP date; ignore invalid or expired values."""
+    try:
+        try:
+            delay = float(int(value))
+        except ValueError:
+            delay = parsedate_to_datetime(value).timestamp() - time.time()
+    except (TypeError, ValueError, OverflowError):
+        return 0.0
+    return max(0.0, delay) if math.isfinite(delay) else 0.0
 
 
 def climate_engine_request(endpoint: str, body: dict[str, Any], key: str) -> dict[str, Any]:
     """POST one request to the Climate Engine API and return the decoded JSON.
 
-    A transport failure is retried up to :data:`CE_ATTEMPTS` times with a growing
-    wait, so one stalled read does not discard the other series in the run.
+    The request uses at most :data:`CE_ATTEMPTS` attempts in total after transport
+    failures. Retry waits grow and honor a longer valid ``Retry-After`` delay.
 
     The key travels in the ``Authorization`` header and is never written to any
     output, logged, or embedded in an error message.
@@ -616,6 +632,7 @@ def climate_engine_request(endpoint: str, body: dict[str, Any], key: str) -> dic
     )
     decoded: Any = None
     for attempt in range(1, CE_ATTEMPTS + 1):
+        wait = CE_RETRY_DELAY_SECONDS * 2 ** (attempt - 1)
         try:
             with _open_request(request, HTTP_TIMEOUT_SECONDS) as response:
                 decoded = json.loads(response.read().decode("utf-8"))
@@ -624,6 +641,8 @@ def climate_engine_request(endpoint: str, body: dict[str, Any], key: str) -> dic
             message = f"Climate Engine API returned HTTP {error.code}"
             if not _retryable(error.code) or attempt == CE_ATTEMPTS:
                 raise ClimateEngineTransportError(message) from None
+            if error.headers:
+                wait = max(wait, _retry_after_seconds(error.headers.get("Retry-After", "")))
         except (http.client.HTTPException, OSError, UnicodeDecodeError, json.JSONDecodeError) as error:
             # A dropped connection, a TLS failure or a truncated body is a provider failure.
             # OSError covers resets, TLS, and read timeouts; the follow-up keeps the
@@ -633,7 +652,6 @@ def climate_engine_request(endpoint: str, body: dict[str, Any], key: str) -> dic
                 raise ClimateEngineTransportError(message) from None
         else:
             break
-        wait = CE_RETRY_DELAY_SECONDS * 2 ** (attempt - 1)
         print(
             f"{message}; retrying in {wait} seconds (attempt {attempt + 1} of {CE_ATTEMPTS})",
             file=sys.stderr,
