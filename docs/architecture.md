@@ -837,13 +837,13 @@ no Rust toolchain, so they keep proving the fallback.
   --no-deps`, and `cargo test --workspace` (`PYO3_PYTHON` points the
   `climate-py` test binary at the project interpreter).
 - `test-native`: `maturin develop --release`, then the same core pytest command
-  as `test`, on the boundary legs (oldest and newest Python on Linux, newest on
-  macOS). It sets `CLIMATE_INDICES_REQUIRE_NATIVE=1`, which makes the native test
+  as `test`, on legs of `test` (Python 3.11, 3.14 and 3.15 on Linux; 3.14, the newest Python
+  whose dependencies all ship wheels, on macOS). It sets `CLIMATE_INDICES_REQUIRE_NATIVE=1`, which makes the native test
   modules raise on a missing extension instead of skipping, so a broken build
   cannot silently drop the parity suite. `tests/test_native_parity.py`,
   `tests/test_native_parity_distributions.py`,
   `tests/test_native_parity_fire.py`, and `tests/test_native_parity_palmer.py`
-  have no other skip. The Python 3.14-only context-aware-warnings routing check lives in
+  have no other skip. The context-aware-warnings routing check (Python 3.14 and later) lives in
   `tests/test_native_backend.py` and skips on the 3.11 leg. It then runs the consolidated
   parity suite as a named step, so a leg that collected nothing from it fails visibly
   rather than passing silently, and writes the measured parity maxima

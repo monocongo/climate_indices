@@ -53,11 +53,12 @@ schedule (Mondays), and manual dispatch
   (the 3.15 leg builds `pyyaml`, `numcodecs` and `h5py` from source until they ship cp315 wheels)
 - `test-full` (everything except pull requests): macOS on Python 3.11
 
-`uv.lock` resolves two distinct dependency stacks (3.11; and 3.12
-through 3.15, which install identical packages), yet interpreter behavior
-differs, so a pull request still exercises every supported minor on Linux.
-Together the two jobs cover every supported Python on Linux and both boundaries
-on macOS, and `tests/test_release_integrity.py` enforces that the two never
+`uv.lock` resolves three dependency stacks (3.11; 3.12 through 3.14, which
+install identical packages; and 3.15, which moves to numpy 2.5 and scipy 1.18),
+yet interpreter behavior differs, so a pull request still exercises every
+supported minor on Linux. Together the two jobs cover every supported Python on
+Linux and, on macOS, the minimum and the newest Python whose dependencies all
+ship wheels (3.14), and `tests/test_release_integrity.py` enforces that the two never
 overlap and never drop a supported version.
 
 Single-owner jobs run once per event: `lint` (ruff, mypy), `docs`, `validation`
@@ -66,8 +67,8 @@ Single-owner jobs run once per event: `lint` (ruff, mypy), `docs`, `validation`
 
 Three Rust jobs run on every event next to the pure-Python legs: `rust` (cargo
 fmt, clippy, and tests), `test-native` (the core suite with the extension built and
-`CLIMATE_INDICES_REQUIRE_NATIVE=1`, on the boundary legs of `test`), and
-`native-wheel` (maturin wheels at both boundary Pythons on Linux and macOS, plus a
+`CLIMATE_INDICES_REQUIRE_NATIVE=1`, on Linux 3.11, 3.14 and 3.15 and macOS 3.14, all legs of `test`), and
+`native-wheel` (maturin wheels at Python 3.11 and 3.14 on Linux and macOS, plus a
 Windows 3.14 smoke build, each installed and checked outside the checkout). They
 validate wheels but publish nothing. See `docs/architecture.md` § *Optional Rust
 Backend*.

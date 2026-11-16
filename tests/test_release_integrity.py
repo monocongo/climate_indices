@@ -437,7 +437,7 @@ def test_unit_test_jobs_cover_every_supported_python_without_overlap() -> None:
     assert not pull_request_legs & full_legs, "a leg in both jobs runs twice on pushes to main"
 
 
-def test_pull_request_legs_cover_both_boundaries_on_linux_and_the_newest_on_macos() -> None:
+def test_pull_request_legs_cover_both_boundaries_on_linux_and_the_wheel_covered_python_on_macos() -> None:
     """The legs every pull request runs must still hit both support boundaries."""
     pull_request_legs, _ = _unit_test_legs()
     versions = _declared_python_versions()
@@ -447,8 +447,11 @@ def test_pull_request_legs_cover_both_boundaries_on_linux_and_the_newest_on_maco
     assert (NEWEST_WHEEL_COVERED_PYTHON, "macos-latest") in pull_request_legs
 
 
-def test_macos_covers_minimum_and_maximum_python() -> None:
-    """Across both unit-test jobs, macOS must exercise both support boundaries."""
+def test_macos_covers_minimum_and_newest_wheel_covered_python() -> None:
+    """Across both unit-test jobs, macOS covers 3.11 and the newest wheel-covered minor.
+
+    Python 3.15 is Linux-only until its dependencies ship cp315 wheels (#1579).
+    """
     pull_request_legs, full_legs = _unit_test_legs()
     versions = _declared_python_versions()
 
@@ -1046,7 +1049,7 @@ def test_native_jobs_run_on_every_event_and_pure_python_legs_stay_rust_free() ->
 
 
 def test_native_pytest_legs_are_the_pull_request_boundary_legs_of_the_core_job() -> None:
-    """`test-native` reuses boundary legs of `test` rather than adding a new Cartesian product."""
+    """`test-native` reuses legs of `test` (both boundaries plus 3.14) rather than adding a new Cartesian product."""
     native_legs = _job_legs(_native_jobs()["test-native"])
     pull_request_legs, _ = _unit_test_legs()
     versions = _declared_python_versions()
@@ -1091,7 +1094,7 @@ def test_native_pytest_leg_builds_the_extension_and_cannot_skip_the_parity_suite
 
 
 def test_native_wheel_job_checks_built_wheels_outside_the_checkout() -> None:
-    """Development wheels are built at both boundaries on Linux and macOS, plus a Windows smoke build.
+    """Development wheels are built at 3.11 and the newest wheel-covered Python on Linux and macOS, plus a Windows smoke build.
 
     Each wheel is installed into a fresh venv and imported from outside the checkout, and SPI must
     reach the bundled kernels. This job validates the developer build; the published wheel matrix,
@@ -1258,7 +1261,7 @@ def test_climate_py_builds_abi3_wheels() -> None:
     assert {feature for feature in pyo3["features"] if feature.startswith("abi3-py")} == {f"abi3-py{minimum}"}
 
 
-def test_docker_uses_latest_supported_python() -> None:
+def test_docker_uses_newest_wheel_covered_python() -> None:
     """Every Docker build stage must use the newest Python minor whose dependencies all ship wheels."""
     dockerfile = (ROOT / "Dockerfile").read_text(encoding="utf-8")
     base_versions = re.findall(r"^FROM python:(\d+\.\d+)-slim", dockerfile, re.MULTILINE)
@@ -1540,7 +1543,10 @@ def test_release_workflow_wheel_check_installs_every_published_wheel() -> None:
 
 
 def test_release_workflow_installs_wheel_on_boundary_pythons() -> None:
-    """The abi3 wheel installs on the oldest and newest supported Pythons, and that gates publishing.
+    """The abi3 wheel installs on the oldest supported and the newest wheel-covered Pythons, and that gates publishing.
+
+    No release job installs the built artifact on 3.15 yet: that waits for cp315 wheels of the locked
+    dependencies (#1579).
 
     The boundary versions run in `wheel-check` (the platform wheel) and in `no-rust-install` (the
     pure wheel and the sdist); everything else installs on the newest version only.
@@ -1557,7 +1563,7 @@ def test_release_workflow_installs_wheel_on_boundary_pythons() -> None:
         ("macos-latest", NEWEST_WHEEL_COVERED_PYTHON),
         ("macos-15-intel", NEWEST_WHEEL_COVERED_PYTHON),
         ("windows-latest", NEWEST_WHEEL_COVERED_PYTHON),
-    ], "one leg per platform wheel, and both boundaries on Linux"
+    ], "one leg per platform wheel, plus the oldest Python on Linux"
     assert re.findall(r"- python-version: '(\d+\.\d+)'", no_rust) == [versions[0], NEWEST_WHEEL_COVERED_PYTHON]
     assert "needs: [build, build-wheels, wheel-check, no-rust-install]" in workflow, (
         "publishing must wait for every installation check"

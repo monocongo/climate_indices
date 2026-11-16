@@ -94,10 +94,10 @@ jobs:
   # Compatibility policy: expensive or environment-independent suites run once
   # (`validation` on 3.12, repo/meta checks and minimum dependencies on 3.11).
   # The full behavior suite runs on every supported interpreter, split
-  # across two jobs by event. uv.lock resolves two distinct dependency stacks
-  # (3.11; 3.12-3.15), but interpreter behavior differs, so a pull
+  # across two jobs by event. uv.lock resolves three distinct dependency stacks
+  # (3.11; 3.12-3.14; 3.15), but interpreter behavior differs, so a pull
   # request runs every supported minor on Linux plus macOS on the newest
-  # interpreter (this job); `test-full` keeps the remaining macOS minimum leg
+  # wheel-covered interpreter, 3.14 (this job); `test-full` keeps the remaining macOS minimum leg
   # on pushes to main, merge groups, the weekly schedule, and manual dispatch.
   # Do not replace legs with a smoke-only subset, and keep the two jobs
   # disjoint: tests/test_release_integrity.py enforces both.
