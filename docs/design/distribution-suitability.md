@@ -111,14 +111,21 @@ def compare_distributions(
     data_start_year=None, calibration_year_initial=None,
     calibration_year_final=None, periodicity=None, criterion: Criterion = "aicc",
     gof: Sequence[Literal["ks", "ad"]] = ("ks", "ad"), n_bootstrap: int = 0,
-    rng: np.random.Generator | int | None = None, spatial_time_major=False,
+    bh_adjust: bool = False, alpha: float = 0.05,
+    seed: int | None = None, spatial_time_major=False,
     time_dim="time",
 ) -> DistributionComparison | xr.Dataset
 
 @dataclass(frozen=True)
 class GoodnessOfFit:
-    ks_statistic, ks_p_value_naive, ad_statistic: np.ndarray
-    ks_p_value_bootstrap, ad_p_value_bootstrap: np.ndarray | None
+    ks_statistic: np.ndarray
+    ks_p_value_naive: np.ndarray
+    ad_statistic: np.ndarray
+    ks_p_value_bootstrap: np.ndarray | None
+    ad_p_value_bootstrap: np.ndarray | None
+    ks_p_value_bh: np.ndarray | None      # BH-adjusted across cells; None unless bh_adjust
+    ad_p_value_bh: np.ndarray | None
+    rejection_share: np.ndarray | None    # (candidate, step, statistic): share of cells with p < alpha
     n_bootstrap: int
 
 def drought_category(index_values) -> np.ndarray | xr.DataArray   # int8: 0 none, 1..5 = D0..D4, -1 missing
@@ -146,8 +153,8 @@ def category_agreement(index_categories, reference_categories) -> tuple[float, f
 - **`best` is recorded with a margin.** The result carries `delta_to_runner_up` and applies no threshold. The guide explains that small deltas do not discriminate.
 - **Dependence at Timescale > 12.** The same calendar month in consecutive years shares months once the Timescale exceeds 12, so GoF p-values and effective n are invalid there. Warn when scale > 12 on monthly data. The equivalent rule applies to daily data.
 - **Multiple testing.**
-  - Report the rejection share against nominal α across cells.
-  - Offer BH adjustment through `scipy.stats.false_discovery_control`, opt-in only.
+  - Report the rejection share against nominal α across cells (`GoodnessOfFit.rejection_share`, at `alpha`).
+  - Offer BH adjustment through `scipy.stats.false_discovery_control`, opt-in only (`bh_adjust=True`, which needs a cell axis and fills `ks_p_value_bh`/`ad_p_value_bh`).
   - Document that spatial correlation weakens the BH assumptions. Field significance is out of scope.
 - **Post-selection.** The GoF p-value of the AIC-selected candidate is a post-selection statistic, and the docs say so.
 - **Bootstrap.** It refits with **the library's own estimator**. `scipy.stats.goodness_of_fit` refits by MLE, so it serves only as a cross-check for MLE-like gamma. The default is `n_bootstrap=0`. The cost (B × candidates × steps × cells) is documented, and the seed is recorded.
@@ -383,8 +390,8 @@ Shared footer, used in every child:
 
 **Solution.**
 - Add `GoodnessOfFit` to the comparison: K–S statistic with its naive p-value (labelled), the AD statistic from the PIT, and an optional `n_bootstrap` parametric bootstrap that refits with the library estimator. Each bootstrap sample is drawn from the fitted mixed distribution, including p0.
-- Add a rejection-share summary and opt-in BH adjustment through `scipy.stats.false_discovery_control`.
-- Record the seed.
+- Add the rejection-share summary (`rejection_share`, at `alpha`) and opt-in BH adjustment (`bh_adjust=True`, through `scipy.stats.false_discovery_control`, giving `ks_p_value_bh` and `ad_p_value_bh`).
+- Take `seed: int | None`. When it is None a seed is drawn from `numpy.random.SeedSequence().entropy`, and the seed actually used is recorded in `climate_indices_rng_seed`. A caller-supplied `Generator` is not accepted: it does not expose its original seed, so the stream could not be reproduced.
 
 **Scientific core:**
 - **Edge cases:**
