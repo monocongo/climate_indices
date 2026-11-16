@@ -319,6 +319,19 @@ def test_saved_followup_metrics_and_manifest_are_consistent() -> None:
     assert result["baseline_control_b"] == pilot.CONTROL_TOLERANCE
     names = {f"{index}_{scale}" for index in ("spi", "spei", "eddi") for scale in pilot.SCALES}
     assert set(result["reference_b"]) == names, "the saved B record must hold every index and timescale"
+    metric_keys = {
+        "n",
+        "mean_ours",
+        "mean_theirs",
+        "bias",
+        "mae",
+        "rmse",
+        "correlation",
+        "max_abs_difference",
+        "normalized_rmse",
+        "category_agreement",
+        "category_within_one",
+    }
     for ours, original in (
         (result["reference_a"], payload["reference_a"]),
         (result["reference_b"], payload["reference_b"]["metrics"]),
@@ -328,6 +341,8 @@ def test_saved_followup_metrics_and_manifest_are_consistent() -> None:
             assert rows["1981-2024"]["sei"]["n"] == rows["1981-2016"]["sei"]["n"] + rows["2017-2024"]["sei"]["n"]
             assert len(rows["calendar_month_bias"]["tukey"]) == 12
             for period in ("1981-2024", "1981-2016", "2017-2024"):
+                for convention in ("sei", "tukey", "change"):
+                    assert set(rows[period][convention]) == metric_keys
                 for metric, change in rows[period]["change"].items():
                     assert change == pytest.approx(
                         rows[period]["tukey"][metric] - rows[period]["sei"][metric], abs=1e-14
