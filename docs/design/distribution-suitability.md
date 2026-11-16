@@ -111,6 +111,7 @@ def compare_distributions(
     data_start_year=None, calibration_year_initial=None,
     calibration_year_final=None, periodicity=None, criterion: Criterion = "aicc",
     gof: Sequence[Literal["ks", "ad"]] = ("ks", "ad"), n_bootstrap: int = 0,
+    resolution: float | None = None,   # record rounding unit for bootstrap draws; None = continuous
     bh_adjust: bool = False, alpha: float = 0.05,
     seed: int | None = None, spatial_time_major=False,
     time_dim="time",
@@ -407,11 +408,11 @@ Shared footer, used in every child:
 - **Edge cases:**
   - Bootstrap refits that fail are counted and excluded, and their share is reported.
   - The p-value is (1 + #≥)/(B_ok + 1), where B_ok is the number of successful refits, so failed draws leave the denominator as well as the statistics. The p-value is NaN when B_ok = 0, and its floor is 1/(B_ok + 1).
-  - Exact zeros are excluded from the continuous statistics, as `fit_diagnostics` does today (it filters missing values and exact zeros only). Repeated positive observations are retained with their frequency. Bootstrap draws are rounded to the record's resolution so the observed and simulated samples share the same tie structure, and the p-values are calibrated against that tie-aware null.
+  - Exact zeros are excluded from the continuous statistics, as `fit_diagnostics` does today (it filters missing values and exact zeros only). Repeated positive observations are retained with their frequency. When the caller passes `resolution` (a positive, finite rounding unit such as 0.1 or 0.01), bootstrap draws are rounded to it so the observed and simulated samples share the same tie structure, and the p-values are calibrated against that tie-aware null. The resolution is never inferred from the values, because the same observations (such as `[0.1, 0.2]`) can come from records rounded to different units. `resolution=None` (the default) draws continuous samples, which is the right null only for an unrounded record. A non-positive or non-finite `resolution` raises, and the value used is recorded in the provenance metadata.
 - **Determinism:** the same seed gives an identical result.
 
 **Acceptance criteria:**
-- [ ] Size under H0 within a binomial MC interval of α for gamma, Pearson Type III, GLO and GEV, including a rounded (tied) record.
+- [ ] Size under H0 within a binomial MC interval of α for gamma, Pearson Type III, GLO and GEV, including a rounded (tied) record bootstrapped with its `resolution`.
 - [ ] Test showing naive K–S under-rejecting.
 - [ ] Cross-check of AD and bootstrap against `scipy.stats.goodness_of_fit` for gamma (distribution-level agreement only).
 - [ ] Cost benchmark noted in `docs/performance.md`.
