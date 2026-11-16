@@ -46,7 +46,7 @@ All references are to `origin/main`.
 | Accepted sets | `spi`: gamma, pearson. `spei`: gamma, pearson, loglogistic (no gamma fallback). `standardized_index`: gamma, pearson, empirical, beta. `spai`: t_location_scale, pearson, normal. `fit_diagnostics`: gamma, pearson only. | Likelihood-based comparison candidates (the default `candidates=None`) are gamma/pearson for `spi` and `standardized_index`, and gamma/pearson/loglogistic (plus GEV once SUIT-02 lands) for `spei`. Empirical, beta and SPAI-only families are excluded. |
 | Estimators | Gamma: Thom's MLE approximation (`compute.gamma_parameters:1988`; the code comment wrongly says "method of moments"). Pearson III: L-moments (`lmoments.fit`) on the non-zero values, at least 4 non-zero values, falls back to gamma; the 0.0005 trace rule is applied in the transform, not in the fit. Log-logistic: Hosking GLO with ub-pwm L-moments (`lmoments.fit_glo`, ADR-0016); SPEI adds a +1000 offset. Beta: method of moments. | Information criteria are evaluated at these estimates (see OQ-1). |
 | `fit_diagnostics` (`compute.py:4096`, `drought/indices.py:850`, `xarray_adapter.py:3402`) | Frozen `FitDiagnostics`, per step and cell: `distribution`, `parameters`, `prob_zero`, `n_valid`, `ks_statistic`, exact `ks_p_value` (`scipy.stats.kstest`), `fell_back_to_gamma`. The xarray route returns a Dataset built with `apply_ufunc`. No AIC, BIC, log-likelihood or AD. | Its block-packing pattern, calibration slicing and `distribution_used` handling. |
-| `output_scale` (`vocabulary.py:143`) | `"normal"`, `"probability"` (the CDF, i.e. the PIT) or `"bounded"`. Accepted by spi, spei, spai and standardized_index. | Seasonal PIT diagnostics take `"probability"` output from any index. |
+| `output_scale` (`vocabulary.py:143`) | `"normal"`, `"probability"` (the CDF, i.e. the PIT) or `"bounded"`. Accepted by spi, spei, spai and standardized_index. | Seasonal PIT diagnostics take `"probability"` output from the continuous families (not empirical or beta, whose outputs are discrete or carry boundary masses). |
 | Empirical | One fixed plotting position, SEI `(1+k)/(n+2)`, needing at least 10 values. Tukey appears only in EDDI and in the #1576 pilot. | Not a candidate in parametric comparison (see out of scope). |
 | SPAI (`drought/indices.py:1565`, Beta) | Chanda & Maity (2015). Subtracts the per-calendar-step calibration mean, then fits **one** pooled distribution per cell. No per-step variance scaling. | It is the pooled-fit comparator for the seasonality check. |
 | Run theory (`runs.py`) | `identify_runs`, `identify_runs_xarray`, `RunSet`, `summarize_runs`. | Event sets for concordance. |
@@ -132,9 +132,12 @@ def drought_category(index_values) -> np.ndarray | xr.DataArray   # int8: 0 none
 def compare_categories(reference, alternative, *, dims=None) -> CategoryComparison | xr.Dataset
     # confusion (6x6), n_valid, share_changed, share_changed_in_drought
 
-def pit_uniformity(probabilities, *, data_start_year=None, calibration_year_initial=None,
+def pit_uniformity(probabilities, scale, *, prob_zero=None, zero_mask=None,
+                   data_start_year=None, calibration_year_initial=None,
                    calibration_year_final=None, periodicity=None,
                    statistics=("ks", "ad")) -> PitUniformity | xr.Dataset   # per calendar step
+    # probabilities: mixed-CDF output; prob_zero (step, *cell) and zero_mask (bool, like probabilities)
+    # are needed when the fit has a zero mass; scale is the source index's Timescale (dependence warning)
 
 def event_concordance(index_runs: RunSet, reference_runs: RunSet, *, time, valid,
                       cadence) -> EventConcordance   # hits, misses, false_alarms, pod, far, csi
@@ -151,7 +154,9 @@ def category_agreement(index_categories, reference_categories) -> tuple[float, f
 - **Undefined AICc.** Where n ≤ k + 1, AICc is undefined and the result is NaN. The minimum-sample rules already in place (Pearson ≥ 4 non-zero values) still apply. A short-record warning fires when n < 30, the repo's 30-year Calibration Period minimum.
 - **Default criterion is AICc.** AICc = AIC + 2k(k+1)/(n−k−1). The default is AICc because about 30 values per calendar month is the norm.
 - **`best` is recorded with a margin.** The result carries `delta_to_runner_up` and applies no threshold. The guide explains that small deltas do not discriminate.
-- **Dependence at Timescale > 12.** The same calendar month in consecutive years shares months once the Timescale exceeds 12, so GoF p-values and effective n are invalid there. Warn when scale > 12 on monthly data. The equivalent rule applies to daily data.
+- **Dependence at long Timescales.** The threshold is in calendar units.
+  - Monthly data: the same calendar month in consecutive years shares months once the Timescale exceeds 12, so GoF p-values and effective n are invalid there. Warn when Timescale > 12.
+  - Daily data: rolling windows ending on the same calendar day in consecutive years overlap only when the Timescale exceeds one year. Warn when Timescale > 365 days; a Timescale of 13 to 365 days gets no warning.
 - **Multiple testing.**
   - Report the rejection share against nominal α across cells (`GoodnessOfFit.rejection_share`, at `alpha`).
   - Offer BH adjustment through `scipy.stats.false_discovery_control`, opt-in only (`bh_adjust=True`, which needs a cell axis and fills `ks_p_value_bh`/`ad_p_value_bh`).
@@ -356,7 +361,7 @@ Shared footer, used in every child:
   - Pearson fallback is disabled inside the comparison: a failure is recorded, not substituted.
   - n ≤ k + 1, where AICc is NaN.
   - Cells where no candidate is eligible, giving `best = -1`: every fit failed, or every fitted candidate has an undefined criterion (for example gamma-only with n ≤ k + 1).
-  - The `n < 30` warning and the `scale > 12` dependence warning.
+  - The `n < 30` warning and the Timescale dependence warning (monthly > 12, daily > 365).
   - NaN cells.
 - **Precision:** criteria are compared to SciPy at `rtol=1e-10`.
 
@@ -434,16 +439,18 @@ Shared footer, used in every child:
 
 **Problem.** Per-calendar-month fitting and SPAI's pooled fit represent seasonality differently. There is no index-agnostic check of which one is calibrated per month.
 
-**Solution.** `pit_uniformity()` takes any `output_scale="probability"` output (spi, spei, spai, standardized_index) and reports per-calendar-step K–S and AD against U(0, 1) over the Calibration Period, reusing the SUIT-05 AD code.
+**Solution.** `pit_uniformity()` accepts `output_scale="probability"` output of the continuous families (spi, spei, spai, standardized_index with gamma, Pearson Type III, log-logistic, GEV, t location-scale or normal), plus the source index's Timescale (`scale`), `prob_zero` and a zero mask. It converts positive mixed-CDF values to the conditional PIT `(p − p0) / (1 − p0)` and reports per-calendar-step K–S and AD against U(0, 1) over the Calibration Period, reusing the SUIT-05 AD code. Empirical (discrete ranks) and beta (point masses at both boundaries) outputs are out of scope and raise.
 
 **Scientific core:**
 - **Edge cases:**
-  - Point masses at p0 are excluded from the continuous statistics, and their share is reported.
+  - Zero-mass observations are removed with the caller's zero mask, and their share is reported. The mask is an input because non-classic zero modes return p0/2 for the mass, so it cannot be inferred from the probabilities.
   - In-sample PIT is conservative, and the docs say so.
-  - Scale > 12 dependence warning.
+  - Timescale dependence warning (monthly > 12, daily > 365), issued from `scale`.
 
 **Acceptance criteria:**
 - [ ] Uniform synthetic input passes at the nominal rate.
+- [ ] A correctly fitted zero-inflated series (p0 = 0.4) passes at the nominal rate after the conditional transform.
+- [ ] Empirical and beta output raises.
 - [ ] A deliberately misspecified fit, with a seasonal variance cycle given to SPAI, is detected.
 - [ ] NumPy/xarray equality.
 - [ ] Docs.
