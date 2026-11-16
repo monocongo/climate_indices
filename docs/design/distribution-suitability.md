@@ -133,12 +133,15 @@ def drought_category(index_values, *, output_scale: Literal["normal", "probabili
 def compare_categories(reference, alternative, *, dims=None) -> CategoryComparison | xr.Dataset
     # confusion (6x6), n_valid, share_changed, share_changed_in_drought
 
-def pit_uniformity(probabilities, scale, *, prob_zero=None, zero_mask=None,
+def pit_uniformity(probabilities, scale, *, distribution: Distribution,
+                   prob_zero=None, zero_mask=None,
                    data_start_year=None, calibration_year_initial=None,
                    calibration_year_final=None, periodicity=None,
                    statistics=("ks", "ad")) -> PitUniformity | xr.Dataset   # per calendar step
-    # probabilities: mixed-CDF output; prob_zero (step, *cell) and zero_mask (bool, like probabilities)
-    # are needed when the fit has a zero mass; scale is the source index's Timescale (dependence warning)
+    # probabilities: mixed-CDF output; distribution is the family that produced it (required, no default:
+    # "empirical" and "beta" raise, and probability values alone cannot show the family);
+    # prob_zero (step, *cell) and zero_mask (bool, like probabilities) are needed when the fit has a zero mass;
+    # scale is the source index's Timescale (dependence warning)
 
 def event_concordance(index_runs: RunSet, reference_runs: RunSet, *, time, valid,
                       cadence) -> EventConcordance   # hits, misses, false_alarms, pod, far, csi
@@ -441,7 +444,7 @@ Shared footer, used in every child:
 
 **Problem.** Per-calendar-month fitting and SPAI's pooled fit represent seasonality differently. There is no index-agnostic check of which one is calibrated per month.
 
-**Solution.** `pit_uniformity()` accepts `output_scale="probability"` output of the continuous families (spi, spei, spai, standardized_index with gamma, Pearson Type III, log-logistic, GEV, t location-scale or normal), plus the source index's Timescale (`scale`), `prob_zero` and a zero mask. It converts positive mixed-CDF values to the conditional PIT `(p − p0) / (1 − p0)` and reports per-calendar-step K–S and AD against U(0, 1) over the Calibration Period, reusing the SUIT-05 AD code. Empirical (discrete ranks) and beta (point masses at both boundaries) outputs are out of scope and raise.
+**Solution.** `pit_uniformity()` accepts `output_scale="probability"` output of the continuous families (spi, spei, spai, standardized_index with gamma, Pearson Type III, log-logistic, GEV, t location-scale or normal), plus the source index's Timescale (`scale`), the required `distribution` that produced them, `prob_zero` and a zero mask. It converts positive mixed-CDF values to the conditional PIT `(p − p0) / (1 − p0)` and reports per-calendar-step K–S and AD against U(0, 1) over the Calibration Period, reusing the SUIT-05 AD code. Empirical (discrete ranks) and beta (point masses at both boundaries) outputs are out of scope and raise, by the declared `distribution` rather than by inspecting the probability values, which cannot distinguish the families.
 
 **Scientific core:**
 - **Edge cases:**
@@ -452,7 +455,7 @@ Shared footer, used in every child:
 **Acceptance criteria:**
 - [ ] Uniform synthetic input passes at the nominal rate.
 - [ ] A correctly fitted zero-inflated series (p0 = 0.4) passes at the nominal rate after the conditional transform.
-- [ ] Empirical and beta output raises.
+- [ ] `distribution="empirical"` or `distribution="beta"` raises.
 - [ ] A deliberately misspecified fit, with a seasonal variance cycle given to SPAI, is detected.
 - [ ] NumPy/xarray equality.
 - [ ] Docs.
