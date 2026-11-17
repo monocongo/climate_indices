@@ -1,17 +1,19 @@
 # Distribution-suitability assessment tools: design note
 
 Internal planning document (`docs/design/` is excluded from the published docs).
-Status: draft for maintainer review. The ADR-0028 text in section B is a draft;
-SUIT-01 publishes it under `docs/adr/` as `Approved for implementation` once approved.
+Status: ADR-0028 is published by SUIT-01 (#1582) as `docs/adr/0028-distribution-suitability-contracts.md`
+(`Approved for implementation`). The ADR is canonical. The work breakdown, section B draft
+and section C issue drafts below are historical planning text, not current task status.
+Use the ADR's implementation table for tracking; implementation still waits for the maintainer to merge its PR.
 Inventory taken against `origin/main` at `aa076954` (2026-11-15).
 
 ## Where the repo overrides the task brief
 
 1. **ADR status.** `docs/adr/` is published. CONTRIBUTING.md § *Architecture decision records* allows only `Approved for implementation`, `Accepted`, `Amended` and `Superseded`. There is no `Proposed` status.
    - Precedent: CMP-01 (#1365) kept the proposal inside the internal `docs/design/` plan, then published the ADR after approval.
-   - So the ADR is drafted below as **Proposed (draft)** and lives in the design note. SUIT-01 publishes it as `docs/adr/0028-…` with status `Approved for implementation` once the maintainer approves it. 0028 is the next free number: the directory ends at 0027, and no PR or branch touches 0028.
+   - The proposal was drafted below as **Proposed (draft)**, then published by SUIT-01 as `docs/adr/0028-distribution-suitability-contracts.md` with status `Approved for implementation`.
 2. **Plan location.** There is no `docs/plans/`. The repo uses the internal `docs/design/` folder (CONTRIBUTING.md lists it as internal). The note goes to `docs/design/distribution-suitability.md`.
-3. **"Naive K–S is anti-conservative" is backwards.** The SciPy 1.17 `goodness_of_fit` notes say this, citing Lilliefors (1967): a K–S test whose parameters were fitted to the same data is *conservative*. Its p-values are too high, so it under-rejects and has low power. The practical effect matches what the task brief worries about: naive K–S accepts poor fits too easily. The docs will use the correct term.
+3. **Naive fitted-parameter K–S p-values are uncalibrated for parameter estimation.** The classical Lilliefors setting is conservative, but this does not establish the direction of miscalibration for this plan's L-moment estimators. ADR-0028 is canonical; the blanket conservativeness statements in historical sections B and C are retained as historical text.
 4. **#1569 has no hit/miss/false-alarm conventions.** Its metrics are bias, MAE, RMSE, correlation, NRMSE, max-abs, `category_agreement` and `category_within_one`. They live in `scripts/earthengine_climate_engine_pilot.py`, not in the library. Event metrics are therefore new. Category agreement reuses the pilot's two definitions.
 
 ## Paper verification
@@ -175,7 +177,7 @@ def category_agreement(index_categories, reference_categories) -> tuple[float, f
 |---|---|---|
 | GEV | CDF/PPF parity with `scipy.stats.genextreme` on both bounded branches. Hosking's k equals SciPy's c in sign; the test pins this. L-moment recovery against closed-form population L-moments. Optional R `lmom::pelgev/cdfgev` fixture (OQ-8). | "Cross-implementation comparison, same estimator lineage" with the lmom fixture, otherwise "Specification-level" |
 | Log-likelihood and criteria | `sum(logpdf)` checked against SciPy (`gamma`, Pearson Type III through `scipy.stats.pearson3`, `genextreme`; GLO through `fisk` on the k < 0 branch, per ADR-0016) at the same parameters. Round trip: comparison parameters fed as `fitting_params` to `spi`/`spei` give identical output. Synthetic recovery rate reported, not asserted tightly. | Specification-level plus synthetic characterization |
-| Bootstrap GoF | Size under H0 within a binomial MC interval of α for every candidate that supports the bootstrap (gamma, Pearson Type III, GLO, GEV), on continuous and rounded samples. Naive K–S shown to under-reject. | Synthetic characterization |
+| Bootstrap GoF | Size under H0 within a binomial MC interval of α for every candidate that supports the bootstrap (gamma, Pearson Type III, GLO, GEV), on continuous and rounded samples. | Synthetic characterization |
 | Categories | Edges match the USDM table ("-0.5 to -0.79" … "-2.0 or less"), including exact boundary values. | Specification-level |
 | Concordance | Hand-built `RunSet` fixtures. | Specification-level |
 | Reproduction | nClimGrid workflow. | "Workflow reproduction; not reference reproduction" |
@@ -190,16 +192,16 @@ def category_agreement(index_categories, reference_categories) -> tuple[float, f
 
 ### Open questions
 
-- **OQ-1.** Evaluate log-likelihood at the library's own estimates (Thom, L-moments) or refit by MLE for the criteria? *Recommend the library estimates*, because those are the parameters the index actually uses. Record `log_likelihood_at = "fitted_estimates"` and each fitting method, and state in the docs and docstrings that the ranking mixes distribution fit with estimator efficiency. The criteria keep the `aic`/`aicc`/`bic` names; the caveat travels with them. An MLE option can come later.
-- **OQ-2.** GEV for `standardized_index`/`spi`? They carry a physical zero mass, and GEV with ξ > 0 has support below 0. *Recommend SPEI only*, following the ADR-0016 precedent.
-- **OQ-3.** Common zero definition for gamma against Pearson (exact zeros vs below 0.0005)? *Recommend retaining exact zeros as the shared mixture definition*, because Pearson's trace rule is a transform convention; if traces are reclassified, document that the fitted samples and scores change.
-- **OQ-4.** Concordance counting with many-to-many overlaps? *Recommend reference-centric counting*: hit = a reference event overlapped by at least one index event; miss = one overlapped by none; false alarm = an index event overlapping no reference event. Index events overlapping at least one reference event are counted once, as matched index events, for FAR's denominator. Expose a minimum-overlap setting later only if needed.
+- **OQ-1. Resolved (ADR-0028).** Evaluate log-likelihood at the library's own estimates (Thom, L-moments) or refit by MLE for the criteria? *Recommend the library estimates*, because those are the parameters the index actually uses. Record `log_likelihood_at = "fitted_estimates"` and each fitting method, and state in the docs and docstrings that the ranking mixes distribution fit with estimator efficiency. The criteria keep the `aic`/`aicc`/`bic` names; the caveat travels with them. An MLE option can come later.
+- **OQ-2. Resolved (ADR-0028).** GEV for `standardized_index`/`spi`? They carry a physical zero mass, and GEV with ξ > 0 has support below 0. *Recommend SPEI only*, following the ADR-0016 precedent.
+- **OQ-3. Resolved (ADR-0028).** Common zero definition for gamma against Pearson (exact zeros vs below 0.0005)? *Recommend retaining exact zeros as the shared mixture definition*, because Pearson's trace rule is a transform convention; if traces are reclassified, document that the fitted samples and scores change.
+- **OQ-4. Resolved (ADR-0028).** Concordance counting with many-to-many overlaps? *Recommend reference-centric counting*: hit = a reference event overlapped by at least one index event; miss = one overlapped by none; false alarm = an index event overlapping no reference event. Index events overlapping at least one reference event are counted once, as matched index events, for FAR's denominator. Expose a minimum-overlap setting later only if needed.
 - **OQ-5.** Which independent reference does the reproduction use (USDM maps, a satellite index, soil-moisture percentiles), and on what licence? Until it is resolved, the notebook shows concordance on a labelled demonstration pairing.
 - **OQ-6.** Is a pooled (all-months) parametric SPI/SPEI fit needed beyond SPAI? *Recommend no*: SPAI is the pooled comparator.
-- **OQ-7.** Explicit `suitability` module import during Beta rather than root re-export? *Recommend explicit import*, as compound does.
+- **OQ-7. Resolved (ADR-0028).** Explicit `suitability` module import during Beta rather than root re-export? *Recommend explicit import*, as compound does.
 - **OQ-8.** Add an R `lmom` GEV fixture (an offline generator, as in #1195)?
 - **OQ-9.** Unverified details from the task brief, pending the paper: the candidate set, the K–S level and its per-zone use, AIC per grid point, the 83%/72% (Pearson III at 3/6 months) and 50%/59% (GEV at 12/24 months) figures, the role of SPAI, and the satellite index and its concordance method. Supply a PDF to verify them.
-- **OQ-10.** The `drought_category` wet side: USDM defines only None and D0–D4, while the pilot uses 11 symmetric bins. *Recommend the 6 USDM classes*. A wet classification can be added later.
+- **OQ-10. Resolved (ADR-0028).** The `drought_category` wet side: USDM defines only None and D0–D4, while the pilot uses 11 symmetric bins. *Recommend the 6 USDM classes*. A wet classification can be added later.
 
 ### Work breakdown (dependency order)
 
@@ -214,7 +216,7 @@ Follow-on, not part of this epic: a Rust GEV kernel and comparison-loop accelera
 
 ---
 
-## Section B. ADR-0028 draft (draft; published by SUIT-01 as `Approved for implementation`)
+## Section B. ADR-0028 draft (superseded by `docs/adr/0028-distribution-suitability-contracts.md`)
 
 **Title:** Distribution-suitability assessment contracts.
 
@@ -251,7 +253,7 @@ Follow-on, not part of this epic: a Rust GEV kernel and comparison-loop accelera
      - `scale`
      - the clamped `calibration_year_initial`/`calibration_year_final`
      - `climate_indices_gof_bootstrap_samples`
-     - `climate_indices_rng_seed`
+     - `climate_indices_rng_seed` (decimal string, so seeds above 64 bits round-trip through NetCDF)
      - `climate_indices_version`
 7. **Surface.**
    - New root module `climate_indices.suitability`, Beta (`BetaFeatureWarning`), with no root re-export.
@@ -266,11 +268,11 @@ Follow-on, not part of this epic: a Rust GEV kernel and comparison-loop accelera
 
 ---
 
-## Section C. Issue drafts
+## Section C. Issue drafts (historical)
 
 The prefix `SUIT-` matches the `CMP-` precedent. The bodies use the Feature_request headings plus a **Scientific core** section, which the `drive-issue-to-pr` triage step consumes.
 
-Shared footer, used in every child:
+Historical shared footer used to draft the children; the ADR is now canonical:
 
 > The canonical plan is `docs/design/distribution-suitability.md`. The accepted record will be `docs/adr/0028-distribution-suitability-contracts.md` after SUIT-01 merges. Do not start until SUIT-01 has merged and the listed blockers are closed. Add no dependency.
 
@@ -402,7 +404,7 @@ Shared footer, used in every child:
 **Solution.**
 - Add `GoodnessOfFit` to the comparison: K–S statistic with its naive p-value (labelled), the AD statistic from the PIT, and an optional `n_bootstrap` parametric bootstrap that refits with the library estimator. Each bootstrap sample is drawn from the fitted mixed distribution, including p0.
 - Add the rejection-share summary (`rejection_share`, at `alpha`) and opt-in BH adjustment (`bh_adjust=True`, through `scipy.stats.false_discovery_control`, giving `ks_p_value_bh`, and `ad_p_value_bh` when `n_bootstrap > 0`).
-- Take `seed: int | None`. When it is None a seed is drawn from `numpy.random.SeedSequence().entropy`, and the seed actually used is recorded in `climate_indices_rng_seed`. A caller-supplied `Generator` is not accepted: it does not expose its original seed, so the stream could not be reproduced.
+- Take `seed: int | None`. When it is None a seed is drawn from `numpy.random.SeedSequence().entropy`, and the seed actually used is recorded as a decimal string in `climate_indices_rng_seed`, so seeds above 64 bits round-trip through NetCDF. A caller-supplied `Generator` is not accepted: it does not expose its original seed, so the stream could not be reproduced.
 
 **Scientific core:**
 - **Edge cases:**
