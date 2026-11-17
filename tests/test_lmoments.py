@@ -31,6 +31,25 @@ def test_scalar_fit_minimum_excludes_masked_observations(
         fitter(sample)
 
 
+@pytest.mark.parametrize("fitter", [lmoments.fit, lmoments.fit_glo, lmoments.fit_gev])
+@pytest.mark.parametrize("constant", [990.1, -3.3])
+def test_constant_sample_is_invalid(fitter: Callable[[np.ndarray], dict[str, float]], constant: float) -> None:
+    """A constant sample has a zero L-scale; the float residue of a non-integer value is not spread."""
+    np.testing.assert_array_equal(lmoments._estimate_lmoments(np.full(30, constant)), np.zeros(3))
+    with pytest.raises(ValueError, match="invalid L-moments"):
+        fitter(np.full(30, constant))
+
+
+def test_constant_cells_are_invalid_spatially() -> None:
+    """A constant cell is marked invalid, and its varying neighbors are still fitted."""
+    values = np.full((30, 3), 990.1)
+    values[:, 1] = np.arange(30.0)
+    moments, valid = lmoments._estimate_lmoments_spatial(values)
+    np.testing.assert_array_equal(valid, [False, True, False])
+    np.testing.assert_array_equal(moments[:, 0], np.zeros(3))
+    assert moments[1, 1] > 0.0
+
+
 def _gamma_ratio(alpha: float) -> float:
     """gamma(alpha) / gamma(alpha + 0.5) from its asymptotic series (DLMF 5.11.13).
 

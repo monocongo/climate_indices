@@ -204,6 +204,13 @@ def _estimate_lmoments_spatial(values: np.ndarray) -> tuple[np.ndarray, np.ndarr
     sorted_values = np.sort(values, axis=0)
 
     sample_count, *cell_shape = values.shape
+    # a constant cell has no spread: the sums below can carry a floating-point residue
+    # for a constant that is not exactly representable, and reading it as an L-scale
+    # would fit a degenerate distribution (#1583)
+    constant = np.zeros(cell_shape, dtype=bool)
+    if sample_count:
+        highest = np.take_along_axis(sorted_values, np.maximum(number_of_values - 1, 0)[np.newaxis], axis=0)[0]
+        constant = sorted_values[0] == highest  # NOSONAR (S1244) exact equality defines "constant"
     sums = np.zeros((3, *cell_shape))
     ranks = np.arange(sample_count)
     in_sample = ranks.reshape((sample_count,) + (1,) * len(cell_shape)) < number_of_values
@@ -240,7 +247,7 @@ def _estimate_lmoments_spatial(values: np.ndarray) -> tuple[np.ndarray, np.ndarr
 
     lmoments = np.zeros((3, *cell_shape))
     valid = number_of_values >= MIN_VALUES_FOR_LMOMENTS
-    valid = valid & (sums[1] != 0)
+    valid = valid & (sums[1] != 0) & ~constant
     lmoments[0] = np.where(valid, sums[0], 0.0)
     lmoments[1] = np.where(valid, sums[1], 0.0)
     with np.errstate(divide="ignore", invalid="ignore"):
@@ -299,6 +306,12 @@ def _estimate_lmoments(
 
     # sort the values into ascending order
     values = np.sort(values)
+
+    # a constant sample has no spread: the sums below can carry a floating-point
+    # residue for a constant that is not exactly representable, and reading it as an
+    # L-scale would fit a degenerate distribution (#1583)
+    if values[0] == values[number_of_values - 1]:  # NOSONAR (S1244) exact equality defines "constant"
+        return np.zeros((3,))
 
     sums = np.zeros((3,))
 
