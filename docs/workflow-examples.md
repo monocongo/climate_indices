@@ -40,6 +40,8 @@ Upon completion the individual NetCDF files will contain variables for all compu
 `/data/nclimdiv_spi_pearson_03.nc`, `/data/nclimdiv_spi_pearson_06.nc`,
 `/data/nclimdiv_spei_gamma_03.nc`, `/data/nclimdiv_spei_gamma_06.nc`,
 `/data/nclimdiv_spei_pearson_03.nc`, `/data/nclimdiv_spei_pearson_06.nc`,
+`/data/nclimdiv_spei_loglogistic_03.nc`, `/data/nclimdiv_spei_loglogistic_06.nc`,
+`/data/nclimdiv_spei_gev_03.nc`, `/data/nclimdiv_spei_gev_06.nc`,
 `/data/nclimdiv_pdsi.nc`, `/data/nclimdiv_phdi.nc`, `/data/nclimdiv_pmdi.nc`,
 `/data/nclimdiv_zindex.nc`, and `/data/nclimdiv_scpdsi.nc`.
 Parallelization will occur utilizing all but one of the available CPUs
@@ -236,12 +238,14 @@ process_climate_indices --index spei --periodicity monthly --netcdf_precip \
 ```
 
 The above command will compute SPEI (standardized precipitation evapotranspiration index,
-both gamma and Pearson Type III distributions) from input precipitation and potential evapotranspiration datasets
+with the gamma, Pearson Type III, log-logistic and gev distributions) from input precipitation and potential evapotranspiration datasets
 (in this case, the reduced resolution nClimGrid precipitation and PET datasets provided in the example inputs directory).
 The input datasets are monthly data and the calibration period used will be Jan. 1951 through Dec. 2010. The index
 datasets will be computed at 9-month and 18-month timescales. The output files will be
 `<out_dir>/nclimgrid_lowres_spei_gamma_09.nc`, `<out_dir>/nclimgrid_lowres_spei_gamma_18.nc`,
-`<out_dir>/nclimgrid_lowres_spei_pearson_09.nc`, and `<out_dir>/nclimgrid_lowres_spei_pearson_18.nc`.
+`<out_dir>/nclimgrid_lowres_spei_pearson_09.nc`, `<out_dir>/nclimgrid_lowres_spei_pearson_18.nc`,
+`<out_dir>/nclimgrid_lowres_spei_loglogistic_09.nc`, `<out_dir>/nclimgrid_lowres_spei_loglogistic_18.nc`,
+`<out_dir>/nclimgrid_lowres_spei_gev_09.nc`, and `<out_dir>/nclimgrid_lowres_spei_gev_18.nc`.
 Parallelization will occur utilizing all CPUs.
 
 ### Palmers monthly

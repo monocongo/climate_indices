@@ -22,7 +22,9 @@ the value contract is in {doc}`data_requirements`.
 ## Choose the distribution
 
 SPI and SPEI take a `distribution` argument. The command line has no distribution
-option and writes both for every requested scale.
+option: for every requested scale it writes one SPI result per distribution `spi()`
+accepts (gamma and Pearson Type III) and one SPEI result per distribution `spei()`
+accepts (gamma, Pearson Type III, log-logistic and gev), so a SPEI run costs four fits.
 
 - Use `indices.Distribution.gamma` as the starting point: it is the choice
   recommended by McKee et al. (1993), estimates few parameters, and is the right

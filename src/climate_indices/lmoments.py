@@ -248,8 +248,16 @@ def _estimate_lmoments_spatial(values: np.ndarray) -> tuple[np.ndarray, np.ndarr
     return lmoments, valid
 
 
+_SHORT_SAMPLE_HINT = (
+    "This commonly occurs in dry regions with extensive zero precipitation. "
+    "Consider using Gamma distribution instead of Pearson Type III for such areas."
+)
+
+
 def _estimate_lmoments(
     values: np.ndarray,
+    *,
+    hint: str = _SHORT_SAMPLE_HINT,
 ) -> np.ndarray:
     """
     Estimate sample L-moments, based on Fortran code written for inclusion
@@ -265,6 +273,9 @@ def _estimate_lmoments(
     and which has been optimized for calculating only the first three L-moments.
 
     :param values: 1-D (flattened) array of float values
+    :param hint: sentence appended to the error for a sample that is too short; the
+        default suggests the gamma fallback, which a caller with no such fallback
+        (the GEV fit) replaces
     :return: an estimate of the first three sample L-moments
     :rtype: 1-D numpy array of floats (the first three sample L-moments
         corresponding to the input values)
@@ -276,10 +287,10 @@ def _estimate_lmoments(
     if number_of_values < MIN_VALUES_FOR_LMOMENTS:
         message = (
             "Insufficient number of values to perform sample L-moments estimation: "
-            f"{number_of_values} non-NaN values found (minimum {MIN_VALUES_FOR_LMOMENTS} required). "
-            "This commonly occurs in dry regions with extensive zero precipitation. "
-            "Consider using Gamma distribution instead of Pearson Type III for such areas."
+            f"{number_of_values} non-NaN values found (minimum {MIN_VALUES_FOR_LMOMENTS} required)."
         )
+        if hint:
+            message += f" {hint}"
         _logger.warning(message)
         raise ValueError(message)
 
@@ -431,8 +442,8 @@ def _estimate_glo_parameters_spatial(
 _LN2 = float(np.log(2.0))
 _LN3 = float(np.log(3.0))
 
-# the GEV shape k solving tau3(k) = tau3 lies in (-1, inf) for |tau3| < 1; no sample
-# L-skewness above -1 + 1e-16 maps to a k near this bound, so it never clips a real fit
+# the GEV shape k solving tau3(k) = tau3 lies in (-1, inf) for |tau3| < 1. A double
+# tau3 is at most 1.1e-16 above -1, which maps to k = 54, so this bound is never reached
 _GEV_SHAPE_UPPER_BOUND = 200.0
 
 # Newton's step ends when the shape moves by less than this, relative to max(1, |k|)
@@ -443,8 +454,8 @@ _GEV_SHAPE_MAX_ITERATIONS = 60
 # from ln Gamma(1 + k) = -gamma_E k + sum_{n>=2} zeta(n) (-k)^n / n (tests re-derive
 # them). They give (1 - Gamma(1 + k)) / k below _GEV_GAMMA_SERIES_LIMIT, where
 # evaluating Gamma(1 + k) - 1 directly loses its digits to the rounding of 1 + k.
-# The truncation error there is below 1e-15, and the direct form is accurate to about
-# 1e-13 above it.
+# The truncation error there is below 1e-15 (rounding brings the series to about
+# 1.2e-15), and the direct form is accurate to a few 1e-13 above it.
 _GAMMA_TAYLOR = (-0.5772156649015329, 0.9890559953279725, -0.9074790760808862, 0.9817280868344002, -0.9819950689031453)
 _GEV_GAMMA_SERIES_LIMIT = 1e-3
 
@@ -466,21 +477,25 @@ def _gev_shape(tau3: np.ndarray) -> np.ndarray:
 
     The start is Hosking, Wallis and Wood's (1985) approximation
     ``k = 7.8590 c + 2.9554 c**2`` with ``c = 2 / (3 + tau3) - ln 2 / ln 3``. Newton's
-    method then refines it inside a bracket that every step narrows, because the
-    approximation is poor for strongly negative ``tau3`` (large ``k``) and the
-    L-skewness flattens there; a step that leaves the bracket is replaced by its
-    midpoint. ``tau3`` must satisfy ``|tau3| < 1``.
+    method then refines it, with the sign of each residual keeping a bracket around
+    the root, because the approximation is poor for strongly negative ``tau3`` (large
+    ``k``) and the L-skewness flattens there; a step that leaves the bracket is
+    replaced by its midpoint. ``tau3`` must satisfy ``|tau3| < 1``.
 
-    PELGEV in Hosking's RC20525 stops at ``1e-6`` and snaps ``|k| < 1e-5`` to the
-    Gumbel limit; this solve runs to machine precision and needs no snap, because
-    :func:`_gev_tau3` and the parameter formulas below are stable near ``k = 0``.
+    The solve stops when the shape moves by under ``1e-14`` relative to
+    ``max(1, |k|)``, which gives a round-trip shape error of about ``1e-14`` for
+    ``|k|`` up to 5 and a larger one beyond, where ``tau3`` is within ``1e-9`` of -1
+    and the float resolution of ``tau3`` limits it. PELGEV in Hosking's RC20525
+    stops at ``1e-6`` and snaps ``|k| < 1e-5`` to the Gumbel limit; this solve needs
+    no snap, because :func:`_gev_tau3` and the parameter formulas below are stable
+    near ``k = 0``.
 
     :param tau3: sample L-skewness, an array with ``|tau3| < 1`` where it is used
     :return: the shape, an array like ``tau3``
     """
-    # ponytail: every iteration evaluates all elements until the slowest converges,
-    # so a spatial block with one hard cell pays for it everywhere; subset the
-    # unconverged cells if that shows up in a profile
+    # ponytail: every iteration evaluates all elements until the slowest converges, so
+    # a converged cell keeps iterating and its last digits (about 1e-16 in k) can differ
+    # from fitting it alone; subset the unconverged cells if that shows up in a profile
     tau3 = np.asarray(tau3, dtype=float)
     c = 2.0 / (3.0 + tau3) - _LN2 / _LN3
     shape = 7.8590 * c + 2.9554 * c * c
@@ -495,7 +510,10 @@ def _gev_shape(tau3: np.ndarray) -> np.ndarray:
         slope = (_gev_tau3(shape + step) - _gev_tau3(shape - step)) / (2.0 * step)
         with np.errstate(divide="ignore", invalid="ignore"):
             candidate = shape - residual / slope
-        inside = np.isfinite(candidate) & (candidate > lower) & (candidate < upper)
+        # inclusive: Newton converges from one side, so on reaching the root the
+        # bracket end equals the iterate, and a strict test would reject the converged
+        # step and bisect away from it
+        inside = np.isfinite(candidate) & (candidate >= lower) & (candidate <= upper)
         updated = np.where(inside, candidate, 0.5 * (lower + upper))
         converged = np.abs(updated - shape) <= _GEV_SHAPE_TOLERANCE * np.maximum(1.0, np.abs(shape))
         shape = updated
@@ -524,7 +542,7 @@ def _gev_parameters(
     valid = np.isfinite(first_lmoment) & np.isfinite(second_lmoment) & (second_lmoment > 0.0) & (np.abs(tau3) < 1.0)
 
     shape = _gev_shape(np.where(valid, tau3, 0.0))
-    with np.errstate(divide="ignore", invalid="ignore", over="ignore"):
+    with np.errstate(divide="ignore", invalid="ignore", over="ignore", under="ignore"):
         log_gamma = special.gammaln(1.0 + shape)
         gamma_term = np.exp(log_gamma)
         zero = shape == 0.0
@@ -563,7 +581,8 @@ def fit_gev(timeseries: np.ndarray) -> dict[str, float]:
     :raises ValueError: if the sample is too short or its L-moments are invalid
         for a GEV fit
     """
-    lmoments = _estimate_lmoments(timeseries)
+    # no gamma remedy in the error: SPEI has no gamma fallback for a GEV fit
+    lmoments = _estimate_lmoments(timeseries, hint="")
     locs, scales, shapes, valid = _gev_parameters(lmoments[0], lmoments[1], lmoments[2])
     if not bool(valid):
         message = "Unable to calculate GEV parameters due to invalid L-moments"

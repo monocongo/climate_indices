@@ -3032,7 +3032,8 @@ def gev_parameters(
         total_fitting_count = time_steps_per_year
 
     if _default_fallback_strategy.should_warn_high_failure_rate(failed_fitting_count, total_fitting_count):
-        # not log_high_failure_rate: its text names Pearson Type III and a Gamma remedy
+        # not log_high_failure_rate: its text names Pearson Type III and a Gamma remedy,
+        # and a GEV fit has no gamma fallback
         log.warning(
             "high_fitting_failure_rate",
             failure_count=failed_fitting_count,
@@ -3083,7 +3084,7 @@ def _gev_fit(
         return values
 
     valid = np.isfinite(locs) & np.isfinite(scales) & np.isfinite(shapes) & (scales > 0.0)
-    with np.errstate(divide="ignore", invalid="ignore", over="ignore"):
+    with np.errstate(divide="ignore", invalid="ignore", over="ignore", under="ignore"):
         z = (values - locs) / scales
         shape_z = shapes * z
         y = np.where(shapes == 0.0, z, -np.log1p(-shape_z) / shapes)
@@ -4045,7 +4046,8 @@ def fit_and_standardize(
             months, or 366 days per column as if all years were leap years; a
             time-major spatial block with more than two dimensions is also accepted.
         distribution: The distribution to fit the values to: gamma, beta, Pearson Type III,
-            the generalized logistic ("loglogistic") that SPEI standardizes with, or
+            the generalized logistic ("loglogistic") that SPEI standardizes with, the
+            generalized extreme value ("gev"), or
             the empirical (rank-based) distribution, which fits nothing; see
             :func:`transform_fitted_empirical`. Beta is the bounded [0, 1] family,
             fitted over the interior values with a point mass at each boundary.
@@ -4058,8 +4060,9 @@ def fit_and_standardize(
         fitting_params: Optional dictionary of pre-computed distribution fitting
             parameters, with the keys "alpha" and "beta" (and optionally
             "prob_zero") when fitting to gamma or beta, "prob_one" as well when
-            fitting to beta, and "prob_zero", "loc", "scale", and
-            "skew" when fitting to Pearson Type III. Deprecated aliases such as
+            fitting to beta, "prob_zero", "loc", "scale", and
+            "skew" when fitting to Pearson Type III, and "loc", "scale", and "shape"
+            when fitting to log-logistic or gev. Deprecated aliases such as
             "alphas" and "probabilities_of_zero" are accepted, and an explicit None
             means "fit this parameter from the data". A gamma fit without
             "prob_zero" computes it over the calibration period.
@@ -4074,7 +4077,7 @@ def fit_and_standardize(
             cumulative probability in [0, 1], and "bounded" ``2p - 1`` in [-1, 1].
         zero_handling: Where a zero accumulation is placed within the zero mass,
             one of "classic" (the default), "center_of_mass", or "mean_zero"; see
-            ADR-0015. A gamma fall back applies the same mode. The log-logistic and
+            ADR-0015. A gamma fall back applies the same mode. The log-logistic, gev and
             empirical distributions have no zero mass, so the mode does not apply to
             them, and beta applies the mode to both of its boundary masses,
             mirroring the mass at 1 about 1/2.
@@ -4100,7 +4103,7 @@ def fit_and_standardize(
             fit is given a value outside [0, 1] beyond the rounding tolerance of a
             windowed mean.
         ValueError: If the distribution is none of gamma, beta, Pearson Type III,
-            log-logistic, or empirical, ``zero_handling`` is not one of the three modes, a beta
+            log-logistic, gev, or empirical, ``zero_handling`` is not one of the three modes, a beta
             mass pair sums above 1, or a Pearson
             ``fitting_params`` set is partial or does not carry the period (and cell) axes.
     """
@@ -4163,9 +4166,10 @@ def fit_and_standardize(
         return values
 
     if distribution.value in ("gamma", "loglogistic", "gev", "beta"):
-        # the GLO is the SPEI reference distribution: P−PET is offset and has no
-        # physical zero mass, so it has no zero-placement mode and zero_handling is
-        # not applied on that branch (the transform ignores it). Gamma and beta each
+        # the GLO is the SPEI reference distribution, and the GEV a candidate for it: P−PET
+        # is offset and has no physical zero mass, so neither has a zero-placement mode
+        # and zero_handling is not applied on that branch (the transform ignores it).
+        # Gamma and beta each
         # place their own boundary mass; beta's second mass at 1 mirrors the one at 0.
         fitted = FittedDistribution.resolve(
             values,
