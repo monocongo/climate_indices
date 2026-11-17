@@ -4,6 +4,7 @@
 
 Amended: the NumPy comparison core is implemented in
 [SUIT-03 (#1584)](https://github.com/monocongo/climate_indices/issues/1584).
+GEV for SPEI is implemented in [SUIT-02 (#1583)](https://github.com/monocongo/climate_indices/issues/1583).
 The maintainer approved these contracts.
 [SUIT-01 (#1582)](https://github.com/monocongo/climate_indices/issues/1582) records this decision under
 [epic #1581](https://github.com/monocongo/climate_indices/issues/1581).
@@ -27,8 +28,8 @@ Amend this status and implementation table as those issues land.
 ## Context
 
 Users must choose a distribution per index, region, season and Timescale.
-The library reports a K–S statistic and exact p-value per fit (`fit_diagnostics`), has no GEV,
-and has no relative-fit, decision-impact or concordance tools.
+The library reports a K–S statistic and exact p-value per fit (`fit_diagnostics`).
+It supports GEV for SPEI and NumPy relative-fit comparisons, but decision-impact and concordance tools remain unimplemented.
 The existing p-value is naive: it does not account for estimating parameters from the tested sample.
 In the classical Lilliefors setting, naive fitted-parameter K–S p-values are conservative
 (as discussed in the SciPy `goodness_of_fit` documentation). This does not establish
