@@ -1749,6 +1749,7 @@ def test_v310_stable_dataarray_api_surface_is_pinned() -> None:
             assert callable(getattr(module, name)), f"{module_name}.{name}"
 
     assert "compound" not in climate_indices.__all__, "compound stays an explicit import (ADR-0022)"
+    assert "suitability" not in climate_indices.__all__, "suitability stays an explicit import (ADR-0028)"
     matrix = (ROOT / "docs" / "xarray_compatibility.md").read_text(encoding="utf-8")
     # (Supported, Coverage) per feature row; only the Coverage cell may contain a pipe
     rows = [line.split("|", 3)[2:] for line in matrix.splitlines() if line.startswith("| `DataArray` inputs for ")]
