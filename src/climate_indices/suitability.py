@@ -394,7 +394,9 @@ def compare_distributions(
     per calendar step discriminate weakly, so treat ``best`` as evidence, not as "correct".
     A sample value outside a candidate's fitted support gives zero likelihood, so that candidate
     is reported in ``fit_failed`` and does not rank; ``best`` can then have only one eligible
-    candidate, and ``delta_to_runner_up`` is NaN.
+    candidate, and ``delta_to_runner_up`` is NaN. A GEV with shape above 1 has a density that is
+    unbounded at the finite end of its support, where likelihood methods are not regular, so
+    treat its criteria with caution there.
 
     Args:
         values: Precipitation, or the series ``standardized_index`` would standardize: 1-D, 2-D

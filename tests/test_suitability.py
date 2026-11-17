@@ -863,7 +863,13 @@ class TestGevCandidate:
             "shape": np.array([1.5, 0.1, np.nan, 0.1]),
         }
         # a shape of 1.5 is usable (unlike the log-logistic); a zero scale marks an unfitted step
-        np.testing.assert_array_equal(suitability._usable(Distribution.gev, params), [True, False, False, False])
+        usable = suitability._usable(Distribution.gev, params)
+        np.testing.assert_array_equal(usable, [True, False, False, False])
+        # and it is the predicate the transform applies: a position it cannot transform is NaN
+        transformed = compute._gev_fit(
+            np.ones(4), params["loc"], params["scale"], params["shape"], output_scale="probability"
+        )
+        np.testing.assert_array_equal(np.isfinite(transformed), usable)
 
     def test_a_family_without_a_likelihood_raises_rather_than_scoring_as_log_logistic(self):
         params = {"loc": np.zeros(1), "scale": np.ones(1), "shape": np.zeros(1)}
@@ -893,3 +899,68 @@ class TestGevCandidate:
         assert json.loads(result.metadata["climate_indices_candidates"]) == ["pearson", "gamma", "loglogistic", "gev"]
         assert result.log_likelihood.shape[0] == 4
         assert set(np.unique(result.best)) <= set(range(4))
+
+    def test_exact_zero_balance_is_scored_as_a_continuous_value(self):
+        """GEV has no zero mass: a balance of exactly 0 is an ordinary observation inside its support."""
+        pet = np.repeat(np.linspace(980.0, 1020.0, 41), 12)
+        result = _compare(
+            np.zeros_like(pet),
+            index="spei",
+            pet_mm=pet,
+            candidates=(Distribution.gev,),
+            calibration_year_initial=START,
+            calibration_year_final=START + 40,
+        )
+        params = result.parameters[Distribution.gev]
+        sample = (1000.0 - pet).reshape(41, 12)
+        for step in range(12):
+            expected = _gev_log_density(
+                sample[:, step], params["loc"][step], params["scale"][step], params["shape"][step]
+            )
+            assert result.log_likelihood[0, step] == pytest.approx(expected.sum(), rel=1e-10)
+        assert not result.fit_failed.any()
+        np.testing.assert_array_equal(result.n_parameters[0], np.full(12, 3))
+        np.testing.assert_array_equal(result.best, np.zeros(12, dtype=int))
+
+    def test_a_constant_calendar_step_has_no_gev_fit(self):
+        """A zero L-scale cannot be fitted: that step is failed and NaN, with no replacement, and others score."""
+        precip = _precip(3).copy()
+        precip[2::12] = 50.0  # the water balance is constant at calendar step 2
+        result = _compare(precip, index="spei", pet_mm=np.full_like(precip, 30.0))
+        position = result.candidates.index(Distribution.gev)
+        params = result.parameters[Distribution.gev]
+        assert result.fit_failed[position, 2]
+        assert np.isnan(result.log_likelihood[position, 2])
+        # the gamma estimator still returns a (degenerate) fit for a constant sample, so it may take `best`
+        assert result.best[2] != position
+        assert all(params[key][2] == 0.0 for key in ("loc", "scale", "shape"))
+        assert (~result.fit_failed[position]).any()
+
+    def test_a_sample_outside_the_fitted_support_does_not_rank(self):
+        """Zero likelihood is a failed candidate: -inf log-likelihood, NaN criteria, and never `best`."""
+        pet = np.random.default_rng(0).gamma(0.5, 30.0, 12 * 12)  # a short skewed record: GEV shape above 1
+        result = _compare(
+            np.zeros_like(pet),
+            index="spei",
+            pet_mm=pet,
+            calibration_year_initial=START,
+            calibration_year_final=START + 11,
+        )
+        position = result.candidates.index(Distribution.gev)
+        outside = np.where(np.isneginf(result.log_likelihood[position]))[0]
+        assert outside.size, "the seeded record should leave a value outside the fitted GEV support"
+        assert result.fit_failed[position, outside].all()
+        assert np.isnan(result.aicc[position, outside]).all()
+        assert (result.best[outside] != position).all()
+        assert not result.fit_failed[result.best[outside], outside].any()
+
+    def test_a_spatial_block_scores_each_cell_and_fails_only_the_constant_one(self):
+        precip = _precip(7, shape=(2, 2)).copy()  # (time, 2, 2): three dimensions make it a spatial block
+        precip[2::12, 0, 0] = 50.0  # cell (0, 0) has a constant balance at calendar step 2
+        result = _compare(precip, index="spei", pet_mm=np.full_like(precip, 30.0), spatial_time_major=True)
+        position = result.candidates.index(Distribution.gev)
+        assert result.log_likelihood.shape == (4, 12, 2, 2)
+        assert result.fit_failed[position, 2, 0, 0]
+        assert result.best[2, 0, 0] != position
+        # a neighbouring cell is still scored
+        assert (~result.fit_failed[position, :, 1, 1]).any()
