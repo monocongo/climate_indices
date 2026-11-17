@@ -46,10 +46,14 @@ import os
 import shutil
 import sys
 import tempfile
+import time
 import urllib.error
 import urllib.request
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from email.message import Message
+from email.utils import parsedate_to_datetime
+from http import HTTPStatus
 from pathlib import Path
 from typing import Any
 
@@ -105,6 +109,11 @@ DEGREE_GRID_LIMIT = 1.0
 # Both references are read over one connection budget; the timeout is recorded with
 # a pending result so a failed read is reproducible from the metrics.
 HTTP_TIMEOUT_SECONDS = 180
+# One read of a four-decade daily series takes 80-110 seconds, and the first paired
+# attempt lost the whole reference B block to a single 180-second read timeout (#1571).
+# A transient stall is retried with a growing wait before it is reported.
+CE_ATTEMPTS = 3
+CE_RETRY_DELAY_SECONDS = 15
 
 SYSTEM_INDEX = "system:index"
 SYSTEM_VERSION = "system:version"
@@ -587,8 +596,35 @@ def compare(
     return metrics, fields
 
 
+def _retryable(status: int) -> bool:
+    """A timeout, throttling, or upstream failure may recover."""
+    return (
+        status in (HTTPStatus.REQUEST_TIMEOUT, HTTPStatus.TOO_MANY_REQUESTS)
+        or status >= HTTPStatus.INTERNAL_SERVER_ERROR
+    )
+
+
+def _retry_after_seconds(value: str) -> float:
+    """Read a Retry-After delay or HTTP date; ignore invalid or expired values."""
+    try:
+        try:
+            delay = float(int(value))
+        except ValueError:
+            delay = parsedate_to_datetime(value).timestamp() - time.time()
+    except (TypeError, ValueError, OverflowError):
+        return 0.0
+    # ``time.sleep`` converts seconds to a 64-bit nanosecond count, so an
+    # oversized delay raises OverflowError outside the request's handlers.
+    if not math.isfinite(delay) or delay * 1_000_000_000 >= 2**63:
+        return 0.0
+    return max(0.0, delay)
+
+
 def climate_engine_request(endpoint: str, body: dict[str, Any], key: str) -> dict[str, Any]:
     """POST one request to the Climate Engine API and return the decoded JSON.
+
+    The request uses at most :data:`CE_ATTEMPTS` attempts in total after transport
+    failures. Retry waits grow and honor a longer valid ``Retry-After`` delay.
 
     The key travels in the ``Authorization`` header and is never written to any
     output, logged, or embedded in an error message.
@@ -599,17 +635,33 @@ def climate_engine_request(endpoint: str, body: dict[str, Any], key: str) -> dic
         headers={"Authorization": key, "Content-Type": "application/json"},
         method="POST",
     )
-    try:
-        with _open_request(request, HTTP_TIMEOUT_SECONDS) as response:
-            decoded = json.loads(response.read().decode("utf-8"))
-    except urllib.error.HTTPError as error:
-        # A remote error body can echo request headers, including the key.
-        raise ClimateEngineTransportError(f"Climate Engine API returned HTTP {error.code}") from None
-    except (http.client.HTTPException, OSError, UnicodeDecodeError, json.JSONDecodeError) as error:
-        # A dropped connection, a TLS failure or a truncated body is a provider failure.
-        # OSError covers resets, TLS, and read timeouts; the follow-up keeps the
-        # completed reference A when this error reaches it.
-        raise ClimateEngineTransportError(f"Climate Engine response unreadable: {type(error).__name__}") from None
+    decoded: Any = None
+    for attempt in range(1, CE_ATTEMPTS + 1):
+        wait = CE_RETRY_DELAY_SECONDS * 2 ** (attempt - 1)
+        try:
+            with _open_request(request, HTTP_TIMEOUT_SECONDS) as response:
+                decoded = json.loads(response.read().decode("utf-8"))
+        except urllib.error.HTTPError as error:
+            # A remote error body can echo request headers, including the key.
+            message = f"Climate Engine API returned HTTP {error.code}"
+            if not _retryable(error.code) or attempt == CE_ATTEMPTS:
+                raise ClimateEngineTransportError(message) from None
+            headers: Message | dict[str, str] = error.headers or {}
+            wait = max(wait, _retry_after_seconds(headers.get("Retry-After", "")))
+        except (http.client.HTTPException, OSError, UnicodeDecodeError, json.JSONDecodeError) as error:
+            # A dropped connection, a TLS failure or a truncated body is a provider failure.
+            # OSError covers resets, TLS, and read timeouts; the follow-up keeps the
+            # completed reference A when this error reaches it.
+            message = f"Climate Engine response unreadable: {type(error).__name__}"
+            if attempt == CE_ATTEMPTS:
+                raise ClimateEngineTransportError(message) from None
+        else:
+            break
+        print(
+            f"{message}; retrying in {wait} seconds (attempt {attempt + 1} of {CE_ATTEMPTS})",
+            file=sys.stderr,
+        )
+        time.sleep(wait)
     if not isinstance(decoded, dict):
         raise RuntimeError(f"Climate Engine API returned a {type(decoded).__name__}, not a JSON object")
     return decoded

@@ -322,6 +322,7 @@ def test_climate_engine_request_keeps_the_key_out_of_the_body(monkeypatch: pytes
     result = pilot.climate_engine_series(secret, 3, "spi")
 
     assert captured["url"] == pilot.CE_ENDPOINT
+    assert captured["timeout"] == pilot.HTTP_TIMEOUT_SECONDS, "every attempt uses the recorded timeout"
     assert captured["headers"]["Authorization"] == secret
     assert secret not in json.dumps(captured["body"])
     assert secret not in json.dumps(result)
@@ -430,15 +431,98 @@ def test_parse_climate_engine_points_rejects_empty_records() -> None:
 
 def test_climate_engine_http_error_does_not_echo_a_key(monkeypatch: pytest.MonkeyPatch) -> None:
     secret = "not-a-real-key"
+    calls: list[int] = []
 
     def fail(request: Any, timeout: int) -> None:
+        calls.append(1)
         raise urllib.error.HTTPError(request.full_url, 403, "Forbidden", Message(), io.BytesIO(secret.encode()))
 
     monkeypatch.setattr(pilot, "_open_request", fail)
+    monkeypatch.setattr(pilot, "CE_RETRY_DELAY_SECONDS", 0)
     with pytest.raises(RuntimeError, match="HTTP 403") as error:
         pilot.climate_engine_series(secret, 1, "spi")
     assert secret not in str(error.value)
     assert error.value.__suppress_context__
+    assert len(calls) == 1, "a refused request must not be retried"
+
+
+def test_climate_engine_request_retries_a_stalled_read(monkeypatch: pytest.MonkeyPatch) -> None:
+    """One 180-second read timeout discarded a whole reference B block in #1571."""
+    calls: list[int] = []
+
+    def flaky(request: Any, timeout: int) -> _FakeResponse:
+        assert timeout == pilot.HTTP_TIMEOUT_SECONDS
+        calls.append(1)
+        if len(calls) == 1:
+            raise TimeoutError("read timed out")
+        return _FakeResponse({"Data": []})
+
+    monkeypatch.setattr(pilot, "_open_request", flaky)
+    monkeypatch.setattr(pilot, "CE_RETRY_DELAY_SECONDS", 0)
+    assert pilot.climate_engine_request(pilot.CE_ENDPOINT, {}, "not-a-real-key") == {"Data": []}
+    assert len(calls) == 2
+
+
+@pytest.mark.parametrize("status", [408, 429, 500, 503])
+@pytest.mark.parametrize("headers", [None, Message()])
+def test_climate_engine_request_stops_after_the_configured_attempts(
+    monkeypatch: pytest.MonkeyPatch, status: int, headers: Message | None
+) -> None:
+    calls: list[int] = []
+    waits: list[float] = []
+
+    def refused(request: Any, timeout: int) -> None:
+        assert timeout == pilot.HTTP_TIMEOUT_SECONDS
+        calls.append(1)
+        error = urllib.error.HTTPError(request.full_url, status, "Unavailable", Message(), io.BytesIO(b""))
+        monkeypatch.setattr(error, "headers", headers)
+        raise error
+
+    monkeypatch.setattr(pilot, "_open_request", refused)
+    monkeypatch.setattr("time.sleep", waits.append)
+    with pytest.raises(pilot.ClimateEngineTransportError, match=f"HTTP {status}"):
+        pilot.climate_engine_request(pilot.CE_ENDPOINT, {}, "not-a-real-key")
+    assert len(calls) == pilot.CE_ATTEMPTS
+    assert waits == [pilot.CE_RETRY_DELAY_SECONDS * 2**index for index in range(pilot.CE_ATTEMPTS - 1)]
+
+
+@pytest.mark.parametrize(
+    ("retry_after", "expected_wait"),
+    [
+        ("60", 60),
+        ("1", 15),
+        ("Wed, 01 Jan 2025 00:01:30 GMT", 90),
+        ("Tue, 31 Dec 2024 23:59:00 GMT", 15),
+        ("invalid", 15),
+        ("-1", 15),
+        ("inf", 15),
+        ("NaN", 15),
+        ("9" * 400, 15),
+        ("9999999999", 15),
+    ],
+)
+def test_climate_engine_request_honors_retry_after(
+    monkeypatch: pytest.MonkeyPatch, retry_after: str, expected_wait: float
+) -> None:
+    calls: list[int] = []
+    waits: list[float] = []
+    headers = Message()
+    headers["Retry-After"] = retry_after
+
+    def flaky(request: Any, timeout: int) -> _FakeResponse:
+        calls.append(1)
+        if len(calls) == 1:
+            raise urllib.error.HTTPError(request.full_url, 429, "Throttled", headers, io.BytesIO(b""))
+        if len(calls) == 2:
+            raise TimeoutError("read timed out")
+        return _FakeResponse({"Data": []})
+
+    monkeypatch.setattr(pilot, "_open_request", flaky)
+    monkeypatch.setattr("time.time", lambda: 1735689600.0)  # 2025-01-01 00:00:00 UTC
+    monkeypatch.setattr("time.sleep", waits.append)
+    assert pilot.climate_engine_request(pilot.CE_ENDPOINT, {}, "not-a-real-key") == {"Data": []}
+    assert len(calls) == 3
+    assert waits == [expected_wait, 30], "a later failure must not reuse the previous response's delay"
 
 
 @pytest.mark.parametrize(
@@ -456,15 +540,20 @@ def test_climate_engine_mid_read_failure_becomes_a_transport_error(
 ) -> None:
     """A dropped connection or a bad body must reach the follow-up as a provider failure."""
 
+    calls: list[int] = []
+
     class _BrokenResponse(_FakeResponse):
         def read(self) -> bytes:
+            calls.append(1)
             raise failure
 
     monkeypatch.setattr(pilot, "_open_request", lambda request, timeout: _BrokenResponse({}))
+    monkeypatch.setattr(pilot, "CE_RETRY_DELAY_SECONDS", 0)
     with pytest.raises(pilot.ClimateEngineTransportError, match="unreadable") as error:
         pilot.climate_engine_series("not-a-real-key", 1, "spi")
     assert "not-a-real-key" not in str(error.value)
     assert error.value.__suppress_context__
+    assert len(calls) == pilot.CE_ATTEMPTS, "a stalled read must stop at the configured bound"
 
 
 def test_plot_differences_survives_an_all_missing_field(tmp_path: Path) -> None:
