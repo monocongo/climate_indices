@@ -485,10 +485,9 @@ def _gev_shape(tau3: np.ndarray) -> np.ndarray:
     The solve stops when the shape moves by under ``1e-14`` relative to
     ``max(1, |k|)``, which gives a round-trip shape error of about ``1e-14`` for
     ``|k|`` up to 5 and a larger one beyond, where ``tau3`` is within ``1e-9`` of -1
-    and the float resolution of ``tau3`` limits it. PELGEV in Hosking's RC20525
-    stops at ``1e-6`` and snaps ``|k| < 1e-5`` to the Gumbel limit; this solve needs
-    no snap, because :func:`_gev_tau3` and the parameter formulas below are stable
-    near ``k = 0``.
+    and the float resolution of ``tau3`` limits it. No small ``|k|`` is snapped to the
+    Gumbel limit, because :func:`_gev_tau3` and the parameter formulas below are
+    stable near ``k = 0``; only ``k = 0`` exactly takes the limit branch.
 
     :param tau3: sample L-skewness, an array with ``|tau3| < 1`` where it is used
     :return: the shape, an array like ``tau3``
