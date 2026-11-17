@@ -2,18 +2,19 @@
 
 ## Status
 
-Approved for implementation. The maintainer approved these contracts.
+Amended: the NumPy comparison core is implemented in
+[SUIT-03 (#1584)](https://github.com/monocongo/climate_indices/issues/1584).
+The maintainer approved these contracts.
 [SUIT-01 (#1582)](https://github.com/monocongo/climate_indices/issues/1582) records this decision under
 [epic #1581](https://github.com/monocongo/climate_indices/issues/1581).
 
-**No suitability API is implemented yet.** This record approves contracts, not completed code or scientific validation.
-Do not start implementation until the maintainer merges the PR containing this record.
-The implementation responsibilities are explicit:
+**The suitability API is being implemented issue by issue.** This record approves contracts, not scientific validation.
+The implementation responsibilities and their current state are explicit:
 
 | Proposed API | Tracking issue | Current state |
 | --- | --- | --- |
 | `Distribution.gev` for `spei` (Hosking, L-moments) | [#1583](https://github.com/monocongo/climate_indices/issues/1583) | Implemented, with SciPy CDF parity and synthetic-recovery tests; no external fixture ([VALIDATION.md](https://github.com/monocongo/climate_indices/blob/main/VALIDATION.md)). |
-| `suitability.compare_distributions()` and `DistributionComparison`, NumPy core | [#1584](https://github.com/monocongo/climate_indices/issues/1584) | Not implemented. |
+| `suitability.compare_distributions()` and `DistributionComparison`, NumPy core | [#1584](https://github.com/monocongo/climate_indices/issues/1584) | Implemented for the gamma, Pearson Type III and log-logistic candidates; the goodness-of-fit field and the GoF and seed provenance attributes arrive with [#1586](https://github.com/monocongo/climate_indices/issues/1586), and GEV joins with [#1583](https://github.com/monocongo/climate_indices/issues/1583). |
 | `suitability.compare_distributions()`, xarray/Dask route | [#1585](https://github.com/monocongo/climate_indices/issues/1585) | Not implemented. |
 | `GoodnessOfFit`: Anderson–Darling and parametric bootstrap, optional BH adjustment | [#1586](https://github.com/monocongo/climate_indices/issues/1586) | Not implemented. |
 | `suitability.drought_category()` and `suitability.compare_categories()` | [#1587](https://github.com/monocongo/climate_indices/issues/1587) | Not implemented. |
