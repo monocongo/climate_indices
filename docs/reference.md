@@ -854,6 +854,26 @@ keeps the public-study frequency reproduction separate from event matching and i
    :imported-members:
 ```
 
+### climate_indices.suitability
+
+**Beta.** Distribution-suitability assessment ({doc}`adr/0028-distribution-suitability-contracts`).
+Import it explicitly: `import climate_indices.suitability as suitability`. It has no root
+re-export, and `compare_distributions` emits `BetaFeatureWarning`.
+
+`compare_distributions` scores gamma, Pearson Type III and (for SPEI) log-logistic on one
+shared calibration sample and reports log-likelihood, AIC, AICc, BIC and the best candidate per
+calendar step and cell. The criteria are penalized likelihoods **at the library's own estimates**
+(gamma by Thom's approximation, the others by L-moments), not at maximum-likelihood estimates, so a
+ranking mixes distribution fit with estimator efficiency and is not textbook AIC. About 30 values
+per calendar step discriminate weakly, so `delta_to_runner_up` is returned and no threshold is
+applied. The NumPy route is available now; the xarray route, goodness of fit and the other
+suitability tools are tracked in ADR-0028.
+
+```{eval-rst}
+.. automodule:: climate_indices.suitability
+   :members:
+```
+
 ## xarray Integration
 
 :::{note} The DataArray index APIs and public adapter interface are **Stable from 3.1.0**. Compound Dataset routes and eager event catalogs remain **Beta**. See {doc}`xarray_migration` for stability guarantees.
