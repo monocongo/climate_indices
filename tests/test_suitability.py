@@ -5,6 +5,7 @@ from __future__ import annotations
 import dataclasses
 import json
 import warnings
+from typing import Any
 
 import numpy as np
 import pytest
@@ -38,7 +39,7 @@ def _precip(seed: int = 0, years: int = YEARS, shape: tuple[int, ...] = ()) -> n
     return rng.gamma(shape=2.0, scale=base / 2.0, size=(years * 12, *shape))
 
 
-def _compare(values, scale=1, *, index="spi", **kwargs):
+def _compare(values, scale=1, *, index: Any = "spi", **kwargs):
     kwargs.setdefault("data_start_year", START)
     kwargs.setdefault("calibration_year_initial", CAL_START)
     kwargs.setdefault("calibration_year_final", CAL_END)
@@ -52,13 +53,13 @@ def _calibration_sample(values: np.ndarray, scale=1):
     return scaled[CAL_START - START : CAL_END - START + 1]
 
 
-def _spei_inputs(*, k: float, seed: int = 1, years: int = 150):
+def _spei_inputs(*, k: float, seed: int = 1, years: int = 150) -> tuple[np.ndarray, np.ndarray]:
     """Precipitation and PET whose SPEI water balance is generalized-logistic with Hosking shape ``k``.
 
     k < 0: precipitation is a ``fisk`` draw and PET is zero. k > 0: precipitation is zero and
     PET is a ``fisk`` draw, so the balance ``1000 - PET`` is the reflected distribution.
     """
-    draw = scipy.stats.fisk.rvs(c=1 / 0.3, scale=60.0, size=years * 12, random_state=seed)
+    draw = np.asarray(scipy.stats.fisk.rvs(c=1 / 0.3, scale=60.0, size=years * 12, random_state=seed), dtype=float)
     zeros = np.zeros(years * 12)
     return (draw, zeros) if k < 0 else (zeros, draw)
 
@@ -87,7 +88,8 @@ class TestSurface:
 
     def test_results_do_not_compare_by_value(self):
         # the provenance record carries a creation timestamp, so value equality is not defined
-        assert _compare(_precip()) != _compare(_precip())
+        first, second = _compare(_precip()), _compare(_precip())
+        assert first != second
 
 
 class TestCandidates:
@@ -394,8 +396,9 @@ class TestRoundTrip:
     def test_standardized_index(self, distribution):
         values = _precip(10)
         result = _compare(values, 2, index="standardized_index", aggregation="mean")
-        kwargs = {"aggregation": "mean"}
-        direct = indices.standardized_index(values, 2, distribution, START, CAL_START, CAL_END, MONTHLY, **kwargs)
+        direct = indices.standardized_index(
+            values, 2, distribution, START, CAL_START, CAL_END, MONTHLY, aggregation="mean"
+        )
         reused = indices.standardized_index(
             values,
             2,
@@ -404,8 +407,8 @@ class TestRoundTrip:
             CAL_START,
             CAL_END,
             MONTHLY,
+            aggregation="mean",
             fitting_params=result.parameters[distribution],
-            **kwargs,
         )
         np.testing.assert_array_equal(reused, direct)
 
