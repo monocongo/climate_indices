@@ -3087,7 +3087,8 @@ def _gev_fit(
     with np.errstate(divide="ignore", invalid="ignore", over="ignore", under="ignore"):
         z = (values - locs) / scales
         shape_z = shapes * z
-        y = np.where(shapes == 0.0, z, -np.log1p(-shape_z) / shapes)
+        gumbel = shapes == 0.0  # NOSONAR (S1244) exact zero is the Gumbel limit, not a tolerance
+        y = np.where(gumbel, z, -np.log1p(-shape_z) / shapes)
         probabilities = np.exp(-np.exp(-y))
     beyond_finite_end = shape_z >= 1.0
     probabilities = np.where(beyond_finite_end, np.where(shapes > 0.0, 1.0, 0.0), probabilities)

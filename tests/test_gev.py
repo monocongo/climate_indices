@@ -336,8 +336,10 @@ def test_spei_gev_fitting_params_round_trip() -> None:
 
 def test_a_partial_fitting_params_set_raises() -> None:
     precip, pet = _synthetic_series()
+    kwargs = _spei_kwargs()
+    partial = {"loc": np.zeros(12)}
     with pytest.raises(ValueError, match="gev fitting parameters"):
-        indices.spei(precip, pet, fitting_params={"loc": np.zeros(12)}, **_spei_kwargs())
+        indices.spei(precip, pet, fitting_params=partial, **kwargs)
 
 
 def test_spei_gev_block_matches_per_cell() -> None:
@@ -380,9 +382,10 @@ def test_other_surfaces_reject_gev(sample_monthly_precip_da: xr.DataArray) -> No
         climate_indices.spi(precip, 3, indices.Distribution.gev)
     with pytest.raises(InvalidArgumentError, match="Unsupported distribution"):
         climate_indices.standardized_index(precip, 3, indices.Distribution.gev)
+    sample = np.random.default_rng(0).gamma(2.0, 10.0, (40, 12))
     with pytest.raises(ValueError, match="Unsupported distribution"):
         compute.fit_diagnostics(
-            np.random.default_rng(0).gamma(2.0, 10.0, (40, 12)),
+            sample,
             indices.Distribution.gev,
             _DATA_START_YEAR,
             _CALIBRATION_START_YEAR,

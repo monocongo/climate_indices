@@ -468,7 +468,8 @@ def _gev_tau3(shape: np.ndarray) -> np.ndarray:
     """
     with np.errstate(divide="ignore", invalid="ignore"):
         ratio = np.expm1(-shape * _LN3) / np.expm1(-shape * _LN2)
-    result: np.ndarray = 2.0 * np.where(shape == 0.0, _LN3 / _LN2, ratio) - 3.0
+    gumbel = shape == 0.0  # NOSONAR (S1244) exact zero is the Gumbel limit, not a tolerance
+    result: np.ndarray = 2.0 * np.where(gumbel, _LN3 / _LN2, ratio) - 3.0
     return result
 
 
@@ -544,7 +545,7 @@ def _gev_parameters(
     with np.errstate(divide="ignore", invalid="ignore", over="ignore", under="ignore"):
         log_gamma = special.gammaln(1.0 + shape)
         gamma_term = np.exp(log_gamma)
-        zero = shape == 0.0
+        zero = shape == 0.0  # NOSONAR (S1244) exact zero is the Gumbel limit, not a tolerance
         scale = np.where(
             zero,
             second_lmoment / _LN2,

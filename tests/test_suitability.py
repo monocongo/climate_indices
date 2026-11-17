@@ -853,8 +853,10 @@ class TestGevCandidate:
         below = suitability._log_density(
             Distribution.gev, np.array([-4.0, -3.0]), {"loc": 0.5 * two, "scale": 2.0 * two, "shape": -0.5 * two}
         )
-        assert np.isfinite(above[0]) and np.isneginf(above[1])
-        assert np.isneginf(below[0]) and np.isfinite(below[1])
+        assert np.isfinite(above[0])
+        assert np.isneginf(above[1])
+        assert np.isneginf(below[0])
+        assert np.isfinite(below[1])
 
     def test_usable_follows_the_transform_predicate(self):
         params = {
