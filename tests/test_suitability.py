@@ -46,7 +46,7 @@ def _compare(values, scale=1, *, index="spi", **kwargs):
     return suitability.compare_distributions(values, scale, index=index, **kwargs)
 
 
-def _calibration_sample(values, scale=1):
+def _calibration_sample(values: np.ndarray, scale=1):
     """The scaled calibration sample, (years, 12), recomputed independently of the module."""
     scaled = compute.prepare_scaled(values, scale, MONTHLY)
     return scaled[CAL_START - START : CAL_END - START + 1]
@@ -85,11 +85,9 @@ class TestSurface:
         with pytest.raises(dataclasses.FrozenInstanceError):
             result.best = None  # type: ignore[misc]
 
-    def test_results_compare_by_identity(self):
+    def test_results_do_not_compare_by_value(self):
         # the provenance record carries a creation timestamp, so value equality is not defined
-        result = _compare(_precip())
-        assert result == result
-        assert result != _compare(_precip())
+        assert _compare(_precip()) != _compare(_precip())
 
 
 class TestCandidates:
@@ -148,18 +146,25 @@ class TestArguments:
             _compare(values, criterion="hqic")
 
     def test_criterion_must_be_a_string(self):
+        values, criterion = _precip(), np.array("aicc")
         with pytest.raises(InvalidArgumentError, match="criterion"):
-            _compare(_precip(), criterion=np.array("aicc"))
+            _compare(values, criterion=criterion)
 
     @pytest.mark.parametrize("option", [{"aggregation": ["sum"]}, {"clip_negatives": "false"}])
     def test_options_must_have_their_documented_types(self, option):
+        values = _precip()
         with pytest.raises(InvalidArgumentError):
-            _compare(_precip(), index="standardized_index", **option)
+            _compare(values, index="standardized_index", **option)
 
     def test_pet_shape_must_line_up_with_the_cells(self):
         values, pet = _precip(11).reshape(YEARS, 12), np.zeros((YEARS, 12))
         with pytest.raises(InvalidArgumentError, match="pet_mm"):
             _compare(values, index="spei", pet_mm=pet.T)
+
+    def test_pet_must_keep_the_precipitation_time_length(self):
+        block, pet = _precip(13, shape=(2, 2)), np.full((1, 2, 2), 800.0)
+        with pytest.raises(InvalidArgumentError, match="pet_mm"):
+            _compare(block, index="spei", pet_mm=pet, spatial_time_major=True)
 
     def test_spatial_block_pet_broadcasts_within_the_cells(self):
         block = _precip(12, shape=(2, 2))
@@ -657,6 +662,8 @@ class TestInputs:
             np.full(YEARS * 12, "1.0"),
             np.zeros(YEARS * 12, dtype="datetime64[D]"),
             np.ones(YEARS * 12, dtype=complex),
+            np.ma.masked_array(np.full(YEARS * 12, "1.0")),
+            np.ma.masked_array(np.ones(YEARS * 12, dtype=complex)),
         ],
     )
     def test_non_numeric_input_raises(self, bad):
@@ -664,8 +671,9 @@ class TestInputs:
             _compare(bad)
 
     def test_non_numeric_pet_raises(self):
+        values, pet = _precip(), np.full(YEARS * 12, "1.0")
         with pytest.raises(InvalidArgumentError, match="pet_mm"):
-            _compare(_precip(), index="spei", pet_mm=np.full(YEARS * 12, "1.0"))
+            _compare(values, index="spei", pet_mm=pet)
 
     def test_infinite_input_raises(self):
         values = _precip(37)
@@ -702,7 +710,7 @@ class TestInputs:
     def test_unhashable_index_raises_invalid_argument(self):
         values = _precip()
         with pytest.raises(InvalidArgumentError):
-            _compare(values, index=["spi"])
+            _compare(values, index=["spi"])  # type: ignore[arg-type]  # an unhashable index is the point
 
 
 class TestRoutesAndShapes:

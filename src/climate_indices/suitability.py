@@ -112,7 +112,7 @@ class DistributionComparison:
     fit_failed: np.ndarray
     #: Per candidate, the fitted parameters keyed as ``fitting_params`` accepts them, each
     #: ``(step, *cell)``; passing one to the matching index reproduces the fit exactly.
-    parameters: Mapping[Distribution, Mapping[str, np.ndarray]]
+    parameters: dict[Distribution, dict[str, np.ndarray]]
     #: Provenance strings: the ``climate_indices_*`` attributes of ADR-0028 section 6 that apply
     #: to the NumPy core, plus the provenance record.
     metadata: Mapping[str, str]
@@ -150,15 +150,8 @@ def _resolve_candidates(index: str, candidates: Sequence[Distribution] | None) -
     return tuple(d for d in allowed if d in chosen)
 
 
-def _validate_arguments(
-    index: str,
-    criterion: str,
-    pet_mm: np.ndarray | None,
-    aggregation: Aggregation,
-    clip_negatives: bool,
-) -> None:
-    if not isinstance(index, str) or index not in _ROUTE_CANDIDATES:
-        raise _invalid(f"Unsupported index route: {index!r}.", "index", index, ", ".join(get_args(IndexRoute)))
+def _validate_option_types(criterion: str, aggregation: Aggregation, clip_negatives: bool) -> None:
+    """Reject option values that the route checks below would otherwise compare or trust."""
     if not isinstance(criterion, str) or criterion not in get_args(Criterion):
         raise _invalid(f"Unsupported criterion: {criterion!r}.", "criterion", criterion, ", ".join(get_args(Criterion)))
     if not isinstance(aggregation, str) or aggregation not in get_args(Aggregation):
@@ -172,6 +165,18 @@ def _validate_arguments(
             clip_negatives,
             "True or False",
         )
+
+
+def _validate_arguments(
+    index: str,
+    criterion: str,
+    pet_mm: np.ndarray | None,
+    aggregation: Aggregation,
+    clip_negatives: bool,
+) -> None:
+    if not isinstance(index, str) or index not in _ROUTE_CANDIDATES:
+        raise _invalid(f"Unsupported index route: {index!r}.", "index", index, ", ".join(get_args(IndexRoute)))
+    _validate_option_types(criterion, aggregation, clip_negatives)
     if index == "spei" and pet_mm is None:
         raise _invalid("index='spei' requires pet_mm.", "pet_mm", None, "an array matching the precipitation")
     if index != "spei" and pet_mm is not None:
@@ -185,6 +190,12 @@ def _validate_arguments(
         )
 
 
+def _require_numeric_dtype(dtype: np.dtype[Any], name: str) -> None:
+    """Reject a dtype that the fits cannot accept, before any conversion can hide it."""
+    if dtype.kind not in "fiub":
+        raise _invalid(f"{name} must hold numeric values, got dtype {dtype}.", name, dtype, "a numeric array")
+
+
 def _as_float_array(values: np.ndarray, name: str = "values") -> np.ndarray:
     """A masked array as NaN-filled, an integer or boolean array as float, and reject other dtypes or infinities.
 
@@ -192,17 +203,15 @@ def _as_float_array(values: np.ndarray, name: str = "values") -> np.ndarray:
     """
     try:
         if np.ma.isMaskedArray(values):
+            _require_numeric_dtype(values.dtype, name)
             array = np.asarray(np.ma.filled(values.astype(float), np.nan))
         else:
             array = np.asarray(values)
+            _require_numeric_dtype(array.dtype, name)
             if array.dtype.kind in "iub":
                 array = array.astype(float)
     except (TypeError, ValueError) as error:
         raise _invalid(f"{name} must hold numeric values.", name, type(values).__name__, "a numeric array") from error
-    if array.dtype.kind != "f":
-        raise _invalid(
-            f"{name} must hold numeric values, got dtype {array.dtype}.", name, array.dtype, "a numeric array"
-        )
     if np.isinf(array).any():
         raise _invalid(f"{name} must not hold an infinite value.", name, "inf", "finite values, NaN or a mask")
     return array
@@ -215,8 +224,12 @@ def _validate_pet_shape(values: np.ndarray, pet_mm: np.ndarray) -> None:
     if values.ndim >= 3:
         if pet_mm.ndim == 1 and pet_mm.shape[0] == values.shape[0]:
             return
-        if pet_mm.ndim == values.ndim and all(
-            size in (values_size, 1) for size, values_size in zip(pet_mm.shape, values.shape, strict=True)
+        if (
+            pet_mm.ndim == values.ndim
+            and pet_mm.shape[0] == values.shape[0]
+            and all(
+                size in (values_size, 1) for size, values_size in zip(pet_mm.shape[1:], values.shape[1:], strict=True)
+            )
         ):
             return
     raise _invalid(
