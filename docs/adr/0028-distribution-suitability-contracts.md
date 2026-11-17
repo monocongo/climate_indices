@@ -26,8 +26,9 @@ Amend this status and implementation table as those issues land.
 ## Context
 
 Users must choose a distribution per index, region, season and Timescale.
-The library reports only a K–S statistic per fit (`fit_diagnostics`), has no GEV,
+The library reports a K–S statistic and exact p-value per fit (`fit_diagnostics`), has no GEV,
 and has no relative-fit, decision-impact or concordance tools.
+The existing p-value is naive: it does not account for estimating parameters from the tested sample.
 A K–S test whose parameters were estimated from the same data is conservative
 (Lilliefors 1967, as cited by the SciPy `goodness_of_fit` documentation): its p-values are too high,
 so poor fits are accepted too easily.
@@ -43,8 +44,12 @@ It is closed access and has not been read for this record, so none of its figure
   gamma and Pearson Type III for `spi` and `standardized_index`;
   gamma, Pearson Type III, log-logistic and, once #1583 lands, GEV for `spei`.
   Naming a family outside this set (such as empirical or beta) in `candidates` raises.
+- For `standardized_index`, apply `aggregation` and `clip_negatives` as the public function does.
+  Gamma and Pearson Type III reject negative input when `clip_negatives=False`;
+  signed input requires `clip_negatives=True` to clip it before fitting.
 - SPEI gains `Distribution.gev`: Hosking's GEV fitted by L-moments, with `fitting_params` keys
   `loc`, `scale` and `shape`. The shape is Hosking's k, equal to SciPy's `c`.
+  Add its entry to `_DISTRIBUTION_DISPLAY_NAMES` in `vocabulary.py` so CLI status logging can use `display_name`.
 - GEV is fitted with no zero mass, as for GLO in {doc}`0016-log-logistic-distribution-for-spei`.
 - `spi`, `standardized_index` and `fit_diagnostics` reject GEV, because they carry a physical zero mass
   and GEV with a positive shape has support below zero. This follows the ADR-0016 precedent.
@@ -86,6 +91,10 @@ It is returned whenever it is defined, and no significance threshold is applied.
 - The Anderson–Darling statistic is computed from the probability integral transform.
 - An optional parametric bootstrap, which refits with the library's own estimator, gives p-values for both.
 - Benjamini–Hochberg adjustment is optional and uses SciPy.
+- Warn when Timescale > 12 for monthly data or > 365 days for daily data:
+  overlapping aggregation windows across consecutive years invalidate GoF p-values and effective n.
+- Identify the GoF p-value of a criterion-selected candidate as a post-selection statistic
+  in the result and user-facing documentation; it is not an ordinary confirmatory test.
 
 ### 6. Result types and provenance
 
@@ -100,7 +109,7 @@ It is returned whenever it is defined, and no significance threshold is applied.
   - `scale`
   - the clamped `calibration_year_initial` and `calibration_year_final`
   - `climate_indices_gof_bootstrap_samples`
-  - `climate_indices_rng_seed`
+  - `climate_indices_rng_seed` (decimal string, so seeds above 64 bits round-trip through NetCDF)
   - `climate_indices_version`
 
 ### 7. Surface
@@ -110,9 +119,11 @@ It is returned whenever it is defined, and no significance threshold is applied.
 - xarray/Dask follows {doc}`0001-dual-numpy-xarray-api` and {doc}`0003-dask-time-dimension-single-chunk`:
   time is in a single chunk.
 - `drought_category` follows the USDM SPI/SPEI table with six classes: None and D0 to D4.
-  Edges are half-open at −0.5, −0.8, −1.3, −1.6 and −2.0.
+  Exact edges −0.5, −0.8, −1.3, −1.6 and −2.0 belong to D0, D1, D2, D3 and D4 respectively;
+  each interval includes its upper edge and excludes its lower edge. Values above −0.5 are None.
   There is no wet-side classification in this decision; one can be added later.
-  `output_scale` is a required argument with no default.
+  `output_scale` is a required argument with no default: only `"normal"` classifies;
+  `"probability"` and `"bounded"` raise.
 - Event concordance reuses `compound_events(mode="concurrent")` with reference-centric counting:
   - a hit is a reference event overlapped by at least one index event;
   - a miss is a reference event overlapped by none;

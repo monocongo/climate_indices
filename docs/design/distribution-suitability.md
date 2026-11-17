@@ -2,14 +2,16 @@
 
 Internal planning document (`docs/design/` is excluded from the published docs).
 Status: ADR-0028 is published by SUIT-01 (#1582) as `docs/adr/0028-distribution-suitability-contracts.md`
-(`Approved for implementation`). The ADR is canonical; the section B draft below is kept for history.
+(`Approved for implementation`). The ADR is canonical. The work breakdown, section B draft
+and section C issue drafts below are historical planning text, not current task status.
+Use the ADR's implementation table for tracking; implementation still waits for the maintainer to merge its PR.
 Inventory taken against `origin/main` at `aa076954` (2026-11-15).
 
 ## Where the repo overrides the task brief
 
 1. **ADR status.** `docs/adr/` is published. CONTRIBUTING.md § *Architecture decision records* allows only `Approved for implementation`, `Accepted`, `Amended` and `Superseded`. There is no `Proposed` status.
    - Precedent: CMP-01 (#1365) kept the proposal inside the internal `docs/design/` plan, then published the ADR after approval.
-   - So the ADR is drafted below as **Proposed (draft)** and lives in the design note. SUIT-01 publishes it as `docs/adr/0028-…` with status `Approved for implementation` once the maintainer approves it. 0028 is the next free number: the directory ends at 0027, and no PR or branch touches 0028.
+   - The proposal was drafted below as **Proposed (draft)**, then published by SUIT-01 as `docs/adr/0028-distribution-suitability-contracts.md` with status `Approved for implementation`.
 2. **Plan location.** There is no `docs/plans/`. The repo uses the internal `docs/design/` folder (CONTRIBUTING.md lists it as internal). The note goes to `docs/design/distribution-suitability.md`.
 3. **"Naive K–S is anti-conservative" is backwards.** The SciPy 1.17 `goodness_of_fit` notes say this, citing Lilliefors (1967): a K–S test whose parameters were fitted to the same data is *conservative*. Its p-values are too high, so it under-rejects and has low power. The practical effect matches what the task brief worries about: naive K–S accepts poor fits too easily. The docs will use the correct term.
 4. **#1569 has no hit/miss/false-alarm conventions.** Its metrics are bias, MAE, RMSE, correlation, NRMSE, max-abs, `category_agreement` and `category_within_one`. They live in `scripts/earthengine_climate_engine_pilot.py`, not in the library. Event metrics are therefore new. Category agreement reuses the pilot's two definitions.
@@ -251,7 +253,7 @@ Follow-on, not part of this epic: a Rust GEV kernel and comparison-loop accelera
      - `scale`
      - the clamped `calibration_year_initial`/`calibration_year_final`
      - `climate_indices_gof_bootstrap_samples`
-     - `climate_indices_rng_seed`
+     - `climate_indices_rng_seed` (decimal string, so seeds above 64 bits round-trip through NetCDF)
      - `climate_indices_version`
 7. **Surface.**
    - New root module `climate_indices.suitability`, Beta (`BetaFeatureWarning`), with no root re-export.
@@ -266,11 +268,11 @@ Follow-on, not part of this epic: a Rust GEV kernel and comparison-loop accelera
 
 ---
 
-## Section C. Issue drafts
+## Section C. Issue drafts (historical)
 
 The prefix `SUIT-` matches the `CMP-` precedent. The bodies use the Feature_request headings plus a **Scientific core** section, which the `drive-issue-to-pr` triage step consumes.
 
-Shared footer, used in every child:
+Historical shared footer used to draft the children; the ADR is now canonical:
 
 > The canonical plan is `docs/design/distribution-suitability.md`. The accepted record will be `docs/adr/0028-distribution-suitability-contracts.md` after SUIT-01 merges. Do not start until SUIT-01 has merged and the listed blockers are closed. Add no dependency.
 
@@ -402,7 +404,7 @@ Shared footer, used in every child:
 **Solution.**
 - Add `GoodnessOfFit` to the comparison: K–S statistic with its naive p-value (labelled), the AD statistic from the PIT, and an optional `n_bootstrap` parametric bootstrap that refits with the library estimator. Each bootstrap sample is drawn from the fitted mixed distribution, including p0.
 - Add the rejection-share summary (`rejection_share`, at `alpha`) and opt-in BH adjustment (`bh_adjust=True`, through `scipy.stats.false_discovery_control`, giving `ks_p_value_bh`, and `ad_p_value_bh` when `n_bootstrap > 0`).
-- Take `seed: int | None`. When it is None a seed is drawn from `numpy.random.SeedSequence().entropy`, and the seed actually used is recorded in `climate_indices_rng_seed`. A caller-supplied `Generator` is not accepted: it does not expose its original seed, so the stream could not be reproduced.
+- Take `seed: int | None`. When it is None a seed is drawn from `numpy.random.SeedSequence().entropy`, and the seed actually used is recorded as a decimal string in `climate_indices_rng_seed`, so seeds above 64 bits round-trip through NetCDF. A caller-supplied `Generator` is not accepted: it does not expose its original seed, so the stream could not be reproduced.
 
 **Scientific core:**
 - **Edge cases:**
