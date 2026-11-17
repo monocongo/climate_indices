@@ -281,6 +281,9 @@ def _estimate_lmoments(
         corresponding to the input values)
     """
 
+    if np.ma.isMaskedArray(values):
+        values = np.ma.compressed(values)
+
     # we need to have at least four values in order
     # to make a sample L-moments estimation
     number_of_values = int(np.count_nonzero(~np.isnan(values)))

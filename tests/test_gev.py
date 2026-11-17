@@ -255,6 +255,24 @@ def test_spei_gev_matches_an_independent_scipy_pipeline() -> None:
     np.testing.assert_allclose(result, expected, rtol=0.0, atol=1e-9)
 
 
+def test_gev_parameters_treat_masked_observations_as_missing() -> None:
+    precip, pet = _synthetic_series()
+    balance = ((precip - pet) + 1000.0).reshape(60, 12)
+    balance[11, 1] = np.nan
+    mask = np.zeros_like(balance, dtype=bool)
+    mask[7, 0] = True
+    masked = np.ma.array(balance, mask=mask)
+    args = (_DATA_START_YEAR, _CALIBRATION_START_YEAR, _CALIBRATION_END_YEAR, compute.Periodicity.monthly)
+
+    actual = compute.gev_parameters(masked, *args)
+    expected = compute.gev_parameters(masked.filled(np.nan), *args)
+    spatial = compute.gev_parameters(masked[..., np.newaxis], *args)
+    assert np.all(actual[1] > 0.0)
+    for parameter, nan_parameter, spatial_parameter in zip(actual, expected, spatial, strict=True):
+        np.testing.assert_allclose(parameter, nan_parameter, rtol=0.0, atol=0.0)
+        np.testing.assert_allclose(parameter, spatial_parameter[:, 0], rtol=1e-12, atol=1e-12)
+
+
 def test_gev_parameters_mark_degenerate_steps_invalid() -> None:
     """A constant calibration step cannot be fitted and is marked by a zero scale."""
     locs, scales, shapes = compute.gev_parameters(
