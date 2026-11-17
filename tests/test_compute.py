@@ -1264,7 +1264,12 @@ def test_fit_and_standardize_does_not_fall_back_when_the_input_is_entirely_missi
 
 @pytest.mark.parametrize(
     "distribution",
-    [indices.Distribution.gamma, indices.Distribution.loglogistic, indices.Distribution.pearson],
+    [
+        indices.Distribution.gamma,
+        indices.Distribution.loglogistic,
+        indices.Distribution.gev,
+        indices.Distribution.pearson,
+    ],
 )
 def test_fit_and_standardize_returns_all_missing_without_fitting(distribution):
     """

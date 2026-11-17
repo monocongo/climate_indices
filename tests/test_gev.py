@@ -174,6 +174,34 @@ def test_spei_clips_values_beyond_the_fitted_support(shape: float, loc: float, e
     assert np.all(finite == expected)
 
 
+@pytest.mark.parametrize(("output_scale", "lower", "upper"), [("probability", 0.0, 1.0), ("bounded", -1.0, 1.0)])
+def test_spei_gev_output_scales_are_bounded(output_scale: compute.OutputScale, lower: float, upper: float) -> None:
+    precip, pet = _synthetic_series()
+    kwargs: dict[str, object] = {**_spei_kwargs(scale=6), "output_scale": output_scale}
+    result = indices.spei(precip, pet, **kwargs)
+    finite = result[np.isfinite(result)]
+    assert finite.size
+    assert finite.min() >= lower
+    assert finite.max() <= upper
+
+
+def test_a_value_beyond_the_fitted_end_is_probability_one() -> None:
+    """The probability scale keeps the fitted end value instead of the normal-scale clip."""
+    precip = np.full(60 * 12, 1000.0)
+    pet = np.zeros(60 * 12)
+    params = {"loc": np.zeros(12), "scale": np.ones(12), "shape": np.full(12, 0.5)}
+    # the water balance near 2000 is past the upper end loc + scale / k = 2
+    kwargs: dict[str, object] = {
+        **_spei_kwargs(scale=1),
+        "fitting_params": params,
+        "output_scale": "probability",
+    }
+    result = indices.spei(precip, pet, **kwargs)
+    finite = result[np.isfinite(result)]
+    assert finite.size
+    assert np.all(finite == 1.0)
+
+
 def test_a_position_without_a_valid_fit_is_nan() -> None:
     result = compute._gev_fit(np.array([1.0, 2.0, 3.0]), np.zeros(3), np.array([1.0, 0.0, np.nan]), 0.1)
     assert np.isfinite(result[0])
@@ -185,6 +213,7 @@ def test_a_position_without_a_valid_fit_is_nan() -> None:
     [
         (np.array([1.0, 2.0, 3.0]), "Insufficient number of values"),  # under the L-moment minimum
         (np.full(30, 5.0), "Unable to calculate GEV parameters"),  # constant: a zero L-scale
+        (np.full(30, 990.1), "Unable to calculate GEV parameters"),  # constant: a rounded-zero L-scale
         (np.array([np.nan] * 30), "Insufficient number of values"),
     ],
 )
@@ -287,6 +316,17 @@ def test_gev_parameters_mark_degenerate_steps_invalid() -> None:
     assert np.all(shapes == 0.0)
 
 
+def test_gev_parameters_daily_shapes() -> None:
+    """The daily path fits one parameter per day of the 366-day calendar."""
+    rng = np.random.default_rng(13)
+    series = np.clip(rng.gamma(2.0, 20.0, 366 * 60), 0.0, None)
+    locs, scales, shapes = compute.gev_parameters(
+        series, _DATA_START_YEAR, _CALIBRATION_START_YEAR, _CALIBRATION_END_YEAR, compute.Periodicity.daily
+    )
+    assert locs.shape == scales.shape == shapes.shape == (366,)
+    assert np.isfinite(scales).all()
+
+
 def test_gev_high_failure_rate_warning_names_gev(caplog: pytest.LogCaptureFixture) -> None:
     """The warning must not borrow the Pearson Type III wording or suggest a gamma fallback."""
     with caplog.at_level(logging.WARNING):
@@ -315,6 +355,12 @@ def test_a_failed_step_is_nan_for_that_step_only_with_no_gamma_fallback() -> Non
 
 def test_spei_gev_degenerate_series_is_missing() -> None:
     result = indices.spei(np.full(60 * 12, 100.0), np.full(60 * 12, 90.0), **_spei_kwargs(scale=6))
+    assert np.all(np.isnan(result))
+
+
+def test_spei_gev_non_integer_constant_series_is_missing() -> None:
+    """The float residue of a non-integer constant is not a fit."""
+    result = indices.spei(np.full(60 * 12, 100.1), np.full(60 * 12, 90.0), **_spei_kwargs(scale=6))
     assert np.all(np.isnan(result))
 
 
@@ -401,9 +447,10 @@ def test_other_surfaces_reject_gev(sample_monthly_precip_da: xr.DataArray) -> No
     with pytest.raises(InvalidArgumentError, match="Unsupported distribution"):
         climate_indices.standardized_index(precip, 3, indices.Distribution.gev)
     sample = np.random.default_rng(0).gamma(2.0, 10.0, (40, 12))
-    with pytest.raises(ValueError, match="Unsupported distribution"):
-        compute.fit_diagnostics(
+    with pytest.raises(InvalidArgumentError, match="SPEI is the supported GEV surface"):
+        indices.fit_diagnostics(
             sample,
+            3,
             indices.Distribution.gev,
             _DATA_START_YEAR,
             _CALIBRATION_START_YEAR,
