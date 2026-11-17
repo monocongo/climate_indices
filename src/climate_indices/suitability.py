@@ -15,11 +15,10 @@ The module is Beta and has no root re-export: import it explicitly,
 
 from __future__ import annotations
 
-import contextlib
 import dataclasses
 import json
 import warnings
-from collections.abc import Iterator, Mapping, Sequence
+from collections.abc import Mapping, Sequence
 from typing import Any, Literal, get_args
 
 import numpy as np
@@ -31,11 +30,9 @@ from climate_indices._calibration_period import MIN_CALIBRATION_YEARS, resolve_c
 from climate_indices.drought import indices as _indices
 from climate_indices.exceptions import (
     BetaFeatureWarning,
-    CalibrationPeriodClampedWarning,
     ClimateIndicesWarning,
     DistributionFittingError,
     InvalidArgumentError,
-    MissingDataWarning,
     ShortCalibrationWarning,
 )
 from climate_indices.vocabulary import Aggregation, Distribution
@@ -91,8 +88,9 @@ class DistributionComparison:
     #: Free parameters per candidate, ``(candidate, step, *cell)``. A zero-mass family (gamma,
     #: Pearson Type III) counts one more for p0 where the shared sample holds an exact zero.
     n_parameters: np.ndarray
-    #: Log-likelihood at the library's estimates, ``(candidate, step, *cell)``; NaN where the
-    #: candidate failed.
+    #: Log-likelihood at the library's estimates, ``(candidate, step, *cell)``. NaN where the fit
+    #: has no usable parameters or the sample cannot be scored; ``-inf`` where a sample value lies
+    #: outside the fitted support (``fit_failed`` is True there and the criteria are NaN).
     log_likelihood: np.ndarray
     #: ``2k - 2 * log_likelihood``, same shape.
     aic: np.ndarray
@@ -108,8 +106,9 @@ class DistributionComparison:
     #: Criterion gap between the best and the second-best eligible candidate; NaN with fewer
     #: than two eligible.
     delta_to_runner_up: np.ndarray
-    #: True where a candidate has no usable fit or cannot score the shared sample,
-    #: ``(candidate, step, *cell)``. A failed fit is recorded, never replaced by another.
+    #: True where a candidate has no usable fit or cannot score the shared sample, including a sample
+    #: value outside its fitted support (zero likelihood), ``(candidate, step, *cell)``. A failed fit
+    #: is recorded, never replaced by another.
     fit_failed: np.ndarray
     #: Per candidate, the fitted parameters keyed as ``fitting_params`` accepts them, each
     #: ``(step, *cell)``; passing one to the matching index reproduces the fit exactly.
@@ -128,11 +127,20 @@ def _resolve_candidates(index: str, candidates: Sequence[Distribution] | None) -
     allowed = _ROUTE_CANDIDATES[index]
     if candidates is None:
         return allowed
-    chosen = tuple(candidates)
     names = ", ".join(d.value for d in allowed)
+    if isinstance(candidates, str):  # type: ignore[unreachable]
+        raise _invalid("candidates must be a sequence of Distribution members.", "candidates", candidates, names)
+    chosen = tuple(candidates)
     if not chosen:
         raise _invalid("At least one candidate is required.", "candidates", chosen, names)
     for candidate in chosen:
+        if not isinstance(candidate, Distribution):
+            raise _invalid(
+                f"candidates must be Distribution members, got {type(candidate).__name__} {candidate!r}.",
+                "candidates",
+                candidate,
+                names,
+            )
         if candidate not in allowed:
             raise _invalid(
                 f"{candidate} is not a likelihood-based candidate for index='{index}'.", "candidates", candidate, names
@@ -149,7 +157,7 @@ def _validate_arguments(
     aggregation: Aggregation,
     clip_negatives: bool,
 ) -> None:
-    if index not in _ROUTE_CANDIDATES:
+    if not isinstance(index, str) or index not in _ROUTE_CANDIDATES:
         raise _invalid(f"Unsupported index route: {index!r}.", "index", index, ", ".join(get_args(IndexRoute)))
     if criterion not in get_args(Criterion):
         raise _invalid(f"Unsupported criterion: {criterion!r}.", "criterion", criterion, ", ".join(get_args(Criterion)))
@@ -166,14 +174,12 @@ def _validate_arguments(
         )
 
 
-@contextlib.contextmanager
-def _ignoring(*categories: type[Warning]) -> Iterator[None]:
-    with warnings.catch_warnings():
-        for category in categories:
-            warnings.simplefilter("ignore", category)
-        # an all-missing cell has no sample to average; it is reported through n == 0 and fit_failed
-        warnings.filterwarnings("ignore", message="Mean of empty slice", category=RuntimeWarning)
-        yield
+def _as_float_array(values: np.ndarray) -> np.ndarray:
+    """A masked array as NaN-filled, and an integer or boolean array as float, which the fits require."""
+    if np.ma.isMaskedArray(values):
+        return np.asarray(np.ma.filled(values.astype(float), np.nan))
+    array = np.asarray(values)
+    return array.astype(float) if array.dtype.kind in "iub" else array
 
 
 def _glo_logpdf(x: np.ndarray, loc: np.ndarray, scale: np.ndarray, shape: np.ndarray) -> np.ndarray:
@@ -307,7 +313,11 @@ def compare_distributions(
 
     Warns:
         BetaFeatureWarning: Always; the module is Beta.
-        ShortCalibrationWarning: If a calendar step has fewer than 30 shared values.
+        ShortCalibrationWarning: From the fits when the calibration period is under 30 years, and
+            from this function when a calendar step or cell has fewer than 30 shared values within a
+            period of 30 years or more.
+        Warnings the fits raise (``CalibrationPeriodClampedWarning``, ``MissingDataWarning``, ``GoodnessOfFitWarning``)
+            reach the caller as they do from the index; each candidate's fit can raise them.
         ClimateIndicesWarning: If ``scale`` exceeds 12 (monthly) or 365 (daily) steps, where
             consecutive years share overlapping windows and effective sample sizes shrink.
     """
@@ -317,15 +327,13 @@ def compare_distributions(
     _indices._validate_periodicity(periodicity)
     _indices._validate_scale(scale, periodicity)
 
-    if np.ma.isMaskedArray(values):
-        values = np.ma.filled(values.astype(float), np.nan)
+    values = _as_float_array(values)
     if index == "spei":
         assert pet_mm is not None
-        pet = np.ma.filled(pet_mm.astype(float), np.nan) if np.ma.isMaskedArray(pet_mm) else np.asarray(pet_mm)
-        prepared = _indices._spei_water_balance(np.asarray(values), pet)
+        prepared = _indices._spei_water_balance(values, _as_float_array(pet_mm))
         clip = False
     else:
-        prepared = np.asarray(values)
+        prepared = values
         if index == "standardized_index" and not clip_negatives:
             prepared = _indices._reject_negative_values(prepared, Distribution.gamma)
         clip = True if index == "spi" else clip_negatives
@@ -356,23 +364,19 @@ def compare_distributions(
     parameters: dict[Distribution, dict[str, np.ndarray]] = {}
 
     for position, distribution in enumerate(chosen):
-        # the first fit reports the calibration-quality warnings once; the short-sample warning is ours
-        quiet: tuple[type[Warning], ...] = (ShortCalibrationWarning,)
-        if position:
-            quiet += (CalibrationPeriodClampedWarning, MissingDataWarning)
-        fitted = None
-        with _ignoring(*quiet):
-            try:
-                fitted = compute.FittedDistribution.resolve(
-                    scaled,
-                    distribution,
-                    data_start_year,
-                    calibration_year_initial,
-                    calibration_year_final,
-                    periodicity,
-                )
-            except DistributionFittingError:
-                fitted = None
+        # the fit's own calibration-quality warnings reach the caller as they do from the index; suppressing
+        # duplicates would mean mutating the process-wide warning filters, which is unsafe across threads
+        try:
+            fitted: compute.FittedDistribution | None = compute.FittedDistribution.resolve(
+                scaled,
+                distribution,
+                data_start_year,
+                calibration_year_initial,
+                calibration_year_final,
+                periodicity,
+            )
+        except DistributionFittingError:
+            fitted = None
         zero_mass = distribution in _ZERO_MASS_FAMILIES
         n_parameters[position] = _FAMILY_PARAMETERS[distribution] + ((n0 > 0) if zero_mass else 0)
         keys = compute._PARAMETER_KEYS[distribution.value]
@@ -389,13 +393,13 @@ def compare_distributions(
             p0 = full["prob_zero"]
             with np.errstate(all="ignore"):
                 total = continuous + scipy.special.xlog1py(n - n0, -p0) + scipy.special.xlogy(n0, p0)
-        usable = _usable(distribution, full) & (n > 0)
+        scorable = _usable(distribution, full) & (n > 0) & ~np.isnan(total)
         if not zero_mass:
             # a family with no zero mass cannot score a sample that holds exact zeros
-            usable &= n0 == 0
-        usable &= ~np.isnan(total)
-        fit_failed[position] = ~usable
-        log_likelihood[position] = np.where(usable, total, np.nan)
+            scorable &= n0 == 0
+        # a sample value outside the fitted support gives -inf: it is reported, but the candidate cannot rank
+        fit_failed[position] = ~(scorable & np.isfinite(total))
+        log_likelihood[position] = np.where(scorable, total, np.nan)
 
     k_all = n_parameters.astype(float)
     n_float = np.broadcast_to(n.astype(float), log_likelihood.shape)
@@ -409,8 +413,9 @@ def compare_distributions(
     selected = {"aicc": aicc, "aic": aic, "bic": bic}[criterion]
     best, delta = _select_best(selected, ~fit_failed & ~np.isnan(selected))
 
+    # a calibration period under 30 years already drew the fit's own ShortCalibrationWarning
     short = n[(n > 0) & (n < MIN_CALIBRATION_YEARS)]
-    if short.size:
+    if short.size and period.n_years >= MIN_CALIBRATION_YEARS:
         message = (
             f"{short.size} calendar step(s) or cell(s) have fewer than {MIN_CALIBRATION_YEARS} shared "
             f"calibration values (smallest {int(short.min())}); criteria and `best` are unreliable there."
@@ -441,7 +446,7 @@ def compare_distributions(
             "scale": scale,
             "periodicity": periodicity.name,
             "aggregation": aggregation,
-            "clip_negatives": clip_negatives,
+            "clip_negatives": clip,
             "criterion": criterion,
             "candidates": [d.value for d in chosen],
             "calibration_year_initial": period.start_year,

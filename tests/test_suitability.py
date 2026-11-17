@@ -15,7 +15,9 @@ from climate_indices import compute, suitability
 from climate_indices.drought import indices
 from climate_indices.exceptions import (
     BetaFeatureWarning,
+    CalibrationPeriodClampedWarning,
     ClimateIndicesWarning,
+    DistributionFittingError,
     InvalidArgumentError,
     ShortCalibrationWarning,
 )
@@ -240,9 +242,12 @@ class TestCriteria:
         result = _compare(_precip(6))
         ll, k = result.log_likelihood, result.n_parameters.astype(float)
         n = result.n.astype(float)
-        np.testing.assert_allclose(result.aic, 2 * k - 2 * ll, rtol=1e-12)
-        np.testing.assert_allclose(result.bic, k * np.log(n) - 2 * ll, rtol=1e-12)
-        np.testing.assert_allclose(result.aicc, result.aic + 2 * k * (k + 1) / (n - k - 1), rtol=1e-12)
+        ok = ~result.fit_failed  # a failed candidate has NaN criteria by contract
+        assert ok.any()
+        np.testing.assert_allclose(result.aic[ok], (2 * k - 2 * ll)[ok], rtol=1e-12)
+        np.testing.assert_allclose(result.bic[ok], (k * np.log(n) - 2 * ll)[ok], rtol=1e-12)
+        np.testing.assert_allclose(result.aicc[ok], (result.aic + 2 * k * (k + 1) / (n - k - 1))[ok], rtol=1e-12)
+        assert np.all(np.isnan(result.aic[~ok]))
 
     def test_aicc_nan_when_n_not_above_k_plus_one(self):
         # 3 calibration years: n = 3 <= k + 1 = 3 for gamma without zeros
@@ -262,10 +267,36 @@ class TestCriteria:
     def test_best_is_argmin_of_requested_criterion(self, criterion):
         result = _compare(_precip(8), criterion=criterion)
         crit = getattr(result, criterion)
-        np.testing.assert_array_equal(result.best, np.argmin(crit, axis=0))
+        key = np.where(np.isnan(crit), np.inf, crit)
+        expected = np.where(np.isnan(crit).all(axis=0), -1, np.argmin(key, axis=0))
+        np.testing.assert_array_equal(result.best, expected)
         assert result.criterion == criterion
-        ordered = np.sort(crit, axis=0)
-        np.testing.assert_allclose(result.delta_to_runner_up, ordered[1] - ordered[0], rtol=1e-12)
+        ordered = np.sort(key, axis=0)
+        both = (~np.isnan(crit)).sum(axis=0) == 2
+        assert both.any()
+        np.testing.assert_allclose(result.delta_to_runner_up[both], (ordered[1] - ordered[0])[both], rtol=1e-12)
+        assert np.all(np.isnan(result.delta_to_runner_up[~both]))
+
+
+class TestOutsideSupport:
+    """A sample value outside a fitted support has zero likelihood: failed, never ranked (ADR-0028 section 4)."""
+
+    def test_zero_likelihood_candidate_is_failed_but_visible(self):
+        result = _compare(_precip(0))
+        p = result.candidates.index(Distribution.pearson)
+        cells = np.flatnonzero(np.isneginf(result.log_likelihood[p]))
+        assert cells.size  # Pearson's L-moment lower bound can sit above the sample minimum
+        step = int(cells[0])
+        assert result.fit_failed[p, step]
+        assert np.isnan([result.aic[p, step], result.aicc[p, step], result.bic[p, step]]).all()
+        assert result.best[step] == result.candidates.index(Distribution.gamma)
+        assert np.isnan(result.delta_to_runner_up[step])  # one eligible candidate has no runner-up
+
+    def test_sole_zero_likelihood_candidate_leaves_no_best(self):
+        both = _compare(_precip(0))
+        step = int(np.flatnonzero(np.isneginf(both.log_likelihood[0]))[0])
+        only = _compare(_precip(0), candidates=(Distribution.pearson,))
+        assert only.best[step] == -1
 
 
 class TestSelectBest:
@@ -411,10 +442,30 @@ class TestEdgeCases:
 
 
 class TestWarnings:
-    def test_short_calibration_warns_once(self):
-        with pytest.warns(ShortCalibrationWarning) as caught:
+    def test_short_calibration_period_warns(self):
+        # the fits warn about a calibration period under 30 years, as the indices do
+        with pytest.warns(ShortCalibrationWarning, match="30"):
             _compare(_precip(17), calibration_year_final=CAL_START + 19)
-        assert len([w for w in caught if issubclass(w.category, ShortCalibrationWarning)]) == 1
+
+    def test_short_cell_sample_in_a_long_period_warns_once(self):
+        values = _precip(17)
+        # 12 of 40 calibration years missing in step 5: n = 28 although the period spans 40 years
+        values[(CAL_START - START) * 12 + 5 : (CAL_START - START + 12) * 12 : 12] = np.nan
+        with pytest.warns(ShortCalibrationWarning, match="shared") as caught:
+            _compare(values)
+        assert len([w for w in caught if "shared calibration values" in str(w.message)]) == 1
+
+    def test_clamped_window_is_reported(self):
+        with pytest.warns(CalibrationPeriodClampedWarning):
+            _compare(_precip(22), calibration_year_initial=1900, calibration_year_final=2100)
+
+    def test_warning_filters_are_untouched(self):
+        # suppressing warnings by mutating the process-wide filters is unsafe across threads
+        with warnings.catch_warnings(record=True):
+            warnings.simplefilter("always")
+            before = list(warnings.filters)
+            _compare(_precip(23))
+            assert list(warnings.filters) == before
 
     def test_thirty_years_does_not_warn(self):
         with warnings.catch_warnings():
@@ -465,7 +516,7 @@ class TestMetadata:
         assert "climate_indices_gof_bootstrap_samples" not in meta
 
     def test_calibration_years_are_the_clamped_window(self):
-        with pytest.warns(ClimateIndicesWarning):
+        with pytest.warns(CalibrationPeriodClampedWarning):
             result = _compare(_precip(22), calibration_year_initial=1900, calibration_year_final=2100)
         assert result.metadata["calibration_year_initial"] == str(START)
         assert result.metadata["calibration_year_final"] == str(START + YEARS - 1)
@@ -488,4 +539,138 @@ class TestRecovery:
             wins.append(np.mean(result.best == result.candidates.index(Distribution.gamma)))
         rate = float(np.mean(wins))
         record_property("gamma_recovery_rate", rate)
-        assert rate > 0.4  # loose floor: about 80 values per step cannot discriminate sharply
+        assert rate > 0.85  # measured about 0.96 over 30 seeds; chance is 0.5
+
+
+class TestParameterCounts:
+    def test_counts_per_family_with_and_without_zero_mass(self):
+        precip, pet = _spei_inputs(k=-0.3)
+        spei = _compare(precip, index="spei", pet_mm=pet, calibration_year_final=START + 149)
+        assert (spei.n_parameters[:, 0] == [3, 2, 3]).all()  # pearson, gamma, loglogistic: no zero mass anywhere
+        zeroed = _precip(5)
+        zeroed[(CAL_START - START) * 12 + 2 : (CAL_START - START + 6) * 12 : 12] = 0.0
+        spi = _compare(zeroed)
+        assert spi.n_parameters[0, 2] == 4 and spi.n_parameters[0, 3] == 3  # Pearson with and without p0
+
+
+class TestGloDensity:
+    @pytest.mark.parametrize("k", [0.0, 5e-7, -5e-7])
+    def test_logistic_limit(self, k):
+        x, one = np.linspace(-3.0, 3.0, 7), np.ones(1)
+        got = suitability._glo_logpdf(x, 0.5 * one, 2.0 * one, k * one)
+        np.testing.assert_allclose(got, scipy.stats.logistic.logpdf(x, 0.5, 2.0), rtol=1e-5)
+
+    def test_outside_support_is_minus_infinity(self):
+        one = np.ones(1)
+        # k > 0 bounds the support above at loc + scale / k = 4.5
+        out = suitability._glo_logpdf(np.array([4.4, 4.5, 6.0]), 0.5 * one, 2.0 * one, 0.5 * one)
+        assert np.isfinite(out[0]) and np.isneginf(out[1:]).all()
+
+    def test_shape_of_one_or_more_is_unusable(self):
+        params = {"loc": np.zeros(3), "scale": np.ones(3), "shape": np.array([0.5, 1.0, -1.5])}
+        np.testing.assert_array_equal(suitability._usable(Distribution.loglogistic, params), [True, False, False])
+
+
+class TestInputs:
+    def test_masked_values_and_pet_equal_nan_filled(self):
+        precip, pet = _precip(30), _precip(31) * 0.8
+        precip_masked = np.ma.masked_array(precip, mask=np.zeros(precip.shape, bool))
+        precip_masked[100:103] = np.ma.masked
+        pet_masked = np.ma.masked_array(pet, mask=np.zeros(pet.shape, bool))
+        pet_masked[200] = np.ma.masked
+        filled_p, filled_pet = precip.copy(), pet.copy()
+        filled_p[100:103], filled_pet[200] = np.nan, np.nan
+        masked = _compare(precip_masked, index="spei", pet_mm=pet_masked)
+        filled = _compare(filled_p, index="spei", pet_mm=filled_pet)
+        np.testing.assert_array_equal(masked.log_likelihood, filled.log_likelihood)
+
+    def test_integer_input_matches_float(self):
+        ints = np.round(_precip(32) * 10).astype(np.int64)
+        np.testing.assert_array_equal(_compare(ints).log_likelihood, _compare(ints.astype(float)).log_likelihood)
+
+    def test_inputs_are_not_mutated(self):
+        precip, pet = _precip(33) - 10.0, _precip(34)
+        precip_before, pet_before = precip.copy(), pet.copy()
+        _compare(precip, index="standardized_index")  # negatives are clipped on a copy
+        _compare(precip, index="spei", pet_mm=pet)
+        np.testing.assert_array_equal(precip, precip_before)
+        np.testing.assert_array_equal(pet, pet_before)
+
+    def test_standardized_index_unclipped_equals_clipped_on_non_negative_data(self):
+        values = _precip(35)
+        clipped = _compare(values, index="standardized_index", clip_negatives=True)
+        unclipped = _compare(values, index="standardized_index", clip_negatives=False)
+        np.testing.assert_array_equal(clipped.log_likelihood, unclipped.log_likelihood)
+
+    def test_signed_series_is_clipped_when_asked(self):
+        signed = _precip(36) - 40.0
+        result = _compare(signed, index="standardized_index", clip_negatives=True)
+        clipped = _compare(np.clip(signed, 0.0, None), index="standardized_index")
+        np.testing.assert_array_equal(result.log_likelihood, clipped.log_likelihood)
+
+    @pytest.mark.parametrize("bad", ["gamma", ["gamma"], [None]])
+    def test_candidates_must_be_distribution_members(self, bad):
+        with pytest.raises(InvalidArgumentError, match="Distribution"):
+            _compare(_precip(), candidates=bad)
+
+    def test_unhashable_index_raises_invalid_argument(self):
+        with pytest.raises(InvalidArgumentError):
+            _compare(_precip(), index=["spi"])
+
+
+class TestRoutesAndShapes:
+    def test_daily_result_shape_and_dependence_warning(self):
+        rng = np.random.default_rng(40)
+        daily = rng.gamma(2.0, 2.0, size=40 * 366)
+        kwargs = {
+            "periodicity": compute.Periodicity.daily,
+            "data_start_year": 1951,
+            "calibration_year_initial": 1951,
+            "calibration_year_final": 1990,
+        }
+        assert _compare(daily, 30, **kwargs).best.shape == (366,)
+        with pytest.warns(ClimateIndicesWarning, match="overlap"):
+            _compare(daily, 366, **kwargs)
+
+    @pytest.mark.parametrize("distribution", [Distribution.gamma, Distribution.pearson])
+    def test_spatial_block_round_trip(self, distribution):
+        block = _precip(41, shape=(2, 2))
+        result = _compare(block, 3, spatial_time_major=True)
+        direct = indices.spi(block, 3, distribution, START, CAL_START, CAL_END, MONTHLY, spatial_time_major=True)
+        reused = indices.spi(
+            block,
+            3,
+            distribution,
+            START,
+            CAL_START,
+            CAL_END,
+            MONTHLY,
+            fitting_params=result.parameters[distribution],
+            spatial_time_major=True,
+        )
+        np.testing.assert_array_equal(reused, direct)
+
+
+class TestFitRaises:
+    def test_fitting_error_is_recorded_not_substituted(self, monkeypatch):
+        def refuse(cls, *args, **kwargs):
+            raise DistributionFittingError("no fit")
+
+        monkeypatch.setattr(compute.FittedDistribution, "resolve", classmethod(refuse))
+        result = _compare(_precip(42))
+        assert result.fit_failed.all()
+        assert np.all(result.best == -1)
+        assert all(np.isnan(array).all() for params in result.parameters.values() for array in params.values())
+
+
+class TestProvenanceRecord:
+    def test_record_holds_effective_options_and_clamped_window(self):
+        precip, pet = _spei_inputs(k=-0.3)
+        spei = _compare(precip, index="spei", pet_mm=pet)
+        record = json.loads(spei.metadata["climate_indices_provenance"])["parameters"]
+        assert record["clip_negatives"] is False  # SPEI clips precipitation itself and keeps the balance
+        with pytest.warns(CalibrationPeriodClampedWarning):
+            clamped = _compare(_precip(43), calibration_year_initial=1900, calibration_year_final=2100)
+        record = json.loads(clamped.metadata["climate_indices_provenance"])["parameters"]
+        assert record["calibration_year_initial"] == START
+        assert record["calibration_year_final"] == START + YEARS - 1
