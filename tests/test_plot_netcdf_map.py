@@ -152,6 +152,7 @@ def test_ncei_comparison_plots_matching_month_and_distribution(
             "spei_pearson_03": (("time", "lat", "lon"), np.ones((2, 10, 10)), {"scale": 3}),
             "spi_06": (("time", "lat", "lon"), np.ones((2, 10, 10)), {"scale": 3}),
             "spei_loglogistic_03": (("time", "lat", "lon"), np.ones((2, 10, 10))),
+            "spei_gev_03": (("time", "lat", "lon"), np.ones((2, 10, 10))),
         },
         coords=coords,
     ).to_netcdf(source)
@@ -200,6 +201,10 @@ def test_ncei_comparison_plots_matching_month_and_distribution(
         (
             [*command[:4], "spei_loglogistic_03", *command[5:], "--compare", "ncei"],
             "does not offer the loglogistic distribution",
+        ),
+        (
+            [*command[:4], "spei_gev_03", *command[5:], "--compare", "ncei"],
+            "does not offer the gev distribution",
         ),
         ([*command, "--scale", "3"], "--scale requires --compare"),
         ([*command[:2], str(static), *command[3:], "--compare", "ncei"], "requires a time-dependent SPI/SPEI"),

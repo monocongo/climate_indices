@@ -797,6 +797,10 @@ def test_all_runs_each_index_into_its_own_output(tmp_path, precips_mm_monthly, p
         "all_scpdsi.nc",
     }
 
+    # the gev output is a fitted index, not an empty field
+    with xr.open_dataset(tmp_path / "all_spei_gev_01.nc") as gev:
+        assert np.isfinite(gev["spei_gev_01"].values).any()
+
     expected_pnp = indices.percentage_of_normal(
         precips,
         scale=1,

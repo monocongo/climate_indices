@@ -481,6 +481,7 @@ class TestHourlySurfaceGates:
             (compute.transform_fitted_beta, ("alphas", "betas", "probabilities_of_zero", "probabilities_of_one")),
             (compute.transform_fitted_pearson, ("probabilities_of_zero", "locs", "scales", "skews")),
             (compute.transform_fitted_loglogistic, ("locs", "scales", "shapes")),
+            (compute.transform_fitted_gev, ("locs", "scales", "shapes")),
         ],
     )
     @pytest.mark.parametrize("value", [0.5, np.nan])
