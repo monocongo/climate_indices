@@ -67,7 +67,7 @@ _FITTING_METHODS = {
 _GLO_SHAPE_TOLERANCE = 1e-6
 
 
-@dataclasses.dataclass(frozen=True)
+@dataclasses.dataclass(frozen=True, eq=False)
 class DistributionComparison:
     """Per-step, per-cell relative-fit evidence for a set of candidate distributions.
 
@@ -159,8 +159,19 @@ def _validate_arguments(
 ) -> None:
     if not isinstance(index, str) or index not in _ROUTE_CANDIDATES:
         raise _invalid(f"Unsupported index route: {index!r}.", "index", index, ", ".join(get_args(IndexRoute)))
-    if criterion not in get_args(Criterion):
+    if not isinstance(criterion, str) or criterion not in get_args(Criterion):
         raise _invalid(f"Unsupported criterion: {criterion!r}.", "criterion", criterion, ", ".join(get_args(Criterion)))
+    if not isinstance(aggregation, str) or aggregation not in get_args(Aggregation):
+        raise _invalid(
+            f"Unsupported aggregation: {aggregation!r}.", "aggregation", aggregation, ", ".join(get_args(Aggregation))
+        )
+    if not isinstance(clip_negatives, (bool, np.bool_)):
+        raise _invalid(
+            f"clip_negatives must be a boolean, got {type(clip_negatives).__name__}.",
+            "clip_negatives",
+            clip_negatives,
+            "True or False",
+        )
     if index == "spei" and pet_mm is None:
         raise _invalid("index='spei' requires pet_mm.", "pet_mm", None, "an array matching the precipitation")
     if index != "spei" and pet_mm is not None:
@@ -174,12 +185,46 @@ def _validate_arguments(
         )
 
 
-def _as_float_array(values: np.ndarray) -> np.ndarray:
-    """A masked array as NaN-filled, and an integer or boolean array as float, which the fits require."""
-    if np.ma.isMaskedArray(values):
-        return np.asarray(np.ma.filled(values.astype(float), np.nan))
-    array = np.asarray(values)
-    return array.astype(float) if array.dtype.kind in "iub" else array
+def _as_float_array(values: np.ndarray, name: str = "values") -> np.ndarray:
+    """A masked array as NaN-filled, an integer or boolean array as float, and reject other dtypes or infinities.
+
+    NaN and a mask are the missing-value markers; an infinity is invalid input, not a missing value.
+    """
+    try:
+        if np.ma.isMaskedArray(values):
+            array = np.asarray(np.ma.filled(values.astype(float), np.nan))
+        else:
+            array = np.asarray(values)
+            if array.dtype.kind in "iub":
+                array = array.astype(float)
+    except (TypeError, ValueError) as error:
+        raise _invalid(f"{name} must hold numeric values.", name, type(values).__name__, "a numeric array") from error
+    if array.dtype.kind != "f":
+        raise _invalid(
+            f"{name} must hold numeric values, got dtype {array.dtype}.", name, array.dtype, "a numeric array"
+        )
+    if np.isinf(array).any():
+        raise _invalid(f"{name} must not hold an infinite value.", name, "inf", "finite values, NaN or a mask")
+    return array
+
+
+def _validate_pet_shape(values: np.ndarray, pet_mm: np.ndarray) -> None:
+    """Reject a PET that would broadcast over a larger cell grid than the precipitation."""
+    if pet_mm.shape == values.shape:
+        return
+    if values.ndim >= 3:
+        if pet_mm.ndim == 1 and pet_mm.shape[0] == values.shape[0]:
+            return
+        if pet_mm.ndim == values.ndim and all(
+            size in (values_size, 1) for size, values_size in zip(pet_mm.shape, values.shape, strict=True)
+        ):
+            return
+    raise _invalid(
+        "pet_mm must match values, or be a per-step series or singleton axes for a spatial block.",
+        "pet_mm",
+        str(pet_mm.shape),
+        str(values.shape),
+    )
 
 
 def _prepare_values(
@@ -187,7 +232,9 @@ def _prepare_values(
 ) -> tuple[np.ndarray, bool]:
     """Prepare the input and clipping policy for an already validated route."""
     if index == "spei" and pet_mm is not None:
-        return _indices._spei_water_balance(values, _as_float_array(pet_mm)), False
+        pet = _as_float_array(pet_mm, "pet_mm")
+        _validate_pet_shape(values, pet)
+        return _indices._spei_water_balance(values, pet), False
     if index == "standardized_index" and not clip_negatives:
         values = _indices._reject_negative_values(values, Distribution.gamma)
     return values, True if index == "spi" else clip_negatives
@@ -315,6 +362,9 @@ def compare_distributions(
     not at maximum-likelihood estimates, the criteria are penalized likelihoods at fitted
     estimates and a ranking mixes distribution fit with estimator efficiency. About 30 values
     per calendar step discriminate weakly, so treat ``best`` as evidence, not as "correct".
+    A sample value outside a candidate's fitted support gives zero likelihood, so that candidate
+    is reported in ``fit_failed`` and does not rank; ``best`` can then have only one eligible
+    candidate, and ``delta_to_runner_up`` is NaN.
 
     Args:
         values: Precipitation, or the series ``standardized_index`` would standardize: 1-D, 2-D
@@ -329,7 +379,8 @@ def compare_distributions(
         candidates: Families to compare; ``None`` selects gamma and Pearson Type III, plus
             log-logistic for ``"spei"``. Naming any other family raises.
         pet_mm: Potential evapotranspiration matching ``values``; required for, and only for,
-            ``index="spei"``.
+            ``index="spei"``. A spatial block also accepts a per-step series or singleton cell
+            axes; a shape that would broadcast over a larger cell grid raises.
         aggregation: ``"sum"`` or ``"mean"`` window aggregation; ``"standardized_index"`` only.
         clip_negatives: Clip negative input to zero. ``False`` rejects negatives, as
             ``standardized_index`` does for gamma and Pearson; ``"standardized_index"`` only.
@@ -343,14 +394,15 @@ def compare_distributions(
 
     Raises:
         InvalidArgumentError: For an unsupported route, criterion, candidate, hourly
-            periodicity, or an argument combination the route does not accept.
+            periodicity, non-numeric or infinite input, or an argument combination the route
+            does not accept.
         ValueError: If ``values`` holds no valid value.
 
     Warns:
         BetaFeatureWarning: Always; the module is Beta.
         ShortCalibrationWarning: From the fits when the calibration period is under 30 years, and
             from this function when a calendar step or cell has fewer than 30 shared values within a
-            period of 30 years or more.
+            period of 30 years or more; ``actual_years`` then holds the smallest step or cell count.
         Warnings the fits raise (``CalibrationPeriodClampedWarning``, ``MissingDataWarning``, ``GoodnessOfFitWarning``)
             reach the caller as they do from the index; each candidate's fit can raise them.
         ClimateIndicesWarning: If ``scale`` exceeds 12 (monthly) or 365 (daily) steps, where

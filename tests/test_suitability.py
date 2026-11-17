@@ -85,6 +85,12 @@ class TestSurface:
         with pytest.raises(dataclasses.FrozenInstanceError):
             result.best = None  # type: ignore[misc]
 
+    def test_results_compare_by_identity(self):
+        # the provenance record carries a creation timestamp, so value equality is not defined
+        result = _compare(_precip())
+        assert result == result
+        assert result != _compare(_precip())
+
 
 class TestCandidates:
     def test_default_sets_in_enum_order(self):
@@ -140,6 +146,27 @@ class TestArguments:
             _compare(values, index="pdsi")
         with pytest.raises(InvalidArgumentError):
             _compare(values, criterion="hqic")
+
+    def test_criterion_must_be_a_string(self):
+        with pytest.raises(InvalidArgumentError, match="criterion"):
+            _compare(_precip(), criterion=np.array("aicc"))
+
+    @pytest.mark.parametrize("option", [{"aggregation": ["sum"]}, {"clip_negatives": "false"}])
+    def test_options_must_have_their_documented_types(self, option):
+        with pytest.raises(InvalidArgumentError):
+            _compare(_precip(), index="standardized_index", **option)
+
+    def test_pet_shape_must_line_up_with_the_cells(self):
+        values, pet = _precip(11).reshape(YEARS, 12), np.zeros((YEARS, 12))
+        with pytest.raises(InvalidArgumentError, match="pet_mm"):
+            _compare(values, index="spei", pet_mm=pet.T)
+
+    def test_spatial_block_pet_broadcasts_within_the_cells(self):
+        block = _precip(12, shape=(2, 2))
+        series = _compare(block, index="spei", pet_mm=np.full(YEARS * 12, 800.0), spatial_time_major=True)
+        singleton = _compare(block, index="spei", pet_mm=np.full((YEARS * 12, 1, 1), 800.0), spatial_time_major=True)
+        assert series.best.shape == singleton.best.shape == (12, 2, 2)
+        np.testing.assert_array_equal(series.best, singleton.best)
 
     def test_signed_series_needs_clipping(self):
         signed = _precip() - 40.0
@@ -595,6 +622,13 @@ class TestGloDensity:
         assert np.isfinite(out[0])
         assert np.isneginf(out[1:]).all()
 
+    def test_negative_shape_bounds_the_support_below(self):
+        one = np.ones(1)
+        # k < 0 bounds the support below at loc + scale / k = -3.5
+        out = suitability._glo_logpdf(np.array([-4.0, -3.5, -3.0]), 0.5 * one, 2.0 * one, -0.5 * one)
+        assert np.isneginf(out[:2]).all()
+        assert np.isfinite(out[2])
+
     def test_shape_of_one_or_more_is_unusable(self):
         params = {"loc": np.zeros(3), "scale": np.ones(3), "shape": np.array([0.5, 1.0, -1.5])}
         np.testing.assert_array_equal(suitability._usable(Distribution.loglogistic, params), [True, False, False])
@@ -616,6 +650,28 @@ class TestInputs:
     def test_integer_input_matches_float(self):
         ints = np.round(_precip(32) * 10).astype(np.int64)
         np.testing.assert_array_equal(_compare(ints).log_likelihood, _compare(ints.astype(float)).log_likelihood)
+
+    @pytest.mark.parametrize(
+        "bad",
+        [
+            np.full(YEARS * 12, "1.0"),
+            np.zeros(YEARS * 12, dtype="datetime64[D]"),
+            np.ones(YEARS * 12, dtype=complex),
+        ],
+    )
+    def test_non_numeric_input_raises(self, bad):
+        with pytest.raises(InvalidArgumentError, match="numeric"):
+            _compare(bad)
+
+    def test_non_numeric_pet_raises(self):
+        with pytest.raises(InvalidArgumentError, match="pet_mm"):
+            _compare(_precip(), index="spei", pet_mm=np.full(YEARS * 12, "1.0"))
+
+    def test_infinite_input_raises(self):
+        values = _precip(37)
+        values[0] = np.inf
+        with pytest.raises(InvalidArgumentError, match="infinite"):
+            _compare(values)
 
     def test_inputs_are_not_mutated(self):
         precip, pet = _precip(33) - 10.0, _precip(34)
@@ -662,6 +718,12 @@ class TestRoutesAndShapes:
         assert _compare(daily, 30, **kwargs).best.shape == (366,)
         with pytest.warns(ClimateIndicesWarning, match="overlap"):
             _compare(daily, 366, **kwargs)
+
+    def test_two_dimensional_input_matches_the_flat_series(self):
+        values = _precip(45)
+        flat, framed = _compare(values), _compare(values.reshape(YEARS, 12))
+        np.testing.assert_array_equal(framed.log_likelihood, flat.log_likelihood)
+        np.testing.assert_array_equal(framed.best, flat.best)
 
     @pytest.mark.parametrize("distribution", [Distribution.gamma, Distribution.pearson])
     def test_spatial_block_round_trip(self, distribution):
