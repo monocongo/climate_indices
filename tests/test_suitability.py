@@ -98,7 +98,12 @@ class TestCandidates:
         assert spi.candidates == (Distribution.pearson, Distribution.gamma)
         precip, pet = _spei_inputs(k=-0.3)
         spei = _compare(precip, index="spei", pet_mm=pet)
-        assert spei.candidates == (Distribution.pearson, Distribution.gamma, Distribution.loglogistic)
+        assert spei.candidates == (
+            Distribution.pearson,
+            Distribution.gamma,
+            Distribution.loglogistic,
+            Distribution.gev,
+        )
 
     def test_user_candidates_are_sorted_to_enum_order(self):
         result = _compare(_precip(), candidates=(Distribution.gamma, Distribution.pearson))
@@ -110,10 +115,11 @@ class TestCandidates:
         with pytest.raises(InvalidArgumentError):
             _compare(values, candidates=(candidate,))
 
-    def test_loglogistic_rejected_outside_spei(self):
+    @pytest.mark.parametrize("distribution", [Distribution.loglogistic, Distribution.gev])
+    def test_spei_only_families_rejected_outside_spei(self, distribution):
         values = _precip()
         with pytest.raises(InvalidArgumentError):
-            _compare(values, candidates=(Distribution.loglogistic,))
+            _compare(values, candidates=(distribution,))
 
     def test_duplicate_or_empty_candidates_raise(self):
         values = _precip()
@@ -412,7 +418,9 @@ class TestRoundTrip:
         )
         np.testing.assert_array_equal(reused, direct)
 
-    @pytest.mark.parametrize("distribution", [Distribution.gamma, Distribution.pearson, Distribution.loglogistic])
+    @pytest.mark.parametrize(
+        "distribution", [Distribution.gamma, Distribution.pearson, Distribution.loglogistic, Distribution.gev]
+    )
     def test_spei(self, distribution):
         precip = _precip(11)
         pet = _precip(12) * 0.8
@@ -608,7 +616,8 @@ class TestParameterCounts:
     def test_counts_per_family_with_and_without_zero_mass(self):
         precip, pet = _spei_inputs(k=-0.3)
         spei = _compare(precip, index="spei", pet_mm=pet, calibration_year_final=START + 149)
-        assert (spei.n_parameters[:, 0] == [3, 2, 3]).all()  # pearson, gamma, loglogistic: no zero mass anywhere
+        # pearson, gamma, loglogistic, gev: no zero mass is counted for this sample
+        assert (spei.n_parameters[:, 0] == [3, 2, 3, 3]).all()
         zeroed = _precip(5)
         zeroed[(CAL_START - START) * 12 + 2 : (CAL_START - START + 6) * 12 : 12] = 0.0
         spi = _compare(zeroed)
@@ -794,3 +803,93 @@ class TestProvenanceRecord:
         record = json.loads(clamped.metadata["climate_indices_provenance"])["parameters"]
         assert record["calibration_year_initial"] == START
         assert record["calibration_year_final"] == START + YEARS - 1
+
+
+def _gev_log_density(x: np.ndarray, loc: float, scale: float, shape: float) -> np.ndarray:
+    """Hosking's GEV log-density from the closed form, ``-inf`` outside the support.
+
+    With ``z = (x - loc) / scale`` and ``y = -log(1 - k z) / k`` (``y = z`` at ``k = 0``),
+    ``log f = -log(scale) - (1 - k) y - exp(-y)``; the support is ``k z < 1``. Written here
+    from the distribution function, not from SciPy, so it checks ``genextreme.logpdf``. ``log1p``
+    matters: ``log(1 - k z)`` loses its digits to the rounding of ``1 - k z`` and, divided by a
+    tiny ``k``, is wrong in the seventh digit at ``k = 1e-9``.
+    """
+    z = (x - loc) / scale
+    argument = 1.0 - shape * z
+    with np.errstate(all="ignore"):
+        y = z if shape == 0.0 else -np.log1p(-shape * np.where(argument > 0.0, z, 0.0)) / shape
+        density = -np.log(scale) - (1.0 - shape) * y - np.exp(-y)
+    return np.where((shape == 0.0) | (argument > 0.0), density, -np.inf)
+
+
+class TestGevCandidate:
+    """GEV joins the SPEI candidates (#1583), scored at its L-moment estimates like the log-logistic."""
+
+    @pytest.mark.parametrize("shape", [-0.4, -1e-9, 0.0, 1e-9, 0.4])
+    def test_log_density_matches_the_closed_form(self, shape):
+        x = np.linspace(-1.0, 8.0, 91)
+        params = {"loc": np.full(91, 2.0), "scale": np.full(91, 1.5), "shape": np.full(91, shape)}
+        ours = suitability._log_density(Distribution.gev, x, params)
+        np.testing.assert_allclose(ours, _gev_log_density(x, 2.0, 1.5, shape), rtol=1e-10, atol=1e-12)
+
+    @pytest.mark.parametrize("shape", [-0.4, 0.0, 0.4])
+    def test_density_is_the_derivative_of_the_distribution_function(self, shape):
+        """exp(log f) equals dF/dx, with F from the transform (a different code path from the density)."""
+        x = np.array([0.5, 1.0, 2.0, 3.0])
+        step = 1e-6
+        upper = compute._gev_fit(x + step, 2.0, 1.5, shape, output_scale="probability")
+        lower = compute._gev_fit(x - step, 2.0, 1.5, shape, output_scale="probability")
+        params = {"loc": np.full(4, 2.0), "scale": np.full(4, 1.5), "shape": np.full(4, shape)}
+        density = np.exp(suitability._log_density(Distribution.gev, x, params))
+        # a central difference of a smooth CDF is accurate to about step**2 plus rounding / step
+        np.testing.assert_allclose(density, (upper - lower) / (2 * step), rtol=1e-6)
+
+    def test_outside_the_support_is_minus_infinity_on_both_branches(self):
+        two = np.ones(2)
+        # k > 0 bounds the support above at loc + scale / k = 4.5; k < 0 bounds it below at -3.5
+        above = suitability._log_density(
+            Distribution.gev, np.array([4.4, 6.0]), {"loc": 0.5 * two, "scale": 2.0 * two, "shape": 0.5 * two}
+        )
+        below = suitability._log_density(
+            Distribution.gev, np.array([-4.0, -3.0]), {"loc": 0.5 * two, "scale": 2.0 * two, "shape": -0.5 * two}
+        )
+        assert np.isfinite(above[0]) and np.isneginf(above[1])
+        assert np.isneginf(below[0]) and np.isfinite(below[1])
+
+    def test_usable_follows_the_transform_predicate(self):
+        params = {
+            "loc": np.array([0.0, 0.0, 0.0, np.nan]),
+            "scale": np.array([1.0, 0.0, 1.0, 1.0]),
+            "shape": np.array([1.5, 0.1, np.nan, 0.1]),
+        }
+        # a shape of 1.5 is usable (unlike the log-logistic); a zero scale marks an unfitted step
+        np.testing.assert_array_equal(suitability._usable(Distribution.gev, params), [True, False, False, False])
+
+    def test_a_family_without_a_likelihood_raises_rather_than_scoring_as_log_logistic(self):
+        params = {"loc": np.zeros(1), "scale": np.ones(1), "shape": np.zeros(1)}
+        with pytest.raises(ValueError, match="no likelihood"):
+            suitability._log_density(Distribution.empirical, np.zeros(1), params)
+        with pytest.raises(ValueError, match="no likelihood"):
+            suitability._usable(Distribution.empirical, params)
+
+    def test_log_likelihood_is_the_summed_closed_form_at_the_returned_parameters(self):
+        precip, pet = _spei_inputs(k=-0.3)
+        result = _compare(precip, index="spei", pet_mm=pet, calibration_year_final=START + 149)
+        position = result.candidates.index(Distribution.gev)
+        params = result.parameters[Distribution.gev]
+        scaled = compute.prepare_scaled(indices._spei_water_balance(precip, pet), 1, MONTHLY, clip_negatives=False)
+        sample = scaled[CAL_START - START : START + 149 - START + 1]
+        assert not result.fit_failed[position].any()
+        for step in range(12):
+            expected = _gev_log_density(
+                sample[:, step], params["loc"][step], params["scale"][step], params["shape"][step]
+            )
+            assert result.log_likelihood[position, step] == pytest.approx(expected.sum(), rel=1e-10)
+
+    def test_records_its_method_and_is_ranked_with_the_others(self):
+        precip, pet = _spei_inputs(k=-0.3)
+        result = _compare(precip, index="spei", pet_mm=pet, calibration_year_final=START + 149)
+        assert json.loads(result.metadata["climate_indices_fitting_methods"])["gev"] == "l_moments"
+        assert json.loads(result.metadata["climate_indices_candidates"]) == ["pearson", "gamma", "loglogistic", "gev"]
+        assert result.log_likelihood.shape[0] == 4
+        assert set(np.unique(result.best)) <= set(range(4))

@@ -6,7 +6,7 @@ scores every likelihood-based candidate on one shared calibration sample and ret
 log-likelihood, AIC, AICc, BIC and the best candidate for every calendar step (and cell).
 
 The criteria are **penalized likelihoods at the library's own estimates**: gamma by Thom's
-approximation, Pearson Type III and log-logistic by L-moments. They are not maximum-likelihood
+approximation, Pearson Type III, log-logistic and GEV by L-moments. They are not maximum-likelihood
 estimates in general, so a ranking mixes how well a family fits with how efficient its
 estimator is, and the ``aic``, ``aicc`` and ``bic`` values are not textbook AIC, AICc and BIC.
 The module is Beta and has no root re-export: import it explicitly,
@@ -48,19 +48,25 @@ _BETA_MESSAGE = "suitability is beta: its interface may change in a minor releas
 _ROUTE_CANDIDATES: dict[str, tuple[Distribution, ...]] = {
     "spi": (Distribution.pearson, Distribution.gamma),
     "standardized_index": (Distribution.pearson, Distribution.gamma),
-    "spei": (Distribution.pearson, Distribution.gamma, Distribution.loglogistic),
+    "spei": (Distribution.pearson, Distribution.gamma, Distribution.loglogistic, Distribution.gev),
 }
 
 # free parameters per family, not counting the zero mass
-_FAMILY_PARAMETERS = {Distribution.pearson: 3, Distribution.gamma: 2, Distribution.loglogistic: 3}
+_FAMILY_PARAMETERS = {
+    Distribution.pearson: 3,
+    Distribution.gamma: 2,
+    Distribution.loglogistic: 3,
+    Distribution.gev: 3,
+}
 
-# families whose fit carries a zero mass p0; the log-logistic has none (ADR-0016)
+# families whose fit carries a zero mass p0; the log-logistic and the GEV have none (ADR-0016)
 _ZERO_MASS_FAMILIES = frozenset({Distribution.pearson, Distribution.gamma})
 
 _FITTING_METHODS = {
     Distribution.pearson: "l_moments",
     Distribution.gamma: "thom_mle_approximation",
     Distribution.loglogistic: "l_moments",
+    Distribution.gev: "l_moments",
 }
 
 # the log-logistic transform treats a shape within this of zero as the logistic limit
@@ -278,8 +284,13 @@ def _log_density(distribution: Distribution, sample: np.ndarray, p: dict[str, np
             density: np.ndarray = scipy.stats.gamma.logpdf(sample, a=p["alpha"], scale=p["beta"])
         elif distribution is Distribution.pearson:
             density = scipy.stats.pearson3.logpdf(sample, p["skew"], loc=p["loc"], scale=p["scale"])
-        else:
+        elif distribution is Distribution.loglogistic:
             density = _glo_logpdf(sample, p["loc"], p["scale"], p["shape"])
+        elif distribution is Distribution.gev:
+            # Hosking's shape k is SciPy's c; the density is -inf outside the fitted support
+            density = scipy.stats.genextreme.logpdf(sample, p["shape"], loc=p["loc"], scale=p["scale"])
+        else:
+            raise ValueError(f"{distribution} has no likelihood in suitability")
     return density
 
 
@@ -292,9 +303,15 @@ def _usable(distribution: Distribution, p: dict[str, np.ndarray]) -> np.ndarray:
         # an unfitted step is reported as all-zero parameters
         ok = ~((loc == 0) & (scale == 0) & (skew == 0))
         ok &= np.isfinite(loc) & np.isfinite(scale) & np.isfinite(skew) & (scale > 0)
-    else:
+    elif distribution is Distribution.loglogistic:
         loc, scale, shape = p["loc"], p["scale"], p["shape"]
         ok = np.isfinite(loc) & np.isfinite(scale) & np.isfinite(shape) & (scale > 0) & (np.abs(shape) < 1.0)
+    elif distribution is Distribution.gev:
+        # the predicate _gev_fit uses: an unfitted step is reported with a zero scale
+        loc, scale, shape = p["loc"], p["scale"], p["shape"]
+        ok = np.isfinite(loc) & np.isfinite(scale) & np.isfinite(shape) & (scale > 0)
+    else:
+        raise ValueError(f"{distribution} has no likelihood in suitability")
     if distribution in _ZERO_MASS_FAMILIES:
         ok = ok & np.isfinite(p["prob_zero"])
     result: np.ndarray = ok
@@ -366,8 +383,8 @@ def compare_distributions(
     candidate is fitted with the library's own estimator for the calibration period, and the
     log-likelihood is evaluated at those estimates. A zero is an exact zero, the definition
     both existing zero-mass estimators fit with; the 0.0005 Pearson trace rule is a transform
-    convention and does not change the sample. SPEI's log-logistic candidate scores zeros as
-    continuous observations when they lie within its fitted support (ADR-0016).
+    convention and does not change the sample. SPEI's log-logistic and GEV candidates score zeros
+    as continuous observations when they lie within their fitted support (ADR-0016).
     The Pearson-to-gamma fallback is disabled: a failed fit is recorded in ``fit_failed``,
     not replaced.
 
@@ -390,7 +407,7 @@ def compare_distributions(
         calibration_year_final: Last calibration year; clamped to the record.
         periodicity: Monthly or daily.
         candidates: Families to compare; ``None`` selects gamma and Pearson Type III, plus
-            log-logistic for ``"spei"``. Naming any other family raises.
+            log-logistic and GEV for ``"spei"``. Naming any other family raises.
         pet_mm: Potential evapotranspiration matching ``values``; required for, and only for,
             ``index="spei"``. A spatial block also accepts a per-step series or singleton cell
             axes; a shape that would broadcast over a larger cell grid raises.
