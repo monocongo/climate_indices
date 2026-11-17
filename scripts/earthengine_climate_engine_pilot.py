@@ -613,7 +613,11 @@ def _retry_after_seconds(value: str) -> float:
             delay = parsedate_to_datetime(value).timestamp() - time.time()
     except (TypeError, ValueError, OverflowError):
         return 0.0
-    return max(0.0, delay) if math.isfinite(delay) else 0.0
+    # ``time.sleep`` converts seconds to a 64-bit nanosecond count, so an
+    # oversized delay raises OverflowError outside the request's handlers.
+    if not math.isfinite(delay) or delay * 1_000_000_000 >= 2**63:
+        return 0.0
+    return max(0.0, delay)
 
 
 def climate_engine_request(endpoint: str, body: dict[str, Any], key: str) -> dict[str, Any]:

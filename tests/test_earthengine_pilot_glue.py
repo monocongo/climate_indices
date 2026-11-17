@@ -498,6 +498,7 @@ def test_climate_engine_request_stops_after_the_configured_attempts(
         ("inf", 15),
         ("NaN", 15),
         ("9" * 400, 15),
+        ("9999999999", 15),
     ],
 )
 def test_climate_engine_request_honors_retry_after(
