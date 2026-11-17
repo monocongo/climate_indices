@@ -29,9 +29,10 @@ Users must choose a distribution per index, region, season and Timescale.
 The library reports a K–S statistic and exact p-value per fit (`fit_diagnostics`), has no GEV,
 and has no relative-fit, decision-impact or concordance tools.
 The existing p-value is naive: it does not account for estimating parameters from the tested sample.
-A K–S test whose parameters were estimated from the same data is conservative
-(Lilliefors 1967, as cited by the SciPy `goodness_of_fit` documentation): its p-values are too high,
-so poor fits are accepted too easily.
+In the classical Lilliefors setting, naive fitted-parameter K–S p-values are conservative
+(as discussed in the SciPy `goodness_of_fit` documentation). This does not establish
+conservativeness for the L-moment estimators used here; their naive p-values are
+uncalibrated for parameter estimation.
 
 The motivating study is Monish & Rehana (2020), doi:10.1007/s12040-019-1271-x.
 It is closed access and has not been read for this record, so none of its figures or method details are quoted here.

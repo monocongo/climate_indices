@@ -13,7 +13,7 @@ Inventory taken against `origin/main` at `aa076954` (2026-11-15).
    - Precedent: CMP-01 (#1365) kept the proposal inside the internal `docs/design/` plan, then published the ADR after approval.
    - The proposal was drafted below as **Proposed (draft)**, then published by SUIT-01 as `docs/adr/0028-distribution-suitability-contracts.md` with status `Approved for implementation`.
 2. **Plan location.** There is no `docs/plans/`. The repo uses the internal `docs/design/` folder (CONTRIBUTING.md lists it as internal). The note goes to `docs/design/distribution-suitability.md`.
-3. **"Naive K–S is anti-conservative" is backwards.** The SciPy 1.17 `goodness_of_fit` notes say this, citing Lilliefors (1967): a K–S test whose parameters were fitted to the same data is *conservative*. Its p-values are too high, so it under-rejects and has low power. The practical effect matches what the task brief worries about: naive K–S accepts poor fits too easily. The docs will use the correct term.
+3. **Naive fitted-parameter K–S p-values are uncalibrated for parameter estimation.** The classical Lilliefors setting is conservative, but this does not establish the direction of miscalibration for this plan's L-moment estimators. ADR-0028 is canonical; the blanket conservativeness statements in historical sections B and C are retained as historical text.
 4. **#1569 has no hit/miss/false-alarm conventions.** Its metrics are bias, MAE, RMSE, correlation, NRMSE, max-abs, `category_agreement` and `category_within_one`. They live in `scripts/earthengine_climate_engine_pilot.py`, not in the library. Event metrics are therefore new. Category agreement reuses the pilot's two definitions.
 
 ## Paper verification
@@ -177,7 +177,7 @@ def category_agreement(index_categories, reference_categories) -> tuple[float, f
 |---|---|---|
 | GEV | CDF/PPF parity with `scipy.stats.genextreme` on both bounded branches. Hosking's k equals SciPy's c in sign; the test pins this. L-moment recovery against closed-form population L-moments. Optional R `lmom::pelgev/cdfgev` fixture (OQ-8). | "Cross-implementation comparison, same estimator lineage" with the lmom fixture, otherwise "Specification-level" |
 | Log-likelihood and criteria | `sum(logpdf)` checked against SciPy (`gamma`, Pearson Type III through `scipy.stats.pearson3`, `genextreme`; GLO through `fisk` on the k < 0 branch, per ADR-0016) at the same parameters. Round trip: comparison parameters fed as `fitting_params` to `spi`/`spei` give identical output. Synthetic recovery rate reported, not asserted tightly. | Specification-level plus synthetic characterization |
-| Bootstrap GoF | Size under H0 within a binomial MC interval of α for every candidate that supports the bootstrap (gamma, Pearson Type III, GLO, GEV), on continuous and rounded samples. Naive K–S shown to under-reject. | Synthetic characterization |
+| Bootstrap GoF | Size under H0 within a binomial MC interval of α for every candidate that supports the bootstrap (gamma, Pearson Type III, GLO, GEV), on continuous and rounded samples. | Synthetic characterization |
 | Categories | Edges match the USDM table ("-0.5 to -0.79" … "-2.0 or less"), including exact boundary values. | Specification-level |
 | Concordance | Hand-built `RunSet` fixtures. | Specification-level |
 | Reproduction | nClimGrid workflow. | "Workflow reproduction; not reference reproduction" |
