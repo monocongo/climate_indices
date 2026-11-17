@@ -988,7 +988,7 @@ result = indices.spi(
 
 **Warning:** `CalibrationPeriodClampedWarning: Calibration period 1981-2010 is not covered by the record, so the fit used 1990-2020 instead.`
 
-**Cause:** The requested calibration years are not all inside the input's years. The gamma, Pearson Type III and log-logistic fits clamp such a window: a window that ends one year past the record keeps its start and is cut at the last year, and any other window the record does not cover is replaced by the whole record.
+**Cause:** The requested calibration years are not all inside the input's years. The gamma, Pearson Type III, log-logistic and GEV fits clamp such a window: a window that ends one year past the record keeps its start and is cut at the last year, and any other window the record does not cover is replaced by the whole record.
 
 **Impact:** The result is valid, but its parameters come from the years the warning names, not the years you asked for. The xarray result's `calibration_year_initial` and `calibration_year_final` attributes hold the years the fit used, and the warning's `requested_years` and `effective_years` attributes hold both windows.
 
