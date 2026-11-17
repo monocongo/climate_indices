@@ -182,6 +182,17 @@ def _as_float_array(values: np.ndarray) -> np.ndarray:
     return array.astype(float) if array.dtype.kind in "iub" else array
 
 
+def _prepare_values(
+    values: np.ndarray, index: IndexRoute, pet_mm: np.ndarray | None, clip_negatives: bool
+) -> tuple[np.ndarray, bool]:
+    """Prepare the input and clipping policy for an already validated route."""
+    if index == "spei" and pet_mm is not None:
+        return _indices._spei_water_balance(values, _as_float_array(pet_mm)), False
+    if index == "standardized_index" and not clip_negatives:
+        values = _indices._reject_negative_values(values, Distribution.gamma)
+    return values, True if index == "spi" else clip_negatives
+
+
 def _glo_logpdf(x: np.ndarray, loc: np.ndarray, scale: np.ndarray, shape: np.ndarray) -> np.ndarray:
     """Hosking's generalized-logistic log-density, ``-inf`` outside the support.
 
@@ -230,6 +241,27 @@ def _usable(distribution: Distribution, p: dict[str, np.ndarray]) -> np.ndarray:
     return result
 
 
+def _score_fit(
+    distribution: Distribution,
+    sample: np.ndarray,
+    p: dict[str, np.ndarray],
+    valid: np.ndarray,
+    n: np.ndarray,
+    n0: np.ndarray,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Score a fit on the shared sample, including a zero mass only for families that fit one."""
+    zero_mass = distribution in _ZERO_MASS_FAMILIES
+    continuous_sample = valid & (sample != 0.0) if zero_mass else valid  # NOSONAR (S1244) p0 uses exact zeros
+    total = np.where(continuous_sample, _log_density(distribution, sample, p), 0.0).sum(axis=0)
+    if zero_mass:
+        p0 = p["prob_zero"]
+        with np.errstate(all="ignore"):
+            total = total + scipy.special.xlog1py(n - n0, -p0) + scipy.special.xlogy(n0, p0)
+    scorable = _usable(distribution, p) & (n > 0) & ~np.isnan(total)
+    # A value outside the fitted support gives -inf: report it, but exclude the candidate from ranking.
+    return np.where(scorable, total, np.nan), ~(scorable & np.isfinite(total))
+
+
 def _select_best(criterion_values: np.ndarray, eligible: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
     """The best eligible candidate along axis 0 and its gap to the runner-up.
 
@@ -274,8 +306,10 @@ def compare_distributions(
     candidate is fitted with the library's own estimator for the calibration period, and the
     log-likelihood is evaluated at those estimates. A zero is an exact zero, the definition
     both existing zero-mass estimators fit with; the 0.0005 Pearson trace rule is a transform
-    convention and does not change the sample. The Pearson-to-gamma fallback is disabled: a
-    failed fit is recorded in ``fit_failed``, not replaced.
+    convention and does not change the sample. SPEI's log-logistic candidate scores zeros as
+    continuous observations when they lie within its fitted support (ADR-0016).
+    The Pearson-to-gamma fallback is disabled: a failed fit is recorded in ``fit_failed``,
+    not replaced.
 
     Because the likelihood is taken at Thom's gamma approximation and at L-moment estimates,
     not at maximum-likelihood estimates, the criteria are penalized likelihoods at fitted
@@ -304,7 +338,8 @@ def compare_distributions(
             shaped ``(time, *cells)``.
 
     Returns:
-        A frozen :class:`DistributionComparison`.
+        A frozen :class:`DistributionComparison`, whose provenance records ``data_start_year``
+        along with the effective calibration bounds to identify the shared sample.
 
     Raises:
         InvalidArgumentError: For an unsupported route, criterion, candidate, hourly
@@ -328,15 +363,7 @@ def compare_distributions(
     _indices._validate_scale(scale, periodicity)
 
     values = _as_float_array(values)
-    if index == "spei":
-        assert pet_mm is not None
-        prepared = _indices._spei_water_balance(values, _as_float_array(pet_mm))
-        clip = False
-    else:
-        prepared = values
-        if index == "standardized_index" and not clip_negatives:
-            prepared = _indices._reject_negative_values(prepared, Distribution.gamma)
-        clip = True if index == "spi" else clip_negatives
+    prepared, clip = _prepare_values(values, index, pet_mm, clip_negatives)
     if compute.is_all_missing(prepared):
         raise ValueError("The values hold no valid value to compare distributions on.")
 
@@ -354,8 +381,7 @@ def compare_distributions(
     sample = scaled[period.rows, ...]
     valid = ~np.isnan(sample)
     n = valid.sum(axis=0)
-    n0 = (valid & (sample == 0.0)).sum(axis=0)
-    nonzero = valid & (sample != 0.0)
+    n0 = (valid & (sample == 0.0)).sum(axis=0)  # NOSONAR (S1244) p0 counts exact zeros, not trace values
 
     cell_shape = sample.shape[1:]
     log_likelihood = np.full((len(chosen), *cell_shape), np.nan)
@@ -385,21 +411,7 @@ def compare_distributions(
             continue
         full = compute._broadcast_parameters(sample, fitted.parameters, full=True)
         parameters[distribution] = {key: full[key] for key in keys}
-        continuous = np.where(nonzero if zero_mass else valid, _log_density(distribution, sample, full), 0.0).sum(
-            axis=0
-        )
-        total = continuous
-        if zero_mass:
-            p0 = full["prob_zero"]
-            with np.errstate(all="ignore"):
-                total = continuous + scipy.special.xlog1py(n - n0, -p0) + scipy.special.xlogy(n0, p0)
-        scorable = _usable(distribution, full) & (n > 0) & ~np.isnan(total)
-        if not zero_mass:
-            # a family with no zero mass cannot score a sample that holds exact zeros
-            scorable &= n0 == 0
-        # a sample value outside the fitted support gives -inf: it is reported, but the candidate cannot rank
-        fit_failed[position] = ~(scorable & np.isfinite(total))
-        log_likelihood[position] = np.where(scorable, total, np.nan)
+        log_likelihood[position], fit_failed[position] = _score_fit(distribution, sample, full, valid, n, n0)
 
     k_all = n_parameters.astype(float)
     n_float = np.broadcast_to(n.astype(float), log_likelihood.shape)
@@ -434,7 +446,7 @@ def compare_distributions(
             stacklevel=2,
         )
 
-    inputs: dict[str, Any] = {"values": prepared if index == "spei" else values}
+    inputs: dict[str, Any] = {"values": values}
     if pet_mm is not None:
         inputs["pet_mm"] = pet_mm
     metadata = provenance.provenance_attributes(
@@ -444,6 +456,7 @@ def compare_distributions(
         parameters={
             "index": index,
             "scale": scale,
+            "data_start_year": data_start_year,
             "periodicity": periodicity.name,
             "aggregation": aggregation,
             "clip_negatives": clip,

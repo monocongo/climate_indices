@@ -2,7 +2,9 @@
 
 ## Status
 
-Approved for implementation. The maintainer approved these contracts.
+Amended: the NumPy comparison core is implemented in
+[SUIT-03 (#1584)](https://github.com/monocongo/climate_indices/issues/1584).
+The maintainer approved these contracts.
 [SUIT-01 (#1582)](https://github.com/monocongo/climate_indices/issues/1582) records this decision under
 [epic #1581](https://github.com/monocongo/climate_indices/issues/1581).
 
