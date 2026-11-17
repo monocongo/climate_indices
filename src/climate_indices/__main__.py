@@ -1618,7 +1618,7 @@ def _validate_degree_day_arguments(args: argparse.Namespace) -> None:
 # distribution and `indices.spi()` rejects it (#106), and empirical (#1168) and beta
 # (#1169) are reserved for `indices.standardized_index()`
 _SPI_DISTRIBUTIONS = (indices.Distribution.gamma, indices.Distribution.pearson)
-_SPEI_DISTRIBUTIONS = (*_SPI_DISTRIBUTIONS, indices.Distribution.loglogistic)
+_SPEI_DISTRIBUTIONS = (*_SPI_DISTRIBUTIONS, indices.Distribution.loglogistic, indices.Distribution.gev)
 
 
 # The parser checks these declarations before opening any input files.

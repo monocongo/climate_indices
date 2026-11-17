@@ -147,6 +147,12 @@ def _validate_distribution(
             "zero mass; use gamma or Pearson Type III here. SPEI is the supported "
             "log-logistic surface."
         )
+    elif distribution is Distribution.gev:
+        message += (
+            " GEV has no zero-placement treatment for a series with a physical "
+            "zero mass; use gamma or Pearson Type III here. SPEI is the supported "
+            "GEV surface."
+        )
     elif distribution is Distribution.beta:
         message += (
             " Beta fits a series bounded by [0, 1], with aggregation='mean'; "
@@ -1122,8 +1128,10 @@ def spei(
         scaled before computing the indicator (months for monthly data, days
         for daily data)
     :param distribution: distribution type to be used for the internal
-        fitting/transform computation: gamma, Pearson Type III, or loglogistic
-        (the generalized logistic that SPEIbase standardizes with; see ADR-0016)
+        fitting/transform computation: gamma, Pearson Type III, loglogistic
+        (the generalized logistic that SPEIbase standardizes with; see ADR-0016),
+        or gev (the generalized extreme value, fitted by Hosking's L-moments; see
+        ADR-0028)
     :param periodicity: periodicity of the input time series; use
         ``compute.Periodicity.monthly`` for monthly data (12 values/year) or
         ``compute.Periodicity.daily`` for daily data (366 values/year).
@@ -1136,8 +1144,9 @@ def spei(
         contain two arrays, keyed as "alpha" and "beta", and optionally a third
         keyed as "prob_zero", if the distribution is Pearson then this dict
         should contain four arrays keyed as "prob_zero", "loc", "scale", and
-        "skew", and if the distribution is loglogistic then this dict should
-        contain three arrays keyed as "loc", "scale", and "shape". A gamma set
+        "skew", and if the distribution is loglogistic or gev then this dict
+        should contain three arrays keyed as "loc", "scale", and "shape" (for gev
+        the shape is Hosking's ``k``, SciPy's ``genextreme`` ``c``). A gamma set
         without "prob_zero" computes it over the calibration period of the values
         given.
         Older keys such as "alphas" and "probabilities_of_zero" are deprecated.
@@ -1174,7 +1183,7 @@ def spei(
         memory_arrays=(pet_mm,),
         preprocess=lambda precipitation: _spei_water_balance(precipitation, pet_mm),
         spatial_time_major=spatial_time_major,
-        allowed_distributions=(Distribution.gamma, Distribution.pearson, Distribution.loglogistic),
+        allowed_distributions=_SPEI_DISTRIBUTIONS,
         output_scale=output_scale,
         clip_negatives=False,
         fallback_to_gamma=False,
@@ -1184,6 +1193,8 @@ def spei(
 # SPAI subtracts each calendar period's calibration mean and fits one distribution to
 # the anomalies of every period pooled (#1480); gamma's positive support cannot hold a
 # signed anomaly
+_SPEI_DISTRIBUTIONS = (Distribution.gamma, Distribution.pearson, Distribution.loglogistic, Distribution.gev)
+
 _SPAI_DISTRIBUTIONS = (Distribution.t_location_scale, Distribution.pearson, Distribution.normal)
 
 # the parameters each SPAI distribution fits, one value per cell

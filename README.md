@@ -24,7 +24,7 @@ climate-driven energy supply and demand.
   Standardized Precipitation Index, utilizing gamma and Pearson Type III distributions, with
   selectable placement of zero accumulations (`zero_handling`)
 - [SPEI](https://climatedataguide.ucar.edu/climate-data/standardized-precipitation-evapotranspiration-index-spei),
-  Standardized Precipitation Evapotranspiration Index, utilizing gamma, Pearson Type III, and generalized-logistic (log-logistic) distributions
+  Standardized Precipitation Evapotranspiration Index, utilizing gamma, Pearson Type III, generalized-logistic (log-logistic), and generalized extreme value (GEV) distributions
 - [SPAI](https://doi.org/10.1061/%28ASCE%29HE.1943-5584.0001236), Standardized Precipitation
   Anomaly Index (Beta), for strongly seasonal, monsoon-dominated precipitation: one t
   location-scale, Pearson Type III, or normal fit to the pooled precipitation anomalies

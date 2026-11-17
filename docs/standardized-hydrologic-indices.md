@@ -78,9 +78,11 @@ approximation of the cited procedure, not a reproduction of it.
 Of the six distributions, this package supports Pearson Type III and the
 generalized logistic that SPEI standardizes with as "log-logistic"
 (the latter on `spei()` only); the two-parameter gamma is also available. The
-remaining distributions — lognormal, general extreme value, generalized Pareto,
-and Weibull — are not implemented; the log-logistic support landed with
-[#106][log-logistic] ([ADR-0016](adr/0016-log-logistic-distribution-for-spei.md)).
+general extreme value is available on `spei()` only, not on
+`indices.standardized_index()`. The remaining distributions — lognormal,
+generalized Pareto, and Weibull — are not implemented; the log-logistic support
+landed with [#106][log-logistic]
+([ADR-0016](adr/0016-log-logistic-distribution-for-spei.md)).
 
 ## Calibration, input, and fitting caveats
 
