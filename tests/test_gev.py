@@ -324,7 +324,9 @@ def test_gev_parameters_daily_shapes() -> None:
         series, _DATA_START_YEAR, _CALIBRATION_START_YEAR, _CALIBRATION_END_YEAR, compute.Periodicity.daily
     )
     assert locs.shape == scales.shape == shapes.shape == (366,)
-    assert np.isfinite(scales).all()
+    assert np.isfinite(locs).all()
+    assert np.isfinite(shapes).all()
+    assert (scales > 0.0).all()
 
 
 def test_gev_high_failure_rate_warning_names_gev(caplog: pytest.LogCaptureFixture) -> None:
@@ -360,7 +362,7 @@ def test_spei_gev_degenerate_series_is_missing() -> None:
 
 def test_spei_gev_non_integer_constant_series_is_missing() -> None:
     """The float residue of a non-integer constant is not a fit."""
-    result = indices.spei(np.full(60 * 12, 100.1), np.full(60 * 12, 90.0), **_spei_kwargs(scale=6))
+    result = indices.spei(np.full(60 * 12, 100.1), np.full(60 * 12, 90.0), **_spei_kwargs(scale=1))
     assert np.all(np.isnan(result))
 
 
@@ -447,6 +449,15 @@ def test_other_surfaces_reject_gev(sample_monthly_precip_da: xr.DataArray) -> No
     with pytest.raises(InvalidArgumentError, match="Unsupported distribution"):
         climate_indices.standardized_index(precip, 3, indices.Distribution.gev)
     sample = np.random.default_rng(0).gamma(2.0, 10.0, (40, 12))
+    with pytest.raises(ValueError, match="Unsupported distribution"):
+        compute.fit_diagnostics(
+            sample,
+            indices.Distribution.gev,
+            _DATA_START_YEAR,
+            _CALIBRATION_START_YEAR,
+            _CALIBRATION_START_YEAR + 39,
+            compute.Periodicity.monthly,
+        )
     with pytest.raises(InvalidArgumentError, match="SPEI is the supported GEV surface"):
         indices.fit_diagnostics(
             sample,
