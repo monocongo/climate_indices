@@ -788,25 +788,10 @@ def _label_best(labels: Sequence[str]) -> Any:
     return transform
 
 
-def _compare_xarray(
-    values: xr.DataArray,
-    scale: int,
-    *,
-    index: IndexRoute,
-    data_start_year: int | None,
-    calibration_year_initial: int | None,
-    calibration_year_final: int | None,
-    periodicity: compute.Periodicity | None,
-    candidates: Sequence[Distribution] | None,
-    pet_mm: np.ndarray | xr.DataArray | None,
-    aggregation: Aggregation,
-    clip_negatives: bool,
-    criterion: Criterion,
-    time_dim: str,
-) -> xr.Dataset:
-    """The xarray/Dask route of :func:`compare_distributions`, following ``fit_diagnostics``."""
-    _validate_arguments(index, criterion, pet_mm, aggregation, clip_negatives)
-    chosen = _resolve_candidates(index, candidates)
+def _validated_inputs(
+    values: xr.DataArray, pet_mm: np.ndarray | xr.DataArray | None, time_dim: str
+) -> tuple[xr.DataArray, xr.DataArray | None]:
+    """Validate the xarray inputs and align ``pet_mm`` to ``values`` on time; return both."""
     pet_da: xr.DataArray | None = None
     if pet_mm is not None:
         if not isinstance(pet_mm, xr.DataArray):
@@ -830,6 +815,29 @@ def _compare_xarray(
     for dataarray in (input_da, pet_da):
         if dataarray is not None and dataarray.chunks is not None:
             validate_dask_chunks(dataarray, time_dim)
+    return input_da, pet_da
+
+
+def _compare_xarray(
+    values: xr.DataArray,
+    scale: int,
+    *,
+    index: IndexRoute,
+    data_start_year: int | None,
+    calibration_year_initial: int | None,
+    calibration_year_final: int | None,
+    periodicity: compute.Periodicity | None,
+    candidates: Sequence[Distribution] | None,
+    pet_mm: np.ndarray | xr.DataArray | None,
+    aggregation: Aggregation,
+    clip_negatives: bool,
+    criterion: Criterion,
+    time_dim: str,
+) -> xr.Dataset:
+    """The xarray/Dask route of :func:`compare_distributions`, following ``fit_diagnostics``."""
+    _validate_arguments(index, criterion, pet_mm, aggregation, clip_negatives)
+    chosen = _resolve_candidates(index, candidates)
+    input_da, pet_da = _validated_inputs(values, pet_mm, time_dim)
 
     provided: dict[str, Any] = {
         key: value
@@ -884,7 +892,7 @@ def _compare_xarray(
         provided["calibration_year_final"],
         provided.get("data_start_year"),
     )
-    effective_clip = False if index == "spei" else (True if index == "spi" else clip_negatives)
+    effective_clip = {"spei": False, "spi": True}.get(index, clip_negatives)
     # NetCDF attributes cannot hold a bool, list or None, so every value here is a string or a number
     calculation_metadata: dict[str, Any] = {
         "index": index,
