@@ -868,8 +868,41 @@ ranking mixes distribution fit with estimator efficiency and is not textbook AIC
 per calendar step discriminate weakly, so `delta_to_runner_up` is returned and no threshold is
 applied. A sample value outside a candidate's fitted support gives zero likelihood, so that
 candidate is reported as failed and does not rank; `best` can then have one eligible candidate
-and `delta_to_runner_up` is NaN. The NumPy route is available now; the xarray route, goodness of
-fit and the other suitability tools are tracked in ADR-0028.
+and `delta_to_runner_up` is NaN. The NumPy route and the xarray/Dask route are available now;
+goodness of fit and the other suitability tools are tracked in ADR-0028.
+
+An `xr.DataArray` input returns an `xr.Dataset`. Per-candidate variables (`log_likelihood`, `aic`,
+`aicc`, `bic`, `n_parameters`, `fit_failed` and each fitted parameter, NaN where a family has no
+such parameter) run over `(candidate, month | dayofyear, *cells)`. The per-step variables `n`,
+`best` (the winning candidate's name, or `"none"` where no candidate is eligible) and
+`delta_to_runner_up` run over `(month | dayofyear, *cells)`. Every variable carries the
+ADR-0028 provenance attributes, including `climate_indices_candidates`,
+`climate_indices_fitting_methods`, `climate_indices_criterion` and
+`climate_indices_log_likelihood_at`, and they survive a NetCDF round trip. Time must be a single
+Dask chunk ([ADR-0003](adr/0003-dask-time-dimension-single-chunk.md)). The example uses synthetic
+values to show the interface, not observations.
+
+```{testcode}
+import numpy as np
+import pandas as pd
+import xarray as xr
+
+import climate_indices.suitability as suitability
+
+rng = np.random.default_rng(1585)
+time = pd.date_range("1950-01-01", periods=60 * 12, freq="MS")
+precipitation = xr.DataArray(
+    rng.gamma(2.0, 30.0, size=(len(time), 2, 2)),
+    dims=("time", "lat", "lon"),
+    coords={"time": time},
+    attrs={"units": "mm"},
+)
+comparison = suitability.compare_distributions(precipitation, 3, index="spi")
+assert list(comparison["candidate"].values) == ["pearson", "gamma"]
+assert comparison["aicc"].dims == ("candidate", "month", "lat", "lon")
+assert set(np.unique(comparison["best"].values)) <= {"pearson", "gamma", "none"}
+assert comparison["best"].attrs["climate_indices_log_likelihood_at"] == "fitted_estimates"
+```
 
 ```{eval-rst}
 .. automodule:: climate_indices.suitability

@@ -16,6 +16,7 @@ The module is Beta and has no root re-export: import it explicitly,
 from __future__ import annotations
 
 import dataclasses
+import functools
 import json
 import warnings
 from collections.abc import Mapping, Sequence
@@ -24,6 +25,7 @@ from typing import Any, Literal, get_args
 import numpy as np
 import scipy.special
 import scipy.stats
+import xarray as xr
 
 from climate_indices import __version__, compute, provenance
 from climate_indices._calibration_period import MIN_CALIBRATION_YEARS, resolve_calibration_period
@@ -35,7 +37,22 @@ from climate_indices.exceptions import (
     InvalidArgumentError,
     ShortCalibrationWarning,
 )
+from climate_indices.validation import (
+    validate_dask_chunks,
+    validate_time_dimension,
+    validate_time_monotonicity,
+)
 from climate_indices.vocabulary import Aggregation, Distribution
+from climate_indices.xarray_adapter import (
+    _align_inputs,
+    _effective_calibration_years,
+    _infer_temporal_parameters,
+    _OutputProvenance,
+    _resolve_calendar_plan,
+    _spatial_kernel_call,
+    _SpatialOutput,
+    _validate_sufficient_data,
+)
 
 __all__ = ["Criterion", "DistributionComparison", "IndexRoute", "compare_distributions"]
 
@@ -170,7 +187,7 @@ def _validate_option_types(criterion: str, aggregation: Aggregation, clip_negati
 def _validate_arguments(
     index: str,
     criterion: str,
-    pet_mm: np.ndarray | None,
+    pet_mm: np.ndarray | xr.DataArray | None,
     aggregation: Aggregation,
     clip_negatives: bool,
 ) -> None:
@@ -344,21 +361,22 @@ def _select_best(criterion_values: np.ndarray, eligible: np.ndarray) -> tuple[np
 
 
 def compare_distributions(
-    values: np.ndarray,
+    values: np.ndarray | xr.DataArray,
     scale: int,
     *,
     index: IndexRoute,
-    data_start_year: int,
-    calibration_year_initial: int,
-    calibration_year_final: int,
-    periodicity: compute.Periodicity,
+    data_start_year: int | None = None,
+    calibration_year_initial: int | None = None,
+    calibration_year_final: int | None = None,
+    periodicity: compute.Periodicity | None = None,
     candidates: Sequence[Distribution] | None = None,
-    pet_mm: np.ndarray | None = None,
+    pet_mm: np.ndarray | xr.DataArray | None = None,
     aggregation: Aggregation = "sum",
     clip_negatives: bool = True,
     criterion: Criterion = "aicc",
     spatial_time_major: bool = False,
-) -> DistributionComparison:
+    time_dim: str = "time",
+) -> DistributionComparison | xr.Dataset:
     """Compare candidate distributions for an index on one shared calibration sample.
 
     The series is prepared exactly as the named index prepares it (SPEI's water balance and
@@ -379,37 +397,57 @@ def compare_distributions(
     is reported in ``fit_failed`` and does not rank; ``best`` can then have only one eligible
     candidate, and ``delta_to_runner_up`` is NaN.
 
+    An ``xr.DataArray`` takes the xarray route (Dask-backed input included, with time in a single
+    chunk, ADR-0003) and returns an ``xr.Dataset``; see Returns.
+
     Args:
-        values: Precipitation, or the series ``standardized_index`` would standardize: 1-D, 2-D
-            ``(years, periods)``, or a time-major block ``(time, *cells)`` with
-            ``spatial_time_major=True``.
+        values: Precipitation, or the series ``standardized_index`` would standardize. NumPy: 1-D,
+            2-D ``(years, periods)``, or a time-major block ``(time, *cells)`` with
+            ``spatial_time_major=True``. xarray: a DataArray with the ``time_dim`` dimension plus any
+            cell dimensions.
         scale: Timescale in time steps accumulated before fitting.
         index: ``"spi"``, ``"spei"`` or ``"standardized_index"``.
-        data_start_year: First year of ``values``.
-        calibration_year_initial: First calibration year; clamped to the record.
-        calibration_year_final: Last calibration year; clamped to the record.
-        periodicity: Monthly or daily.
+        data_start_year: First year of ``values``. Required for NumPy input; inferred from the time
+            coordinate for xarray input.
+        calibration_year_initial: First calibration year; clamped to the record. Required for NumPy
+            input; inferred from the time range for xarray input.
+        calibration_year_final: Last calibration year; clamped to the record. Required for NumPy
+            input; inferred from the time range for xarray input.
+        periodicity: Monthly or daily. Required for NumPy input; inferred from the time coordinate
+            for xarray input.
         candidates: Families to compare; ``None`` selects gamma and Pearson Type III, plus
             log-logistic for ``"spei"``. Naming any other family raises.
         pet_mm: Potential evapotranspiration matching ``values``; required for, and only for,
-            ``index="spei"``. A spatial block also accepts a per-step series or singleton cell
-            axes; a shape that would broadcast over a larger cell grid raises.
+            ``index="spei"``. A NumPy spatial block also accepts a per-step series or singleton
+            cell axes; a shape that would broadcast over a larger cell grid raises. For xarray
+            input it must be a DataArray with the same dimensions as ``values``.
         aggregation: ``"sum"`` or ``"mean"`` window aggregation; ``"standardized_index"`` only.
         clip_negatives: Clip negative input to zero. ``False`` rejects negatives, as
             ``standardized_index`` does for gamma and Pearson; ``"standardized_index"`` only.
         criterion: Criterion ``best`` selects on.
-        spatial_time_major: Read a three-or-more-dimensional ``values`` as independent series
-            shaped ``(time, *cells)``.
+        spatial_time_major: Read a three-or-more-dimensional NumPy ``values`` as independent
+            series shaped ``(time, *cells)``. The xarray route reads its layout from the
+            dimension names and ignores this.
+        time_dim: Name of the time dimension of an xarray ``values``; xarray input only.
 
     Returns:
-        A frozen :class:`DistributionComparison`, whose provenance records ``data_start_year``
-        along with the effective calibration bounds to identify the shared sample.
+        For NumPy input, a frozen :class:`DistributionComparison`, whose provenance records
+        ``data_start_year`` along with the effective calibration bounds to identify the shared
+        sample. For xarray input, an ``xr.Dataset`` of per-candidate variables over
+        ``(candidate, month | dayofyear, *cells)`` (``log_likelihood``, ``aic``, ``aicc``,
+        ``bic``, ``n_parameters``, ``fit_failed`` and every fitted parameter, NaN where a family
+        has no such parameter) and per-step variables over ``(month | dayofyear, *cells)``
+        (``n``, ``best`` as the winning candidate's name or ``"none"``, ``delta_to_runner_up``).
+        Every variable carries the ADR-0028 section 6 attributes that apply to this route.
 
     Raises:
         InvalidArgumentError: For an unsupported route, criterion, candidate, hourly
-            periodicity, non-numeric or infinite input, or an argument combination the route
-            does not accept.
-        ValueError: If ``values`` holds no valid value.
+            periodicity, non-numeric or infinite input, an argument combination the route
+            does not accept, or a NumPy call that omits a required temporal argument.
+        ValueError: If a NumPy ``values`` holds no valid value.
+        CoordinateValidationError: For an xarray time dimension that is missing, non-monotonic,
+            unsupported, does not begin in January, mismatches ``periodicity``, or is split
+            across Dask chunks.
 
     Warns:
         BetaFeatureWarning: Always; the module is Beta.
@@ -422,6 +460,74 @@ def compare_distributions(
             consecutive years share overlapping windows and effective sample sizes shrink.
     """
     warnings.warn(_BETA_MESSAGE, BetaFeatureWarning, stacklevel=2)
+    if isinstance(values, xr.DataArray):
+        return _compare_xarray(
+            values,
+            scale,
+            index=index,
+            data_start_year=data_start_year,
+            calibration_year_initial=calibration_year_initial,
+            calibration_year_final=calibration_year_final,
+            periodicity=periodicity,
+            candidates=candidates,
+            pet_mm=pet_mm,
+            aggregation=aggregation,
+            clip_negatives=clip_negatives,
+            criterion=criterion,
+            time_dim=time_dim,
+        )
+    if (
+        data_start_year is None
+        or calibration_year_initial is None
+        or calibration_year_final is None
+        or periodicity is None
+    ):
+        raise _invalid(
+            "data_start_year, calibration_year_initial, calibration_year_final and periodicity are required "
+            "for NumPy input.",
+            "data_start_year",
+            None,
+            "all four temporal arguments",
+        )
+    return _compare_numpy(
+        values,
+        scale,
+        index=index,
+        data_start_year=data_start_year,
+        calibration_year_initial=calibration_year_initial,
+        calibration_year_final=calibration_year_final,
+        periodicity=periodicity,
+        candidates=candidates,
+        pet_mm=pet_mm.to_numpy() if isinstance(pet_mm, xr.DataArray) else pet_mm,
+        aggregation=aggregation,
+        clip_negatives=clip_negatives,
+        criterion=criterion,
+        spatial_time_major=spatial_time_major,
+    )
+
+
+def _compare_numpy(
+    values: np.ndarray,
+    scale: int,
+    *,
+    index: IndexRoute,
+    data_start_year: int,
+    calibration_year_initial: int,
+    calibration_year_final: int,
+    periodicity: compute.Periodicity,
+    candidates: Sequence[Distribution] | None = None,
+    pet_mm: np.ndarray | None = None,
+    aggregation: Aggregation = "sum",
+    clip_negatives: bool = True,
+    criterion: Criterion = "aicc",
+    spatial_time_major: bool = False,
+    require_valid: bool = True,
+) -> DistributionComparison:
+    """The NumPy core of :func:`compare_distributions`, without the Beta warning (see there).
+
+    ``require_valid=False`` lets an all-missing input through, as one masked block or cell of a
+    grid: it scores as no usable fit instead of aborting the whole grid.
+    """
     _validate_arguments(index, criterion, pet_mm, aggregation, clip_negatives)
     chosen = _resolve_candidates(index, candidates)
     _indices._validate_periodicity(periodicity)
@@ -429,7 +535,7 @@ def compare_distributions(
 
     values = _as_float_array(values)
     prepared, clip = _prepare_values(values, index, pet_mm, clip_negatives)
-    if compute.is_all_missing(prepared):
+    if require_valid and compute.is_all_missing(prepared):
         raise ValueError("The values hold no valid value to compare distributions on.")
 
     scaled = compute.prepare_scaled(
@@ -560,3 +666,289 @@ def compare_distributions(
         parameters=parameters,
         metadata=metadata,
     )
+
+
+# ---- xarray / Dask route (SUIT-04, #1585) ---------------------------------------------------------
+
+_CANDIDATE_FIELDS = ("log_likelihood", "aic", "aicc", "bic", "n_parameters", "fit_failed")
+
+_FIELD_METADATA: dict[str, dict[str, str]] = {
+    "log_likelihood": {
+        "long_name": "Log-likelihood of the candidate at the library's fitted estimates",
+        "units": "1",
+        "description": (
+            "Sum of the log-density (plus the zero-mass term for a zero-mass family) over the shared "
+            "calibration sample, evaluated at the parameters the index itself uses."
+        ),
+    },
+    "aic": {
+        "long_name": "Akaike information criterion at the library's fitted estimates",
+        "units": "1",
+        "description": "2k - 2 log-likelihood; NaN where the candidate failed to fit or score the sample.",
+    },
+    "aicc": {
+        "long_name": "Small-sample corrected Akaike information criterion at the library's fitted estimates",
+        "units": "1",
+        "description": "AIC + 2k(k + 1) / (n - k - 1); NaN where n <= k + 1 or the candidate failed.",
+    },
+    "bic": {
+        "long_name": "Bayesian information criterion at the library's fitted estimates",
+        "units": "1",
+        "description": "k ln(n) - 2 log-likelihood; NaN where the candidate failed to fit or score the sample.",
+    },
+    "n_parameters": {
+        "long_name": "Free parameters of the candidate",
+        "units": "1",
+        "description": "Fitted parameters, plus one for the zero mass where a zero-mass family sees an exact zero.",
+    },
+    "fit_failed": {
+        "long_name": "Candidate has no usable fit",
+        "description": (
+            "True where the candidate has no usable fit or a sample value lies outside its fitted support; "
+            "such a candidate does not rank. A failed fit is recorded, never replaced by another."
+        ),
+    },
+    "n": {
+        "long_name": "Shared calibration sample size",
+        "units": "1",
+        "description": "Valid values per calendar step and cell, identical for every candidate.",
+    },
+    "best": {
+        "long_name": "Best candidate by the requested criterion",
+        "description": (
+            "Name of the eligible candidate with the smallest criterion (ties go to the earlier candidate), or "
+            "'none' where no candidate is eligible. No significance threshold is applied."
+        ),
+    },
+    "delta_to_runner_up": {
+        "long_name": "Criterion gap between the best and second-best candidate",
+        "units": "1",
+        "description": "NaN with fewer than two eligible candidates; a small gap does not discriminate.",
+    },
+}
+
+_PARAMETER_METADATA: dict[str, str] = {
+    "alpha": "Gamma shape parameter",
+    "beta": "Gamma scale parameter",
+    "prob_zero": "Probability of an exact zero",
+    "loc": "Location parameter",
+    "scale": "Scale parameter",
+    "skew": "Pearson Type III skew parameter",
+    "shape": "Log-logistic shape parameter",
+}
+
+_NO_BEST = "none"
+_UNITLESS_FIELDS = frozenset({"fit_failed", "best"})
+
+
+def _comparison_block(
+    values: np.ndarray,
+    *secondary: np.ndarray,
+    chosen: tuple[Distribution, ...],
+    slots: tuple[tuple[str, Distribution], ...],
+    **kwargs: Any,
+) -> tuple[np.ndarray, ...]:
+    """Run the NumPy core on one block or cell and flatten it into the declared output arrays."""
+    result = _compare_numpy(
+        values, pet_mm=secondary[0] if secondary else None, candidates=chosen, require_valid=False, **kwargs
+    )
+    arrays = [
+        np.asarray(getattr(result, field)[position], dtype=float)
+        for field in _CANDIDATE_FIELDS
+        for position in range(len(chosen))
+    ]
+    arrays += [np.asarray(result.parameters[distribution][name], dtype=float) for name, distribution in slots]
+    arrays += [np.asarray(array, dtype=float) for array in (result.n, result.best, result.delta_to_runner_up)]
+    return tuple(arrays)
+
+
+def _candidate_axis(labels: Sequence[str]) -> xr.DataArray:
+    """The ``candidate`` coordinate as plain fixed-width strings, which every NetCDF engine writes."""
+    return xr.DataArray(np.array(labels), dims="candidate", name="candidate")
+
+
+def _label_best(labels: Sequence[str]) -> Any:
+    """A transform from the core's candidate index (-1 for none) to the candidate's name."""
+
+    def transform(code: xr.DataArray) -> xr.DataArray:
+        label: xr.DataArray = xr.where(code == 0, labels[0], _NO_BEST)  # type: ignore[no-untyped-call]
+        for position, name in enumerate(labels[1:], start=1):
+            label = xr.where(code == position, name, label)  # type: ignore[no-untyped-call]
+        return label
+
+    return transform
+
+
+def _compare_xarray(
+    values: xr.DataArray,
+    scale: int,
+    *,
+    index: IndexRoute,
+    data_start_year: int | None,
+    calibration_year_initial: int | None,
+    calibration_year_final: int | None,
+    periodicity: compute.Periodicity | None,
+    candidates: Sequence[Distribution] | None,
+    pet_mm: np.ndarray | xr.DataArray | None,
+    aggregation: Aggregation,
+    clip_negatives: bool,
+    criterion: Criterion,
+    time_dim: str,
+) -> xr.Dataset:
+    """The xarray/Dask route of :func:`compare_distributions`, following ``fit_diagnostics``."""
+    _validate_arguments(index, criterion, pet_mm, aggregation, clip_negatives)
+    chosen = _resolve_candidates(index, candidates)
+    pet_da: xr.DataArray | None = None
+    if pet_mm is not None:
+        if not isinstance(pet_mm, xr.DataArray):
+            raise _invalid(
+                "pet_mm must be a DataArray when values is.", "pet_mm", type(pet_mm).__name__, "xr.DataArray"
+            )
+        if set(pet_mm.dims) != set(values.dims):
+            raise _invalid(
+                "pet_mm must have the same dimensions as values.", "pet_mm", str(pet_mm.dims), str(values.dims)
+            )
+        pet_da = pet_mm
+
+    input_da = values
+    validate_time_dimension(input_da, time_dim)
+    validate_time_monotonicity(input_da[time_dim])
+    if pet_da is not None:
+        validate_time_dimension(pet_da, time_dim)
+        validate_time_monotonicity(pet_da[time_dim])
+        input_da, aligned = _align_inputs(input_da, {"pet": pet_da}, time_dim)
+        pet_da = aligned["pet"]
+    for dataarray in (input_da, pet_da):
+        if dataarray is not None and dataarray.chunks is not None:
+            validate_dask_chunks(dataarray, time_dim)
+
+    provided: dict[str, Any] = {
+        key: value
+        for key, value in {
+            "scale": scale,
+            "index": index,
+            "data_start_year": data_start_year,
+            "calibration_year_initial": calibration_year_initial,
+            "calibration_year_final": calibration_year_final,
+            "periodicity": periodicity,
+            "aggregation": aggregation,
+            "clip_negatives": clip_negatives,
+            "criterion": criterion,
+        }.items()
+        if value is not None
+    }
+    # inference is metadata-only, so it stays safe for Dask-backed input
+    provided.update(_infer_temporal_parameters(_compare_numpy, input_da, [input_da], provided, time_dim))
+    resolved_periodicity: compute.Periodicity = provided["periodicity"]
+    _indices._validate_periodicity(resolved_periodicity)
+    _indices._validate_scale(scale, resolved_periodicity)
+    calendar_plan = _resolve_calendar_plan(_compare_numpy, input_da, [input_da], {}, provided, time_dim)
+    _validate_sufficient_data(input_da[time_dim], scale, calendar_plan)
+
+    monthly = resolved_periodicity is compute.Periodicity.monthly
+    period_dim = "month" if monthly else "dayofyear"
+    steps = np.arange(1, 13 if monthly else 367)
+    labels = [distribution.value for distribution in chosen]
+    slots = tuple(
+        (name, distribution)
+        for name in dict.fromkeys(key for d in chosen for key in compute._PARAMETER_KEYS[d.value])
+        for distribution in chosen
+        if name in compute._PARAMETER_KEYS[distribution.value]
+    )
+
+    first_year, last_year = _effective_calibration_years(
+        input_da[time_dim],
+        provided["calibration_year_initial"],
+        provided["calibration_year_final"],
+        provided.get("data_start_year"),
+    )
+    effective_clip = False if index == "spei" else (True if index == "spi" else clip_negatives)
+    # NetCDF attributes cannot hold a bool, list or None, so every value here is a string or a number
+    calculation_metadata: dict[str, Any] = {
+        "index": index,
+        "scale": str(scale),
+        "data_start_year": str(provided["data_start_year"]),
+        "periodicity": resolved_periodicity.name,
+        "aggregation": aggregation,
+        "clip_negatives": str(effective_clip),
+        "criterion": criterion,
+        "calibration_year_initial": str(first_year),
+        "calibration_year_final": str(last_year),
+        "climate_indices_candidates": json.dumps(labels),
+        "climate_indices_fitting_methods": json.dumps({d.value: _FITTING_METHODS[d] for d in chosen}),
+        "climate_indices_criterion": criterion,
+        "climate_indices_log_likelihood_at": "fitted_estimates",
+    }
+    provenance_parameters = {
+        **{key: value for key, value in calculation_metadata.items() if not key.startswith("climate_indices_")},
+        "clip_negatives": effective_clip,
+        "candidates": labels,
+        "fitting_methods": {d.value: _FITTING_METHODS[d] for d in chosen},
+        "log_likelihood_at": "fitted_estimates",
+    }
+
+    def declare(field: str, *, long_name: str | None = None, transform: Any = None) -> Any:
+        metadata = dict(_FIELD_METADATA.get(field, {}))
+        if long_name is not None:
+            metadata = {
+                "long_name": long_name,
+                "units": "1",
+                "description": f"{long_name}, per calendar step and cell.",
+            }
+        return _SpatialOutput(
+            period_dim,
+            metadata,
+            "Distribution comparison",
+            coordinate=steps,
+            transform=transform,
+            drop_attrs=("units",) if field in _UNITLESS_FIELDS else (),
+        )
+
+    def integer(array: xr.DataArray) -> xr.DataArray:
+        return array.astype("int64")
+
+    def boolean(array: xr.DataArray) -> xr.DataArray:
+        return array.astype(bool)
+
+    transforms = {"n_parameters": integer, "fit_failed": boolean}
+    outputs = (
+        *(declare(field, transform=transforms.get(field)) for field in _CANDIDATE_FIELDS for _ in chosen),
+        *(declare(name, long_name=_PARAMETER_METADATA[name]) for name, _ in slots),
+        declare("n", transform=integer),
+        declare("best", transform=_label_best(labels)),
+        declare("delta_to_runner_up"),
+    )
+    inputs = (input_da,) if pet_da is None else (input_da, pet_da)
+    arrays = _spatial_kernel_call(
+        functools.partial(_comparison_block, chosen=chosen, slots=slots),
+        inputs,
+        kernel_kwargs=provided,
+        # a single cell axis keeps the per-cell interpretation, as fit_diagnostics does
+        spatial_kernel=input_da.ndim != 2,
+        calendar_plan=calendar_plan,
+        outputs=outputs,
+        calculation_metadata=calculation_metadata,
+        output_provenance=_OutputProvenance(
+            inputs={"values": input_da} if pet_da is None else {"values": input_da, "pet_mm": pet_da},
+            parameters=provenance_parameters,
+            implementation="climate_indices.suitability.compare_distributions",
+        ),
+        completion_event="compare_distributions_completed",
+        completion_fields={"period_dim": period_dim, "candidates": labels},
+        time_dim=time_dim,
+    )
+
+    data_vars: dict[str, xr.DataArray] = {}
+    cursor = 0
+    for field in _CANDIDATE_FIELDS:
+        data_vars[field] = xr.concat(arrays[cursor : cursor + len(chosen)], dim=_candidate_axis(labels))
+        cursor += len(chosen)
+    for name in dict.fromkeys(name for name, _ in slots):
+        present = [str(distribution.value) for slot_name, distribution in slots if slot_name == name]
+        parts = arrays[cursor : cursor + len(present)]
+        cursor += len(present)
+        data_vars[name] = xr.concat(parts, dim=_candidate_axis(present)).reindex(candidate=_candidate_axis(labels))
+    for field in ("n", "best", "delta_to_runner_up"):
+        data_vars[field] = arrays[cursor]
+        cursor += 1
+    return xr.Dataset(data_vars)
