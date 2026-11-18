@@ -116,6 +116,23 @@ it fits every pooled anomaly value, exact zeros included, and is unchanged by
 this correction. See the SPAI section of
 {doc}`the algorithm reference </algorithm-reference>`.
 
+## Fitted-parameter units after 3.2.0
+
+This change is pending release. `fit_diagnostics()` on an xarray input (#1650) now labels the fitted parameters that
+carry the sample's physical units with those units. Previously every fitted parameter
+had `units = "1"`.
+
+| Variable | `units` before | `units` now |
+| --- | --- | --- |
+| `beta`, `loc`, `scale` | `"1"` | the input's `units` string; absent when the input has none |
+| `alpha`, `skew`, `prob_zero` | `"1"` | `"1"` (unchanged) |
+
+The input string is reused unchanged for both `aggregation="sum"` and `"mean"`, so for a
+rate input (`"mm/day"`) a `sum` fit is an unweighted sum of the rate samples, not a
+time-integrated window total. Only metadata changes; fitted
+values are identical. Code that assumed `units == "1"` on `beta`, `loc`, or `scale`
+should read `attrs.get("units")` instead. Unit conversion is out of scope.
+
 ## Upgrade considerations for 3.2.0
 
 Version 3.2.0 removes no public API and needs no function-call migration.

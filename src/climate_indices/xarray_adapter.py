@@ -3242,6 +3242,40 @@ _FIT_DIAGNOSTICS_MASSEY_1951 = (
     "Journal of the American Statistical Association, 46(253), 68-78. "
     "https://doi.org/10.1080/01621459.1951.10500769"
 )
+#: Fitted parameters expressed in the fitted sample's units; every other fitted parameter
+#: is dimensionless. ponytail: keyed by name, so the beta *family*'s dimensionless "beta"
+#: would need a (family, name) key if a route ever exposes that family.
+_DIMENSIONAL_PARAMETERS = frozenset({"beta", "loc", "scale"})
+
+
+def _fitted_parameter_units(name: str, *samples: xr.DataArray) -> str | None:
+    """Return a fitted parameter's ``units``: ``"1"``, the samples' shared units, or ``None`` if unknown.
+
+    A dimensional parameter is known only when every sample carries the same ``units``
+    string, which is reused as given for both aggregations; a missing or conflicting
+    string is unknown, never guessed.
+    """
+    if name not in _DIMENSIONAL_PARAMETERS:
+        return "1"
+    units = [sample.attrs.get("units") for sample in samples]
+    # a non-string attribute (a list or array read back from NetCDF) is unknown, not an error
+    if all(isinstance(value, str) for value in units) and len(set(units)) == 1:
+        return str(units[0])
+    return None
+
+
+def _fitted_parameter_output(
+    name: str, base: dict[str, str], samples: tuple[xr.DataArray, ...], **kwargs: Any
+) -> _SpatialOutput:
+    """Declare a fitted-parameter output whose ``units`` follows :func:`_fitted_parameter_units`."""
+    units = _fitted_parameter_units(name, *samples)
+    # the output would otherwise inherit the input's units (build_output_attrs copies them)
+    metadata = {key: value for key, value in base.items() if key != "units"}
+    if units is None:
+        return _SpatialOutput(cf_metadata=metadata, drop_attrs=("units",), **kwargs)
+    return _SpatialOutput(cf_metadata={**metadata, "units": units}, **kwargs)
+
+
 _FIT_DIAGNOSTICS_CF_METADATA: dict[str, dict[str, str]] = {
     "alpha": {
         "long_name": "Gamma shape parameter",
@@ -3251,19 +3285,16 @@ _FIT_DIAGNOSTICS_CF_METADATA: dict[str, dict[str, str]] = {
     },
     "beta": {
         "long_name": "Gamma scale parameter",
-        "units": "1",
         "description": "Fitted gamma scale parameter, per calendar step and cell.",
         "references": _FIT_DIAGNOSTICS_THOM_1958,
     },
     "loc": {
         "long_name": "Pearson Type III location parameter",
-        "units": "1",
         "description": "Fitted Pearson Type III location parameter, per calendar step and cell.",
         "references": _FIT_DIAGNOSTICS_STAGGE_2015,
     },
     "scale": {
         "long_name": "Pearson Type III scale parameter",
-        "units": "1",
         "description": "Fitted Pearson Type III scale parameter, per calendar step and cell.",
         "references": _FIT_DIAGNOSTICS_STAGGE_2015,
     },
@@ -3461,7 +3492,12 @@ def fit_diagnostics(
         ``xr.Dataset`` whose variables are reduced over time only: a calendar-step
         dimension (``month`` for monthly data, ``dayofyear`` for daily data) plus the
         input's cell dimensions, each variable carrying CF attributes and provenance
-        (scale, distribution, calibration period, version, and history). A Pearson
+        (scale, distribution, calibration period, version, and history). The
+        dimensional parameters (``beta``, ``loc``, ``scale``) carry the input's ``units``
+        string unchanged for both aggregations, so a ``sum`` of rate samples is their
+        unweighted sum, not a time-integrated total;
+        they have no ``units`` when the input has none. The shape-like parameters and
+        ``prob_zero`` are ``"1"``. A Pearson
         Type III request keeps both parameter families: the one that does not apply
         to a fitted block (its fit fell back to gamma) is NaN there, and
         ``distribution_used`` names the family that does apply. ``distribution_used``
@@ -3543,10 +3579,12 @@ def fit_diagnostics(
     if fitting_params:
         calculation_metadata["fitting_params"] = f"dict(keys={','.join(sorted(fitting_params))})"
     outputs = tuple(
-        _SpatialOutput(
-            period_dim,
+        _fitted_parameter_output(
+            name,
             _FIT_DIAGNOSTICS_CF_METADATA[name],
-            "Fit diagnostics",
+            (input_da,),
+            core_dim=period_dim,
+            index_name="Fit diagnostics",
             coordinate=np.arange(1, period_length + 1),
         )
         for name in variable_names

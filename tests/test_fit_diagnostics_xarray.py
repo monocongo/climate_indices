@@ -311,6 +311,9 @@ def test_pearson_fallback_reports_the_gamma_fit_and_values() -> None:
         np.testing.assert_allclose(result[name].values, _expected_array(expected, name), equal_nan=True)
     for name in ("loc", "scale", "skew"):
         assert result[name].isnull().all()
+    # the schema, units included, is fixed whichever family a block fell back to
+    assert result["loc"].attrs["units"] == result["scale"].attrs["units"] == "mm"
+    assert result["skew"].attrs["units"] == "1"
     assert set(np.unique(result["distribution_used"].values)) == {"gamma"}
 
 
@@ -608,6 +611,142 @@ def test_netcdf_round_trip(tmp_path, distribution: Distribution) -> None:
                 np.testing.assert_allclose(reopened[name].values, result[name].values, equal_nan=True)
         assert reopened["alpha"].attrs["long_name"] == "Gamma shape parameter"
         assert reopened["alpha"].attrs["units"] == "1"
+        assert reopened["beta"].attrs["units"] == "mm"
         assert reopened["alpha"].attrs["distribution"] == distribution.value
         assert reopened["alpha"].attrs["calibration_year_initial"] == _CALIBRATION_START_YEAR
         assert "history" in reopened["alpha"].attrs
+
+
+_DIMENSIONAL = {Distribution.gamma: ("beta",), Distribution.pearson: ("beta", "loc", "scale")}
+_DIMENSIONLESS = {
+    Distribution.gamma: ("alpha", "prob_zero"),
+    Distribution.pearson: ("alpha", "skew", "prob_zero"),
+}
+
+
+@pytest.mark.parametrize("aggregation", ["sum", "mean"])
+@pytest.mark.parametrize("distribution", [Distribution.gamma, Distribution.pearson])
+def test_dimensional_parameters_carry_sample_units(distribution: Distribution, aggregation: str) -> None:
+    """Scale and location parameters are in the sample's units; shape-like ones are dimensionless."""
+    result = fit_diagnostics(
+        _monthly_series_da(),
+        3,
+        distribution,
+        calibration_year_initial=_CALIBRATION_START_YEAR,
+        calibration_year_final=_CALIBRATION_END_YEAR,
+        aggregation=aggregation,  # type: ignore[arg-type]
+    )
+    for name in _DIMENSIONAL[distribution]:
+        assert result[name].attrs["units"] == "mm", name
+    for name in _DIMENSIONLESS[distribution]:
+        assert result[name].attrs["units"] == "1", name
+
+
+@pytest.mark.parametrize("distribution", [Distribution.gamma, Distribution.pearson])
+def test_dimensional_parameters_omit_unknown_units(distribution: Distribution) -> None:
+    """Without input units a dimensional parameter has none, never ``"1"`` and never a guess."""
+    values = _monthly_series_da()
+    del values.attrs["units"]
+    result = fit_diagnostics(
+        values,
+        3,
+        distribution,
+        calibration_year_initial=_CALIBRATION_START_YEAR,
+        calibration_year_final=_CALIBRATION_END_YEAR,
+    )
+    for name in _DIMENSIONAL[distribution]:
+        assert "units" not in result[name].attrs, name
+    for name in _DIMENSIONLESS[distribution]:
+        assert result[name].attrs["units"] == "1", name
+
+
+def test_fitted_parameter_units_rule() -> None:
+    """The shared rule: samples must agree on a known string for a dimensional parameter."""
+    from climate_indices.xarray_adapter import _fitted_parameter_units
+
+    mm = xr.DataArray([1.0], attrs={"units": "mm"})
+    inch = xr.DataArray([1.0], attrs={"units": "in"})
+    bare = xr.DataArray([1.0])
+    assert _fitted_parameter_units("alpha", bare) == "1"
+    assert _fitted_parameter_units("beta", mm) == "mm"
+    assert _fitted_parameter_units("scale", mm, mm) == "mm"
+    assert _fitted_parameter_units("loc", mm, inch) is None
+    assert _fitted_parameter_units("loc", mm, bare) is None
+    assert _fitted_parameter_units("beta", bare) is None
+    # an empty string is a known units value; a non-string attribute is unknown, not an error
+    assert _fitted_parameter_units("beta", xr.DataArray([1.0], attrs={"units": ""})) == ""
+    assert _fitted_parameter_units("beta", xr.DataArray([1.0], attrs={"units": ["mm"]})) is None
+    assert _fitted_parameter_units("beta", xr.DataArray([1.0], attrs={"units": np.array(["mm"])})) is None
+
+
+@pytest.mark.parametrize("units", [["mm"], np.array(["mm", "in"])])
+def test_non_string_units_are_unknown(units: object) -> None:
+    """A non-string input ``units`` omits the dimensional parameters' units instead of raising."""
+    values = _monthly_series_da()
+    values.attrs["units"] = units
+    result = fit_diagnostics(
+        values,
+        3,
+        Distribution.gamma,
+        calibration_year_initial=_CALIBRATION_START_YEAR,
+        calibration_year_final=_CALIBRATION_END_YEAR,
+    )
+    assert "units" not in result["beta"].attrs
+    assert result["alpha"].attrs["units"] == "1"
+
+
+def test_empty_string_units_are_kept() -> None:
+    """An input ``units`` of ``""`` is known, so the dimensional parameters keep it."""
+    values = _monthly_series_da()
+    values.attrs["units"] = ""
+    result = fit_diagnostics(
+        values,
+        3,
+        Distribution.gamma,
+        calibration_year_initial=_CALIBRATION_START_YEAR,
+        calibration_year_final=_CALIBRATION_END_YEAR,
+    )
+    assert result["beta"].attrs["units"] == ""
+
+
+def _daily_da() -> xr.DataArray:
+    days = pd.date_range("2001-01-01", periods=3 * 365, freq="D")
+    return xr.DataArray(np.arange(1.0, len(days) + 1.0), coords={"time": days}, dims=["time"], attrs={"units": "mm"})
+
+
+def _two_dimensional_da() -> xr.DataArray:
+    """A (time, cell) input: the single-cell-axis legacy per-cell path."""
+    values = _monthly_series_da()
+    return xr.concat([values, values + 1.0], dim="cell").transpose("time", "cell")
+
+
+@pytest.mark.parametrize(
+    "build",
+    [
+        lambda: _monthly_grid_da(),
+        lambda: _monthly_grid_da().chunk({"time": -1, "lat": 1, "lon": 2}),
+        _two_dimensional_da,
+        _daily_da,
+    ],
+    ids=["grid", "dask-grid", "time-cell", "daily"],
+)
+@pytest.mark.parametrize("has_units", [True, False])
+def test_units_on_every_adapter_path(build, has_units: bool) -> None:
+    """Units follow the same rule on the spatial, Dask, per-cell, and daily paths."""
+    values = build()
+    if not has_units:
+        del values.attrs["units"]
+    daily = "time" in values.dims and values.sizes["time"] == 3 * 365
+    result = fit_diagnostics(
+        values,
+        1,
+        Distribution.gamma,
+        calibration_year_initial=2001 if daily else _CALIBRATION_START_YEAR,
+        calibration_year_final=2003 if daily else _CALIBRATION_END_YEAR,
+    )
+    if has_units:
+        assert result["beta"].attrs["units"] == "mm"
+    else:
+        assert "units" not in result["beta"].attrs
+    for name in ("alpha", "prob_zero", "n_valid", "ks_statistic", "ks_p_value"):
+        assert result[name].attrs["units"] == "1", name
