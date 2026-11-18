@@ -25,7 +25,7 @@ Each statement was read in the file named.
 | nClimGrid period-of-record files are mutable; modified derivatives may be redistributed with attribution | `docs/research/nclimgrid-acquisition-and-redistribution.md` |
 | `CITATION.cff` is at 3.1.0 with a Zenodo DOI pending; the package is at 3.2.0 | `CITATION.cff`, `pyproject.toml` |
 | Issue and label conventions, wayfinder map and child tickets | `docs/agent/issue-tracker.md` |
-| No attribution of work to an AI model or tool in commits, PRs, or issue text | `AGENTS.md` |
+| Project policy prohibits attribution of work to an AI model or tool in commits, PRs, and issue text | `AGENTS.md` |
 
 ## External facts
 
