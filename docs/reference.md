@@ -865,12 +865,12 @@ shared calibration sample and reports log-likelihood, AIC, AICc, BIC and the bes
 calendar step and cell. The criteria are penalized likelihoods **at the library's own estimates**
 (gamma by Thom's (1958) closed-form approximation, the others by L-moments), not at
 maximum-likelihood estimates, so a ranking mixes distribution fit with estimator efficiency and
-is not textbook AIC. About 30 values
-per calendar step discriminate weakly, so `delta_to_runner_up` is returned and no threshold is
-applied. A sample value outside a candidate's fitted support gives zero likelihood, so that
-candidate is reported as failed and does not rank; `best` can then have one eligible candidate
-and `delta_to_runner_up` is NaN. The NumPy route is available now; the xarray route, goodness of
-fit and the other suitability tools are tracked in ADR-0028.
+is not textbook AIC. About 30 values per calendar step discriminate weakly, so
+`delta_to_runner_up` is returned and no threshold is applied. A sample value outside a
+candidate's fitted support gives zero likelihood, so that candidate is reported as failed and
+does not rank; `best` can then have one eligible candidate and `delta_to_runner_up` is NaN. The
+NumPy route is available now; the xarray route, goodness of fit and the other suitability tools
+are tracked in ADR-0028.
 
 ```{eval-rst}
 .. automodule:: climate_indices.suitability
