@@ -127,7 +127,8 @@ It is returned whenever it is defined, and no significance threshold is applied.
 - The new root module `climate_indices.suitability` is Beta (`BetaFeatureWarning`).
   It has no root re-export: users import it explicitly, as with the compound module.
 - xarray/Dask follows {doc}`0001-dual-numpy-xarray-api` and {doc}`0003-dask-time-dimension-single-chunk`:
-  time is in a single chunk.
+  time is in a single chunk, except for `drought_category` and `compare_categories`, which are
+  elementwise or count-only and accept any time chunking.
 - `drought_category` follows the USDM SPI/SPEI table with six classes: None and D0 to D4.
   Exact edges −0.5, −0.8, −1.3, −1.6 and −2.0 belong to D0, D1, D2, D3 and D4 respectively;
   each interval includes its upper edge and excludes its lower edge. Values above −0.5 are None.
