@@ -29,38 +29,11 @@ adr/index
 
 ## Indices provided
 
-This project contains Python implementations of various climate index algorithms which provide
-a geographical and temporal picture of the severity of precipitation and temperature anomalies
-useful for climate monitoring and research.
-
-- [SPI](https://climatedataguide.ucar.edu/climate-data/standardized-precipitation-index-spi),
-  Standardized Precipitation Index, utilizing both gamma and Pearson Type III distributions
-- [SPEI](https://www.researchgate.net/publication/252361460_The_Standardized_Precipitation-Evapotranspiration_Index_SPEI_a_multiscalar_drought_index),
-  Standardized Precipitation Evapotranspiration Index, utilizing both gamma and Pearson Type III distributions
-- [PET](https://www.ncdc.noaa.gov/monitoring-references/dyk/potential-evapotranspiration),
-  Potential Evapotranspiration, utilizing either [Thornthwaite](https://doi.org/10.2307/210739)
-  or [Hargreaves](http://dx.doi.org/10.13031/2013.26773) equations
-- [PNP](http://www.droughtmanagement.info/percent-of-normal-precipitation/),
-  Percentage of Normal Precipitation
-- [PCI](https://www.tandfonline.com/doi/abs/10.1111/J.0033-0124.1980.00300.X),
-  Precipitation Concentration Index
-
-This Python implementation of the above climate index algorithms is being developed
-with the following goals in mind:
-
-- to provide an open source software package to compute a suite of
-  climate indices commonly used for climate monitoring, with well
-  documented code that is faithful to the relevant literature and
-  which produces scientifically verifiable results
-- to provide a central, open location for participation and collaboration
-  for researchers, developers, and users of climate indices
-- to facilitate standardization and consensus on best-of-breed
-  climate index algorithms and corresponding compliant implementations in Python
-- to provide transparency into the operational code used for climate
-  monitoring activities at NCEI/NOAA, and consequent reproducibility
-  of published datasets computed from this package
-- to incorporate modern software engineering principles and scientific programming
-  best practices
+The project implements published climate and hydrologic indices for drought, evapotranspiration,
+fire weather, flood potential, energy, power-system reliability, and compound hazards.
+{doc}`project-overview` lists every index family with its scope, inputs, and goals.
+{doc}`algorithms` explains when to use each index, and the algorithm pages listed above cite the
+published methods and the evidence for each.
 
 ## Get involved
 

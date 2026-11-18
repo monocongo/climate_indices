@@ -1,121 +1,181 @@
 # Project Overview
 
-## Executive Summary
+## Summary
 
-**climate_indices** is a production-grade Python library providing reference implementations of climate and hydrologic indices used for drought monitoring, agricultural planning, flood-potential assessment, and fire-weather assessment. The library computes the Standardized Precipitation Index (SPI), Standardized Precipitation Evapotranspiration Index (SPEI), Evaporative Demand Drought Index (EDDI), Percentage of Normal Precipitation (PNP), Precipitation Concentration Index (PCI), Potential Evapotranspiration (PET), the Palmer Drought Indices, a namespaced family of fire-weather indices, and a namespaced family of flood-potential indices (Effective Precipitation, Effective Drought Index (EDI), Flood Index, Antecedent Precipitation Index).
+**climate_indices** is a Python library that implements published climate and hydrologic indices. It covers standardized drought indices, the Palmer indices, evapotranspiration estimates, fire-weather indices, flood-potential indices, energy-meteorology indices, power-system reliability indices, and compound-hazard statistics.
 
-### Project Status
-- **Maturity**: Production/Stable (Development Status 5)
-- See [PyPI](https://pypi.org/project/climate-indices/) for published Python releases.
-- **Python Support**: 3.11, 3.12, 3.13, 3.14, 3.15
-- **License**: BSD 3-Clause
-- **Documentation**: [ReadTheDocs](https://climate-indices.readthedocs.io/)
+It computes indices from data you supply, for NumPy arrays and `xarray.DataArray` objects, and it can process large grids lazily with Dask. It does not download or quality-control data, and it does not produce forecasts.
+
+The code is a fork of work originally developed by NIDIS/NCEI/NOAA for drought monitoring (see [Licensing](licensing.md)). This repository is a scientific product, not an official communication of NOAA; see the `DISCLAIMER` file in the repository root.
+
+### Project status
+
+- **Maturity**: the PyPI classifier is "Development Status :: 5 - Production/Stable". The API stability tiers (Stable and Beta) are listed in the repository `README.md` and in the [compatibility matrix](xarray_compatibility.md).
+- **Releases**: see [PyPI](https://pypi.org/project/climate-indices/) for published Python releases and the repository `CHANGELOG.md` for what each one changed.
+- **Python support**: `requires-python = ">=3.11,<3.16"` on `main`. The classifiers on a published release show the versions it supports.
+- **License**: BSD-3-Clause for the project. The Rust routines include code derived from other projects, including code under the Boost Software License 1.0, so the distribution metadata reads `BSD-3-Clause AND BSL-1.0`. See [Licensing](licensing.md).
+- **Documentation**: [Read the Docs](https://climate-indices.readthedocs.io/)
 - **Repository**: [GitHub](https://github.com/monocongo/climate_indices)
 
-### Key Capabilities
-- **Drought / Moisture Indices**: SPI, SPEI, PNP, EDDI, PCI
-- **Palmer Family**: PDSI, PHDI, PMDI, Palmer Z-Index, and self-calibrated scPDSI
-- **Flood-Potential Indices**: `climate_indices.flood` namespace — Effective Precipitation, fixed-window EDI, Flood Index, and the recursive Antecedent Precipitation Index
-- **PET Methods**: Thornthwaite, Hargreaves, and FAO-56 Penman-Monteith (`climate_indices.pet_penman_monteith`) are public APIs; lower-level primitives in `drought/pm_eto.py` are internal and back the fire-weather indices
-- **Fire-Weather Indices**: `climate_indices.fire` namespace — Fosberg Fire Weather Index (FFWI), Hot-Dry-Windy Index (HDW), Keetch-Byram Drought Index (KBDI), and the Canadian Forest Fire Weather Index System (FFMC, DMC, DC, ISI, BUI, FWI, DSR)
-- **Run Theory**: `runs` module for identifying contiguous above/below-threshold events (duration, magnitude, intensity, peak, interarrival)
-- **Flexible Input Formats**: NumPy arrays, xarray DataArrays, and Dask arrays
-- **Multiple Temporal Scales**: Monthly data at 1–72 months; daily data at 1–2,196 days (where applicable)
-- **Distribution Options**: Gamma and Pearson Type III distributions for SPI/SPEI
-- **CLI Tools**: A single `climate_indices` CLI for batch processing NetCDF data across the index families
-- **Scientific Rigor**: Peer-reviewed methodologies with comprehensive validation against reference datasets
+## What the library computes
 
-## Project Classification
+| Family | Indices | Scope note |
+|:--|:--|:--|
+| Standardized drought indices | SPI, SPEI, SPAI (Beta), the generic `standardized_index()`, PNP, PCI, EDDI | SPI, SPEI, and SPAI fit a distribution to a calibration period and convert each value to a standard-normal score. EDDI ranks evaporative demand instead of fitting a distribution. |
+| Palmer indices | PDSI, PHDI, PMDI, Z-Index, and the self-calibrating PDSI (scPDSI, Wells et al. 2004) | scPDSI is available through the NumPy API and the CLI. |
+| Evapotranspiration | Thornthwaite, Hargreaves-Samani, and FAO-56 Penman-Monteith (`climate_indices.pet_penman_monteith`) | Hargreaves-Samani and FAO-56 Penman-Monteith estimate reference evapotranspiration (ETo). Lower-level Penman-Monteith helpers in `drought/pm_eto.py` are internal; the fire-weather indices use them. |
+| Fire weather (`climate_indices.fire`) | KBDI, the Canadian Forest Fire Weather Index System (FFMC, DMC, DC, ISI, BUI, FWI, DSR), Fosberg FFWI, Hot-Dry-Windy (HDW), Haines | These are fuel-dryness and fire-weather indices. They are not fire-behavior or fire-spread predictions. |
+| Flood potential (`climate_indices.flood`) | Effective Precipitation (PE), Effective Drought Index (EDI), Flood Index, Antecedent Precipitation Index (API), flood-event extraction | These are accumulated-wetness measures that indicate flood potential. They do not model flooding. EDI (flood) and EDDI (drought) are different indices. |
+| Energy (`climate_indices.energy`) | Heating, cooling, and energy degree days; hub-height wind speed; wind and PV capacity factors; standardized energy indices (SREPI, demand index, SRLI); energy-drought events | These describe the climate-driven part of supply and demand, not actual generation or load. |
+| Reliability (`climate_indices.reliability`) | SAIFI, SAIDI, CAIDI, MAIFI, MAIFI_E, ASAI, outage counts, Major Event Day filtering | These are IEEE Std 1366 distribution reliability indices computed from an interruption log. They are not resilience metrics. |
+| Compound hazards (`climate_indices.compound`) | Joint counts, likelihood multiplication factor, conditional probabilities, event matching, block bootstrap | These describe co-occurrence. They make no causal or significance claim. |
+| Supporting tools | Run theory (`climate_indices.runs`), distribution fit diagnostics (`fit_diagnostics()`), probability-scale output (`output_scale`) | Run theory extracts events above or below a threshold, with duration, magnitude, intensity, and peak. |
 
-### Repository Structure
-- **Type**: Monolith (single cohesive codebase)
-- **Project Type**: Library
-- **Primary Language**: Python 3.11+
-- **Build System**: Hatchling (PEP 517) + uv for dependency management
-- **Package Management**: uv (modern Python package installer/resolver)
+Each family has an application guide: [wildfire](wildfire_applications.md), [flood](flood_applications.md), [energy](energy_applications.md), [reliability](reliability_applications.md), and [compound hazards](compound-hazards.md).
 
-### Drought namespace
+## Inputs, outputs, and options
 
-`climate_indices.drought` re-exports the typed NumPy/DataArray drought functions that are also available at the package root.
-Direct NumPy implementations live in `drought.indices` and `drought.palmer`.
-The generic standardization and diagnostic functions and PET implementations remain here for now.
-Shared `compute`, `vocabulary`, and `lmoments` modules stay at the root.
-See [ADR-0027](adr/0027-drought-namespace-and-module-migration.md) for the nine module moves and temporary public-module aliases.
+- **Array types**: NumPy arrays, `xarray.DataArray`, and Dask-backed DataArrays. The DataArray routes keep coordinates, attach CF metadata, and stay lazy on Dask input. Some functions need a single chunk along `time`; the [compatibility matrix](xarray_compatibility.md) lists the constraints per function.
+- **Periodicity**: monthly and daily series for most indices. Hourly series are accepted only by the empirical standardized routes (`standardized_index()`, `energy.srepi()`, `energy.standardized_demand_index()`, `energy.srli()`). Weekly series are unsupported. See [Input Data Requirements](data_requirements.md).
+- **Time scales**: for the standardized indices, monthly data accept scales of 1 to 72 months, and daily data accept scales of 1 to 2,196 days.
+- **Distributions**: SPI uses gamma or Pearson Type III. SPEI also accepts log-logistic (generalized logistic) and generalized extreme value (GEV). `standardized_index()` also accepts empirical and beta. SPAI uses a t location-scale, Pearson Type III, or normal fit to the pooled precipitation anomalies. See [Choosing Parameters](choosing-parameters.md) and [Checking Distribution Fit](checking-distribution-fit.md).
+- **Calibration period**: the period used to fit the distribution. It defaults to the full record. A period shorter than 30 years triggers `ShortCalibrationWarning`.
+- **Output scale**: `output_scale` returns standard-normal scores (the default), fitted cumulative probabilities, or a bounded `[-1, 1]` scale. `zero_handling` selects how a zero accumulation is placed within the probability of zero.
+- **Command line**: a single `climate_indices` command computes indices from NetCDF files. See the [CLI reference](reference.md#command-line-interface).
 
-### Architecture Pattern
-**Layered Library Architecture**:
+## Scientific basis and evidence
+
+Each index implements a published method: a journal article or an agency technical report. Examples are McKee et al. (1993) for SPI, Vicente-Serrano et al. (2010) for SPEI, Thornthwaite (1948) and Hargreaves and Samani (1985) for evapotranspiration, Palmer (1965) and Wells et al. (2004) for the Palmer indices, and Allen et al. (1998), FAO-56, for Penman-Monteith. The [algorithm descriptions](algorithms.md) and the [algorithm references](algorithm-reference.md) cite the sources and record where this implementation makes a documented choice.
+
+Evidence differs by index, and the repository records the difference rather than asserting validation everywhere. `VALIDATION.md` in the repository root classifies each index as externally validated, reproduced from a published example, characterized on synthetic data, or covered by regression and specification tests only. For example, EDDI is compared with NOAA PSL reference values, SPEI with SPEIbase and the R `SPEI` package, and the standard Palmer indices with NOAA NCEI nClimDiv. The flood family and SPAI have no external numerical reference yet.
+
+The optional Rust backend has a separate check. A parity registry runs each ported kernel through the Rust extension and the Python implementation on generated inputs and compares the results within a stated tolerance. See [Architecture](architecture.md#parity-tolerance).
+
+## Goals
+
+- Provide open-source implementations of climate indices commonly used for climate monitoring and research, with code documented against the relevant literature.
+- Make the evidence for each implementation visible, including its known gaps.
+- Keep the algorithms reproducible, so that results computed from this package can be repeated by others.
+- Provide an open place for researchers, developers, and users of climate indices to collaborate and compare implementations.
+- Follow current scientific-software practice: typed public APIs, automated tests, and documented decisions ([architecture decision records](adr/index.md)).
+
+## Typical uses
+
+The library supplies indices of the kind used as inputs to:
+
+- drought monitoring and historical drought analysis from user-supplied precipitation, temperature, or evapotranspiration data
+- agricultural and water-resource studies that use standardized drought indices as one input
+- daily flood-potential screening and fire-weather assessment
+- event analysis, such as drought, wet, and fire-weather spells, using run theory
+- climate-risk studies of energy supply and demand, and of power-system reliability
+- studies of how hazards co-occur
+
+Operational decisions need more than an index value. Check the evidence in `VALIDATION.md` and the input requirements before relying on a result.
+
+## Project classification
+
+### Repository structure
+
+- **Type**: single repository containing a Python package and two Rust crates
+- **Primary language**: Python 3.11 or later, with an optional Rust backend
+- **Build system**: Hatchling (PEP 517) for the Python package; maturin builds the Rust extension in the published wheels
+- **Dependency management**: uv (`uv.lock`)
+
+### Package layout
+
+- `climate_indices.drought` holds the NumPy implementations (`drought.indices`, `drought.palmer`, `drought.eto`, `drought.pm_eto`, `drought.self_calibration`) and re-exports the typed drought functions that are also available at the package root. Shared `compute`, `vocabulary`, and `lmoments` modules stay at the root. See [ADR-0027](adr/0027-drought-namespace-and-module-migration.md) for the module moves and the temporary public-module aliases.
+- `climate_indices.fire`, `.flood`, `.energy`, `.reliability`, and `.compound` are namespaced subpackages. Fire-weather indices are exposed only under `climate_indices.fire` ([ADR-0005](adr/0005-fire-module-api.md)), and flood-potential indices only under `climate_indices.flood` ([ADR-0013](adr/0013-flood-module-api-and-naming.md)).
+- `crates/climate-py` holds the PyO3 bindings that build the `climate_indices._native` extension. `crates/climate-indices` is the standalone pure-Rust crate of numerical kernels.
+
+### Architecture pattern
+
+The library is layered:
+
 ```
 ┌─────────────────────────────────────┐
-│   CLI Layer                         │  ← __main__.py, _cli.py
+│   CLI Layer                         │  ← __main__.py, _cli.py, _cli_output.py,
+│                                     │     _cli_transport.py
 ├─────────────────────────────────────┤
 │   Public API Layer                  │  ← typed_public_api.py, xarray_adapter.py,
-│                                     │     cf_metadata_registry.py, drought/, fire/, flood/
+│                                     │     cf_metadata_registry.py, drought/, fire/,
+│                                     │     flood/, energy/, reliability/, compound/
 ├─────────────────────────────────────┤
 │   Computation Layer                 │  ← drought/indices.py, compute.py, drought/palmer.py,
-│                                     │     drought/self_calibration.py, drought/eto.py, drought/pm_eto.py,
-│                                     │     runs.py, validation.py
+│                                     │     drought/self_calibration.py, drought/eto.py,
+│                                     │     drought/pm_eto.py, runs.py, validation.py
 ├─────────────────────────────────────┤
 │   Math/Statistics Layer             │  ← lmoments.py, drought/_palmer_duration.py,
-│                                     │     drought/_palmer_pdi.py, drought/_palmer_wells.py
+│                                     │     drought/_palmer_pdi.py, drought/_palmer_wells.py,
+│                                     │     optional Rust kernels via _native_backend.py
 ├─────────────────────────────────────┤
 │   Infrastructure Layer              │  ← utils.py, logging_config.py,
-│                                     │     exceptions.py, performance.py
+│                                     │     exceptions.py, performance.py, provenance.py
 └─────────────────────────────────────┘
 ```
 
-### Entry Points
-The installed script names map to the single full-featured CLI:
-- **`climate_indices`** / **`process_climate_indices`**: `__main__.main`, the only CLI entry point. `--index` choices are `spi`, `spei`, `pnp`, `scaled`, `pet`, `palmers`, `kbdi`, `pe`, `edi`, `flood_index`, `api`, and `all`. The former specialized `spi` CLI (parameter save/load) was retired in 3.0.0; fit once with `compute.gamma_parameters()`/`compute.pearson_parameters()` and pass the dict to `fitting_params`.
+See [Architecture](architecture.md) for the detailed design.
 
-### Technology Stack Summary
+### Entry points
+
+The installed script names `climate_indices` and `process_climate_indices` both run `__main__.main`, the only CLI entry point. The `--index` choices are `spi`, `spei`, `pnp`, `scaled`, `pet`, `palmers`, `kbdi`, `pe`, `edi`, `flood_index`, `api`, `hdd`, `cdd`, `edd`, `wind_profile`, `srepi`, `demand_index`, `srli`, and `all`. The former specialized `spi` CLI (parameter save and load) was retired in 3.0.0. To reuse a fit, call `compute.gamma_parameters()` or `compute.pearson_parameters()` once and pass the dict as `fitting_params`.
+
+### Technology stack
+
 | Category | Technology |
 |----------|-----------|
-| **Core Language** | Python 3.11+ |
-| **Scientific Computing** | NumPy, SciPy, xarray, Dask, pandas, cftime, h5netcdf |
+| **Core language** | Python 3.11+ |
+| **Scientific computing** | NumPy, SciPy, xarray, Dask, pandas, cftime, h5netcdf |
+| **Optional acceleration** | Rust (PyO3 bindings, built with maturin) |
 | **Logging** | structlog (structured logging) |
 | **Testing** | pytest, hypothesis (property-based), pytest-benchmark |
-| **Type Checking** | mypy --strict |
-| **Linting/Formatting** | ruff |
+| **Type checking** | mypy (strict) |
+| **Linting and formatting** | ruff |
 | **Build** | Hatchling (PEP 517) |
-| **CI/CD** | GitHub Actions (`benchmarks.yml`, `release.yml`, `unit-tests-workflow.yml`) |
+| **CI/CD** | GitHub Actions (`unit-tests-workflow.yml`, `release.yml`, `benchmarks.yml`, `bandit.yml`, `crate-release.yml`) |
 | **Containerization** | Docker (Python 3.14-slim base) |
-| **Documentation** | Sphinx with ReadTheDocs hosting |
+| **Documentation** | Sphinx with Read the Docs hosting |
 
-## Quick Reference
+## Quick reference
 
 ### Installation
-```bash
-# From PyPI
-pip install climate_indices
 
-# From source (development mode with uv)
+```bash
+# from PyPI
+pip install climate-indices
+
+# from source (development mode with uv)
 git clone https://github.com/monocongo/climate_indices.git
 cd climate_indices
 uv sync --group dev
 ```
 
-### Core API Usage
+### Core API usage
 
-#### Modern xarray API (Recommended)
+#### xarray API
+
 ```python
-import climate_indices as ci
-from climate_indices.drought import indices
+import numpy as np
+import pandas as pd
 import xarray as xr
 
-# Load precipitation data
-precip = xr.open_dataarray("precip.nc")
+from climate_indices import spi
+from climate_indices.vocabulary import Distribution
 
-# Compute 6-month SPI (time parameters inferred from coordinates when omitted)
-spi_6 = ci.spi(
+# 40 years of synthetic monthly precipitation; replace with xr.open_dataarray("precip.nc")
+time = pd.date_range("1980-01-01", periods=480, freq="MS")
+precip = xr.DataArray(np.random.default_rng(0).gamma(2.0, 40.0, 480), coords={"time": time}, dims="time")
+
+# 6-month SPI; the start year and periodicity are inferred from the time coordinate
+spi_6 = spi(
     precip,
     scale=6,
-    distribution=indices.Distribution.gamma,
+    distribution=Distribution.gamma,
     calibration_year_initial=1981,
-    calibration_year_final=2010
+    calibration_year_final=2010,
 )
 ```
 
-#### Legacy NumPy API (Backward Compatibility)
+#### NumPy API
 
 > Note: the calibration-window boundary parameters are `calibration_year_initial`/
 > `calibration_year_final` across the Python API. `percentage_of_normal` still
@@ -123,29 +183,31 @@ spi_6 = ci.spi(
 > deprecated aliases (removed in 4.0.0), and the CLI accepts
 > `--calibration_year_initial`/`--calibration_year_final` as aliases for its
 > `--calibration_start_year`/`--calibration_end_year` flags.
+
 ```python
-from climate_indices import compute
-from climate_indices.drought import indices
 import numpy as np
 
-# Load data as numpy array
-precip_mm = np.load("precip_monthly.npy")
+from climate_indices.drought import indices
+from climate_indices.vocabulary import Distribution, Periodicity
 
-# Compute 6-month SPI
+# 40 years of synthetic monthly precipitation, starting in January 1980
+precip_mm = np.random.default_rng(0).gamma(2.0, 40.0, 480)
+
 spi_6 = indices.spi(
     precip_mm,
     scale=6,
-    distribution=indices.Distribution.gamma,
+    distribution=Distribution.gamma,
     data_start_year=1980,
     calibration_year_initial=1981,
     calibration_year_final=2010,
-    periodicity=compute.Periodicity.monthly
+    periodicity=Periodicity.monthly,
 )
 ```
 
-### CLI Usage
+### CLI usage
+
 ```bash
-# Process gridded NetCDF data for multiple indices
+# compute SPI at 1-, 3-, 6-, and 12-month scales from a gridded NetCDF file
 climate_indices \
     --index spi \
     --periodicity monthly \
@@ -157,89 +219,78 @@ climate_indices \
     --output_file_base results/spi
 ```
 
-### Development Commands
+### Development commands
+
 ```bash
-# Run tests
+# run tests
 uv run pytest
 
-# Run tests with coverage
+# run tests with coverage
 uv run pytest --cov=src --cov-report=term
 
-# Type checking (Python 3.12, the stack CI's lint job uses)
+# type checking (Python 3.12, the stack the CI lint job uses)
 uv run --python 3.12 mypy src/ tests/test_type_checking.py
 
-# Linting and formatting
+# linting and formatting
 uv run ruff check src/ tests/
 uv run ruff format --check src/ tests/
 
-# Run benchmarks (deselected by default)
+# run benchmarks (deselected by default)
 uv run pytest -m benchmark
 ```
 
-## Project Goals and Use Cases
+See [CONTRIBUTING.md](https://github.com/monocongo/climate_indices/blob/main/CONTRIBUTING.md) for the full list of checks a pull request must pass.
 
-### Primary Use Cases
-1. **Drought Monitoring**: Real-time and historical drought assessment using SPI/SPEI/PDSI
-2. **Agricultural Planning**: Crop yield forecasting and irrigation scheduling
-3. **Water Resource Management**: Reservoir operations and water allocation decisions
-4. **Flood Assessment**: Daily flood-potential screening with Effective Precipitation, EDI, Flood Index, and API
-5. **Fire-Weather Assessment**: Fuel-dryness and fire-danger indices for wildland fire management
-6. **Event Analysis**: Run-theory extraction of drought, wet, and fire-spell events
-7. **Climate Research**: Long-term precipitation and drought trend analysis
-8. **Operational Meteorology**: Integration into weather services and early warning systems
+## Contributor and AI-agent reference
 
-### Design Philosophy
-- **Scientific Correctness**: Implementations follow peer-reviewed methodologies (McKee et al. 1993, Vicente-Serrano et al. 2010, Thornthwaite 1948, Hargreaves & Samani 1985, Palmer 1965, Wells et al. 2004, Allen et al. 1998 FAO-56)
-- **Performance**: Optimized for large gridded datasets using Dask parallelization
-- **Usability**: Dual API (NumPy/xarray) for different user workflows
-- **Reliability**: Comprehensive test coverage (>90%), property-based testing, backward compatibility guarantees
-- **Extensibility**: Modular design allows addition of new indices, distributions, or PET methods
+### Recommended starting points
 
-## AI-Assisted Development Guidance
+1. **Computation**: start with `docs/architecture.md`, then `src/climate_indices/compute.py` and `src/climate_indices/drought/indices.py`.
+2. **Public API**: read `src/climate_indices/typed_public_api.py` (strict typing) and `src/climate_indices/xarray_adapter.py`.
+3. **CLI**: read `src/climate_indices/__main__.py` (the index pipeline registry and `--index` handling) and `src/climate_indices/_cli.py` (shared argument registration).
+4. **Palmer calculations**: read `src/climate_indices/drought/palmer.py`, `drought/_palmer_pdi.py`, `drought/_palmer_wells.py`, `drought/_palmer_duration.py`, and `drought/self_calibration.py`.
+5. **Fire-weather indices**: read `src/climate_indices/fire/__init__.py` and the subsystem design in `docs/design/fire-subsystem.md`.
+6. **Flood-potential indices**: read `src/climate_indices/flood/__init__.py` (public dispatch) and the kernels in `flood/_pe.py`, `flood/_edi.py`, `flood/_if.py`, and `flood/_antecedent.py`.
+7. **Run theory**: read `src/climate_indices/runs.py`.
+8. **Testing patterns**: read `tests/conftest.py` (fixtures), `tests/test_xarray_adapter.py` (xarray API), and `tests/test_property_based.py` (invariants).
+9. **Error handling**: read `src/climate_indices/exceptions.py` (the exception hierarchy and its attributes).
 
-### Recommended Starting Points for AI Agents
-1. **For understanding computation**: Start with `docs/architecture.md`, then `src/climate_indices/compute.py` and `src/climate_indices/drought/indices.py`
-2. **For understanding the public API**: Read `src/climate_indices/typed_public_api.py` (strict mypy typing) and `src/climate_indices/xarray_adapter.py`
-3. **For understanding the CLI**: Examine `src/climate_indices/__main__.py` (the index pipeline registry and `--index` handling) and `src/climate_indices/_cli.py` (shared argument registration)
-4. **For understanding Palmer calculations**: Read `src/climate_indices/drought/palmer.py`, `src/climate_indices/drought/_palmer_pdi.py`, `src/climate_indices/drought/_palmer_wells.py`, `src/climate_indices/drought/_palmer_duration.py`, and `src/climate_indices/drought/self_calibration.py`
-5. **For understanding fire-weather indices**: Read `src/climate_indices/fire/__init__.py` and the subsystem design in `docs/design/fire-subsystem.md`
-6. **For understanding flood-potential indices**: Read `src/climate_indices/flood/__init__.py` (public dispatch) and the `flood/_pe.py`, `flood/_edi.py`, `flood/_if.py`, `flood/_antecedent.py` kernels
-7. **For understanding run theory**: Read `src/climate_indices/runs.py`
-8. **For testing patterns**: Review `tests/conftest.py` (fixtures), `tests/test_xarray_adapter.py` (modern API), `tests/test_property_based.py` (invariants)
-9. **For error handling**: Study `src/climate_indices/exceptions.py` (complete hierarchy with attributes)
+### Architectural invariants
 
-### Critical Architectural Invariants
-- **Time dimension chunking**: SPI/SPEI and stateful fire adapters reject split Dask time chunks; PET adapters rechunk split time internally. See [chunking guidance](./xarray_compatibility.md#chunking-guidance-for-gridded-indices).
-- **Calibration period**: Default minimum 30 years; violations trigger `ShortCalibrationWarning`
-- **Pearson Type III fitting**: Requires at least 4 non-zero values per calendar time step; fewer raise `InsufficientDataError`
-- **Coordinate validation**: Time coordinates must be monotonically increasing; xarray inputs undergo automatic validation
-- **Backward compatibility**: Legacy NumPy API (`drought/indices.py`) must remain stable; new features go to the xarray API
-- **Fire namespace**: Fire-weather indices are exposed only under `climate_indices.fire`; they are not top-level package functions (see ADR-0005)
-- **Flood namespace**: Flood-potential indices are exposed only under `climate_indices.flood` (see ADR-0013); `edi` (flood) and `eddi` (drought) are distinct indices
+- **Time-dimension chunking**: SPI/SPEI and the stateful fire adapters reject split Dask time chunks. PET adapters rechunk split time internally. See the [chunking guidance](./xarray_compatibility.md#chunking-guidance-for-gridded-indices).
+- **Calibration period**: the recommended minimum is 30 years. A shorter period triggers `ShortCalibrationWarning`.
+- **Pearson Type III fitting**: a calendar step needs at least four non-zero calibration values (`compute.MIN_NON_ZERO_VALUES_FOR_PEARSON`). The low-level fit raises `InsufficientDataError` below that count. The public index functions handle that case as their docstrings describe.
+- **Coordinate validation**: time coordinates must be monotonically increasing. xarray inputs are validated automatically.
+- **API stability**: the NumPy and DataArray index APIs are Stable and the compound Dataset routes and SPAI are Beta. Avoid breaking the Stable APIs in minor releases.
+- **Namespaces**: fire-weather indices live only under `climate_indices.fire` ([ADR-0005](adr/0005-fire-module-api.md)). Flood-potential indices live only under `climate_indices.flood` ([ADR-0013](adr/0013-flood-module-api-and-naming.md)). Neither is a top-level package function.
 
-### Code Patterns to Follow
-1. **Type annotations**: All public functions require full type hints (package-wide strict mypy checking configured in `pyproject.toml`)
-2. **Docstrings**: Google-style docstrings with parameter descriptions, return types, raises, examples
-3. **Error handling**: Use specific exception types from `exceptions.py` with context attributes
-4. **Logging**: Use structlog with structured key-value pairs; avoid string interpolation in log messages
-5. **Testing**: Property-based tests for mathematical invariants, regression tests against reference datasets, benchmark tests for performance
+### Code patterns to follow
 
-### Dependencies and Constraints
+1. **Type annotations**: public functions need full type hints. mypy runs in strict mode (`pyproject.toml`).
+2. **Docstrings**: Google-style docstrings for public functions.
+3. **Error handling**: raise the specific exception types from `exceptions.py`, with their context attributes.
+4. **Logging**: use structlog with key-value pairs, and avoid string interpolation in log messages.
+5. **Testing**: property-based tests for mathematical invariants, regression tests against reference datasets, and benchmark tests for performance.
+
+### Dependencies and constraints
+
 - **Core dependencies**: cftime>=1.6.4.post1, dask>=2025.7.0, h5netcdf>=1.6.3, numpy>=1.24.0, pandas>=2.0.0, scipy>=1.15.3, structlog>=24.1.0, xarray>=2025.6.1
-- **Python version**: Must support Python 3.11-3.15 (`requires-python = ">=3.11,<3.16"`)
+- **Python version**: Python 3.11-3.15 (`requires-python = ">=3.11,<3.16"`)
 - **Line length**: 120 characters (ruff configuration)
-- **Import order**: stdlib → third-party → local (enforced by ruff)
-- **Test markers**: Use `@pytest.mark.benchmark` for performance tests, `@pytest.mark.slow` for long-running tests
+- **Import order**: standard library, third party, then local (enforced by ruff)
+- **Test markers**: `@pytest.mark.benchmark` for performance tests, `@pytest.mark.slow` for long-running tests, `@pytest.mark.validation` for external or release-gate validation tests
 
-### Common Pitfalls
-1. **Do NOT** use wildcard imports (`from module import *`) - explicitly forbidden by ruff
-2. **Dask time chunks**: SPI/SPEI and stateful fire adapters reject split time chunks; PET adapters accept them and rechunk internally
-3. **Do NOT** modify the `drought/indices.py` API in a breaking way - backward compatibility requirement
-4. **Do NOT** commit without running tests - pre-commit hooks will fail
-5. **Do NOT** use string paths - always use `pathlib.Path` objects
+### Common pitfalls
 
-### Key Files for Modification Scenarios
-| Task | Primary Files | Test Files |
+1. Do not use wildcard imports (`from module import *`); ruff rejects them.
+2. Dask time chunks: SPI/SPEI and the stateful fire adapters reject split time chunks, and PET adapters accept them and rechunk internally.
+3. Do not break the Stable NumPy and DataArray APIs in a minor release.
+4. Run the checks in the "Local validation" section of `CONTRIBUTING.md` before opening a pull request. CI runs the same checks.
+5. If you edit a document that `scripts/generate_llms_txt.py` bundles (this page and `README.md` among them), regenerate `llms.txt` and `llms-full.txt` with `uv run scripts/generate_llms_txt.py`.
+
+### Key files for modification scenarios
+
+| Task | Primary files | Test files |
 |------|--------------|------------|
 | Add new index | `compute.py`, `drought/indices.py`, `typed_public_api.py`, `xarray_adapter.py` | `test_compute.py`, `test_indices.py`, `test_typed_public_api.py`, `test_xarray_adapter.py` |
 | Add new distribution | `compute.py`, `drought/indices.py`, `lmoments.py` | `test_compute.py`, `test_property_based.py` |
@@ -254,4 +305,4 @@ uv run pytest -m benchmark
 
 ---
 
-**Next Steps**: See [architecture.md](./architecture.md) for detailed technical architecture, [development-guide.md](./development-guide.md) for setup instructions, and [reference.md](./reference.md) for API reference details.
+**Next steps**: see [architecture.md](./architecture.md) for the technical architecture, [development-guide.md](./development-guide.md) for setup instructions, and [reference.md](./reference.md) for API reference details.
