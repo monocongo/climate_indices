@@ -364,7 +364,7 @@ def _select_best(criterion_values: np.ndarray, eligible: np.ndarray) -> tuple[np
 
 
 def compare_distributions(
-    values: np.ndarray | xr.DataArray,
+    values: np.ndarray | xr.DataArray,  # NOSONAR (S107) the public API declares each contract argument explicitly
     scale: int,
     *,
     index: IndexRoute,
@@ -524,7 +524,7 @@ def _shape_all_missing(
 
 
 def _compare_numpy(
-    values: np.ndarray,
+    values: np.ndarray,  # NOSONAR (S107) mirrors the public keywords, which the temporal-inference helpers bind against
     scale: int,
     *,
     index: IndexRoute,
