@@ -876,9 +876,11 @@ An `xr.DataArray` input returns an `xr.Dataset`. Per-candidate variables (`log_l
 such parameter) run over `(candidate, month | dayofyear, *cells)`. The per-step variables `n`,
 `best` (the winning candidate's name, or `"none"` where no candidate is eligible) and
 `delta_to_runner_up` run over `(month | dayofyear, *cells)`. Every variable carries the
-ADR-0028 provenance attributes, including `climate_indices_candidates`,
-`climate_indices_fitting_methods`, `climate_indices_criterion` and
-`climate_indices_log_likelihood_at`, and they survive a NetCDF round trip. Time must be a single
+ADR-0028 provenance attributes that apply before goodness of fit, including
+`climate_indices_candidates`, `climate_indices_fitting_methods`, `climate_indices_criterion` and
+`climate_indices_log_likelihood_at`, and they survive a NetCDF round trip. The attributes
+`climate_indices_gof_bootstrap_samples` and `climate_indices_rng_seed` arrive with goodness of fit
+([#1586](https://github.com/monocongo/climate_indices/issues/1586)), so do not rely on them yet. Time must be a single
 Dask chunk ([ADR-0003](adr/0003-dask-time-dimension-single-chunk.md)), and a Dask input stays lazy
 until `.compute()`, so its fits and warnings also run then. A fully missing input is accepted and
 scores as no usable fit (`n` is 0, `best` is `"none"`) instead of raising. An input dimension, or
