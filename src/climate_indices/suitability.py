@@ -894,11 +894,22 @@ def _validated_inputs(
         validate_time_dimension(pet_da, time_dim)
         validate_time_monotonicity(pet_da[time_dim])
         _validate_calendar(pet_da[time_dim])
+        # alignment can trim a multi-chunk pet down to one chunk, so ADR-0003 is checked on the caller's array first
+        if pet_da.chunks is not None:
+            validate_dask_chunks(pet_da, time_dim)
         input_da, aligned = _align_inputs(input_da, {"pet": pet_da}, time_dim)
         pet_da = aligned["pet"]
     for dataarray in (input_da, pet_da):
         if dataarray is not None and dataarray.chunks is not None:
             validate_dask_chunks(dataarray, time_dim)
+    # the kernel never runs on an empty cell axis, so the new calendar-step dimension cannot be sized
+    if empty := [str(dim) for dim, size in input_da.sizes.items() if size == 0 and dim != time_dim]:
+        raise _invalid(
+            f"values must not have a zero-length cell dimension: {', '.join(empty)}.",
+            "values",
+            ", ".join(empty),
+            "at least one cell along every non-time dimension",
+        )
     return input_da, pet_da
 
 

@@ -245,6 +245,22 @@ def test_time_chunked_values_are_rejected_even_when_pet_covers_only_part_of_the_
         _compare(precip.chunk({"time": 12}), 3, index="spei", pet_mm=pet.chunk({"time": -1}))
 
 
+def test_multi_chunk_pet_is_rejected_even_when_alignment_trims_it_to_one_chunk() -> None:
+    precip = _grid(seed=5, masked_cell=False).isel(time=slice(0, 360))  # 30 years
+    pet = _grid(seed=5, masked_cell=False) * 0.5  # 60 years, two 30-year chunks
+    with pytest.raises(CoordinateValidationError, match="single chunk"):
+        _compare(precip, 3, index="spei", pet_mm=pet.chunk({"time": 360}))
+    # a pet with one time chunk may still be trimmed to the overlap
+    assert "best" in _compare(precip, 3, index="spei", pet_mm=pet.chunk({"time": -1}))
+
+
+@pytest.mark.parametrize("empty", ["lat", "lon"])
+def test_zero_length_cell_dimension_is_rejected(empty: str) -> None:
+    grid = _grid(seed=5, masked_cell=False).isel({empty: slice(0, 0)})
+    with pytest.raises(InvalidArgumentError, match="zero-length cell dimension"):
+        _compare(grid, 3, index="spi")
+
+
 @pytest.mark.parametrize(
     ("index", "candidates", "criterion"),
     [
