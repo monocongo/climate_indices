@@ -880,8 +880,8 @@ def fit_diagnostics(
     reported rather than applied silently.
 
     This is the NumPy entry point. ``climate_indices.fit_diagnostics()`` handles
-    ``xarray.DataArray`` and Dask-backed input. A fitted parameter set returned here can be passed back as
-    ``fitting_params`` to ``standardized_index`` with the same ``aggregation`` to
+    ``xarray.DataArray`` and Dask-backed input. A fitted parameter set returned here
+    can be passed back as ``fitting_params`` to ``standardized_index`` with the same ``aggregation`` to
     reproduce a fit, or to ``spi`` when using the default sum.
 
     Args:

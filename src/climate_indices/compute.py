@@ -1802,7 +1802,7 @@ def _per_column(parameter: np.ndarray, values: np.ndarray) -> np.ndarray | None:
 
 
 def _native_gamma_parameters(calibration_values: np.ndarray) -> tuple[np.ndarray, np.ndarray] | None:
-    """The Rust method-of-moments gamma fit, shaped like the NumPy block it mirrors, or None.
+    """The Rust Thom (1958) closed-form gamma fit, shaped like the NumPy block it mirrors, or None.
 
     np.nanmean emits an empty-slice warning even when floating-point errors are
     ignored, so a column with no positive value (all missing, zero, or negative)
@@ -1997,6 +1997,10 @@ def gamma_parameters(
     """
     Computes the gamma distribution parameters alpha and beta.
 
+    The fit is Thom's (1958) closed-form approximation to the maximum-likelihood estimate
+    (Monthly Weather Review 86(4), 117-122), not full maximum likelihood and not the
+    method of moments.
+
     :param values: 2-D array of values, with each row typically representing a year
                    containing twelve columns representing the respective calendar
                    months, or 366 days per column as if all years were leap years
@@ -2065,8 +2069,8 @@ def gamma_parameters(
     )
     log = log.bind(calibration_period=f"{period.start_year}-{period.end_year}")
 
-    # compute the gamma distribution's shape and scale parameters, alpha and beta,
-    # using Thom's approximation to the maximum-likelihood estimates
+    # compute the gamma distribution's shape and scale parameters, alpha and beta
+    # using Thom's (1958) closed-form approximation to the maximum-likelihood estimate
     native_fit = _native_gamma_parameters(calibration_values)
     if native_fit is not None:
         alphas, betas = native_fit

@@ -558,7 +558,7 @@ result = indices.spi(precip_clipped, scale=6, distribution=indices.Distribution.
 - Skewness values outside valid range
 - Numerical instability with extreme data
 
-**Solution:** Switch to Gamma distribution (uses MLE instead of L-moments):
+**Solution:** Switch to the Gamma distribution (it uses Thom's (1958) closed-form approximation instead of L-moments):
 
 ```python
 # fallback to Gamma distribution

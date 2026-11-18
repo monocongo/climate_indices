@@ -121,7 +121,7 @@ def test_sei_parameter_matched_full_series_matches_sei(zero_handling: str) -> No
 
 @pytest.mark.parametrize("zero_handling", _MODES)
 def test_sei_end_to_end_index_agrees_within_documented_tolerance(zero_handling: str) -> None:
-    """The full pipeline agrees with SEI despite its MLE gamma versus our method of moments."""
+    """The full pipeline agrees with SEI despite its MLE gamma versus our Thom closed-form gamma."""
     values = _load("input_precipitation_mm.npy")
     sei = _load(_SEI_FILES[zero_handling])
     shape = _load("sei_shape.npy")
@@ -173,7 +173,7 @@ def test_sci_center_of_mass_matches_within_its_p0_estimator_bias() -> None:
 
 
 def test_sei_fitted_parameters_are_not_climate_indices_own_fit() -> None:
-    """The SEI fixture carries an external MLE fit, not this library's method-of-moments output."""
+    """The SEI fixture carries an external MLE fit, not this library's Thom closed-form output."""
     values = _load("input_precipitation_mm.npy")
     shape = _load("sei_shape.npy")
     rate = _load("sei_rate.npy")
@@ -185,7 +185,7 @@ def test_sei_fitted_parameters_are_not_climate_indices_own_fit() -> None:
         values, _DATA_START_YEAR, _DATA_START_YEAR, _CALIBRATION_END_YEAR, compute.Periodicity.monthly
     )
     fittable = np.isfinite(shape) & np.isfinite(rate)
-    # MLE (SEI) and Thom's method of moments differ by a few tenths of a percent;
+    # MLE (SEI) and Thom's closed-form approximation differ by a few tenths of a percent;
     # a self-generated fixture would match exactly instead.
     assert np.max(np.abs((alphas[fittable] - shape[fittable]) / shape[fittable])) > 1e-3
     assert np.max(np.abs((betas[fittable] - 1.0 / rate[fittable]) / (1.0 / rate[fittable]))) > 1e-3

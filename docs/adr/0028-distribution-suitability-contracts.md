@@ -8,6 +8,8 @@ GEV for SPEI is implemented in [SUIT-02 (#1583)](https://github.com/monocongo/cl
 The maintainer approved these contracts.
 [SUIT-01 (#1582)](https://github.com/monocongo/climate_indices/issues/1582) records this decision under
 [epic #1581](https://github.com/monocongo/climate_indices/issues/1581).
+The §2 gamma estimator wording now names Thom's (1958) closed-form approximation
+([#1627](https://github.com/monocongo/climate_indices/issues/1627)).
 
 **The suitability API is being implemented issue by issue.** This record approves contracts, not scientific validation.
 The implementation responsibilities and their current state are explicit:
@@ -60,8 +62,8 @@ It is closed access and has not been read for this record, so none of its figure
 
 ### 2. Estimators
 
-The comparison uses each family's existing estimator: gamma by Thom's MLE approximation;
-Pearson III, GLO and GEV by L-moments.
+The comparison uses each family's existing estimator: gamma by Thom's (1958) closed-form
+approximation to the maximum-likelihood estimate; Pearson III, GLO and GEV by L-moments.
 Log-likelihood is evaluated at those estimates, because those are the parameters the index actually uses, and is labelled as such.
 These are not maximum-likelihood estimates in general, so the criteria are penalized likelihoods at fitted estimates,
 and a ranking mixes distribution fit with estimator efficiency.
@@ -114,6 +116,11 @@ It is returned whenever it is defined, and no significance threshold is applied.
   - `climate_indices_gof_bootstrap_samples`
   - `climate_indices_rng_seed` (decimal string, so seeds above 64 bits round-trip through NetCDF)
   - `climate_indices_version`
+- Dimensional fitted parameters (`beta`, `loc`, `scale`) carry the sample's `units` string,
+  unchanged for `sum` and `mean`, when it is known; otherwise the attribute is absent, never
+  `"1"`. Every other fitted parameter is `"1"`. `fit_diagnostics()` implements this rule
+  (#1650). When implemented, the xarray route (#1585) will adopt the same helper; for SPEI,
+  it will treat the units as known only when `values` and `pet_mm` carry the same string.
 
 ### 7. Surface
 
