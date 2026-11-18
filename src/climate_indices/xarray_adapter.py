@@ -321,6 +321,14 @@ def _build_calendar_plan(
         )
 
     first_timestamp = pd.Timestamp(time_coord.values[0])
+    last_timestamp = pd.Timestamp(time_coord.values[-1])
+    # NaT has no month, year or normalize(), so a missing bound cannot describe a calendar
+    if not isinstance(first_timestamp, pd.Timestamp) or not isinstance(last_timestamp, pd.Timestamp):
+        raise CoordinateValidationError(
+            message="The time coordinate holds a missing value.",
+            coordinate_name=coordinate_name,
+            reason="unsupported_calendar",
+        )
     if periodicity == compute.Periodicity.monthly:
         if first_timestamp.month != 1:
             raise CoordinateValidationError(
@@ -346,7 +354,6 @@ def _build_calendar_plan(
             coordinate_name=coordinate_name,
             reason="unsupported_start_date",
         )
-    last_timestamp = pd.Timestamp(time_coord.values[-1])
     return utils.CalendarPlan.from_year_span(
         first_timestamp.year,
         last_timestamp.year - first_timestamp.year + 1,
