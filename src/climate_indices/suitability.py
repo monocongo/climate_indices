@@ -828,6 +828,14 @@ def _compare_categories_xarray(
             alternative.dims,
             str(reference.dims),
         )
+    if set(reference.xindexes) != set(alternative.xindexes):  # align would lend one side's labels to the other
+        raise _invalid(
+            "reference and alternative must share their coordinates: only one has an index "
+            f"for {sorted(set(reference.xindexes) ^ set(alternative.xindexes))}.",
+            "alternative",
+            "mismatch",
+            "equal",
+        )
     try:
         reference, alternative = xr.align(reference, alternative, join="exact")
     except ValueError as error:

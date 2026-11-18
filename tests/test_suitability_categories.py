@@ -352,6 +352,12 @@ class TestCompareCategoriesXarray:
             suitability.compare_categories(a, a.rename(time="t"))
         with pytest.raises(InvalidArgumentError):
             suitability.compare_categories(a, a.assign_coords(time=[1, 2, 4]))
+        # an indexed input paired with an unindexed one would be compared positionally
+        unindexed = xr.DataArray(np.zeros(3, dtype=np.int8), dims="time")
+        with pytest.raises(InvalidArgumentError, match="coordinates"):
+            suitability.compare_categories(a, unindexed)
+        with pytest.raises(InvalidArgumentError, match="coordinates"):
+            suitability.compare_categories(unindexed, a)
 
     @pytest.mark.parametrize("bad", [["time", "time"], 0, ..., []])
     def test_invalid_dims_raise_invalid_argument_error(self, bad):
