@@ -202,7 +202,7 @@ process_climate_indices = "climate_indices.__main__:main"
    ```
 
 2. **Distribution Fitting Strategy**:
-   - **Gamma**: Method of moments (α, β parameters)
+   - **Gamma**: Thom's (1958) closed-form approximation to the maximum-likelihood estimate (α, β parameters)
    - **Pearson Type III**: L-moments (location, scale, skew parameters)
    - **Calibration period**: Default 30+ years, user-configurable
    - **Handling zeros**: Probability of zero tracked separately
@@ -227,7 +227,7 @@ process_climate_indices = "climate_indices.__main__:main"
 - **`lmoments.py`**: L-moments for robust distribution fitting
   - Implements Hosking (1990) L-moments algorithm
   - Used for Pearson Type III parameter estimation
-  - More robust than method of moments for skewed distributions
+  - More robust than conventional moments for skewed distributions
 
 **Design Note**: This layer has no dependencies on upper layers and could be extracted as standalone utilities.
 
@@ -329,7 +329,7 @@ xarray adapter) uses them:
 | Python seam | Rust kernel (`climate-indices`) |
 |---|---|
 | eligible trailing-window sums in `compute.sum_to_scale` | `aggregation::trailing_sum` (`trailing_mean` is also public Rust) |
-| method-of-moments block of `compute.gamma_parameters` | `gamma::gamma_parameters` |
+| Thom closed-form block of `compute.gamma_parameters` | `gamma::gamma_parameters` |
 | `scipy.stats.gamma.cdf` and zero-mass mixing in `compute.transform_fitted_gamma` | `gamma::gamma_probabilities` |
 | sorted CDFs and KS D statistics in the single-series `compute._check_goodness_of_fit_gamma` | `gamma::gamma_ks_statistics` |
 | `scipy.stats.norm.ppf` in `compute.transform_fitted_gamma` | `special::norm_ppf` |
@@ -971,7 +971,7 @@ climate_indices/
                         ▼
 ┌─────────────────────────────────────────────────────────────────┐
 │  Distribution Fitting (per calendar month/day)                  │
-│  - Gamma: alpha, beta parameters (method of moments)            │
+│  - Gamma: alpha, beta parameters (Thom 1958 closed form)        │
 │  - Pearson: loc, scale, skew parameters (L-moments)             │
 │  - Fit on calibration period only                               │
 │  - Track probability of zero separately                         │
