@@ -238,6 +238,13 @@ def test_dask_pet_chunked_differently_from_values_matches_the_in_memory_route() 
     xr.testing.assert_allclose(lazy.compute(), eager)
 
 
+def test_time_chunked_values_are_rejected_even_when_pet_covers_only_part_of_the_record() -> None:
+    precip = _grid(seed=5, masked_cell=False)
+    pet = (precip * 0.5).isel(time=slice(0, 12))  # aligns to exactly one of the values chunks
+    with pytest.raises(CoordinateValidationError):
+        _compare(precip.chunk({"time": 12}), 3, index="spei", pet_mm=pet.chunk({"time": -1}))
+
+
 @pytest.mark.parametrize(
     ("index", "candidates", "criterion"),
     [

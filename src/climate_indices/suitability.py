@@ -887,6 +887,9 @@ def _validated_inputs(
     # the calendar itself is checked before inference reads it, so a numeric, cftime or
     # timezone-aware coordinate fails as CoordinateValidationError rather than inside pandas
     _validate_calendar(input_da[time_dim])
+    # ADR-0003 constrains the caller's array, and alignment to a shorter pet can hide a split time axis
+    if input_da.chunks is not None:
+        validate_dask_chunks(input_da, time_dim)
     if pet_da is not None:
         validate_time_dimension(pet_da, time_dim)
         validate_time_monotonicity(pet_da[time_dim])
