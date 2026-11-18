@@ -622,6 +622,8 @@ def _category_attributes() -> dict[str, str]:
 
 def _classify(values: np.ndarray) -> np.ndarray:
     """USDM class codes of normal-scale values: NaN (or a mask) is -1, everything else 0 to 5."""
+    if np.ma.isMaskedArray(values) and values.dtype.kind == "f":
+        values = np.ma.filled(values, np.nan)  # keeps float32 and float16, which _as_float_array would widen
     x = _as_float_array(values)
     # the edges take the input's width, so a float32 -1.3 sits on the edge instead of just above it
     edges = np.asarray(_USDM_EDGES, dtype=x.dtype)
@@ -640,7 +642,7 @@ def drought_category(index_values: Any, *, output_scale: Any) -> Any:
     Args:
         index_values: Index values on the normal scale, a NumPy array (or masked array) or an
             ``xarray.DataArray``, which may be Dask-backed. A value clipped at +-3.09 classifies
-            normally; an infinity is rejected.
+            normally; an infinity is rejected (for a Dask-backed input, when the result is computed).
         output_scale: The scale ``index_values`` is on. Required, with no default, because values alone
             cannot show whether they are probabilities or normal-scale. Only ``"normal"`` classifies;
             ``"probability"`` and ``"bounded"`` raise.
@@ -731,6 +733,16 @@ def _require_code_range(codes: np.ndarray, name: str) -> None:
         )
 
 
+def _as_codes(values: Any, name: str) -> np.ndarray:
+    """Validated integer category codes as an array; a masked code becomes -1 (missing)."""
+    codes = values if np.ma.isMaskedArray(values) else np.asarray(values)
+    _require_integer_codes(codes.dtype, name)
+    if np.ma.isMaskedArray(codes):
+        codes = np.ma.filled(codes.astype(np.int64), -1)
+    _require_code_range(codes, name)
+    return codes
+
+
 def _share(changed: Any, population: Any) -> Any:
     """``changed / population``, NaN where the population is empty."""
     if isinstance(population, xr.DataArray):
@@ -739,10 +751,7 @@ def _share(changed: Any, population: Any) -> Any:
 
 
 def _compare_categories_numpy(reference: Any, alternative: Any) -> CategoryComparison:
-    ref, alt = np.asarray(reference), np.asarray(alternative)
-    for name, codes in (("reference", ref), ("alternative", alt)):
-        _require_integer_codes(codes.dtype, name)
-        _require_code_range(codes, name)
+    ref, alt = _as_codes(reference, "reference"), _as_codes(alternative, "alternative")
     if ref.shape != alt.shape:
         raise _invalid(
             f"reference and alternative must have the same shape, got {ref.shape} and {alt.shape}.",
@@ -777,6 +786,32 @@ def _compare_categories_numpy(reference: Any, alternative: Any) -> CategoryCompa
     )
 
 
+def _reduction_dims(dims: Any, available: tuple[Any, ...]) -> tuple[Any, ...]:
+    """The dimensions to reduce over: all of them for None, else the named, distinct, existing ones."""
+    if dims is None:
+        return available
+    names = (dims,) if isinstance(dims, str) else dims
+    try:
+        chosen = tuple(names)
+    except TypeError as error:
+        raise _invalid(
+            f"dims must be a dimension name or a sequence of names, got {dims!r}.", "dims", dims, "dimension names"
+        ) from error
+    if not chosen:
+        raise _invalid("compare_categories needs at least one dimension to reduce.", "dims", dims, "dimension names")
+    for dim in chosen:
+        if dim not in available:
+            raise _invalid(
+                f"dims names {dim!r}, which is not a dimension of the inputs {available}.",
+                "dims",
+                dim,
+                ", ".join(map(str, available)),
+            )
+    if len(set(chosen)) != len(chosen):
+        raise _invalid(f"dims names a dimension twice: {chosen}.", "dims", dims, "distinct dimension names")
+    return chosen
+
+
 def _compare_categories_xarray(
     reference: xr.DataArray, alternative: xr.DataArray, dims: str | Sequence[str] | None
 ) -> xr.Dataset:
@@ -797,19 +832,20 @@ def _compare_categories_xarray(
         raise _invalid(
             f"reference and alternative must share their coordinates: {error}", "alternative", "mismatch", "equal"
         ) from error
-    reduce_dims = (dims,) if isinstance(dims, str) else tuple(reference.dims if dims is None else dims)
-    if not reduce_dims:
-        raise _invalid("compare_categories needs at least one dimension to reduce.", "dims", dims, "dimension names")
-    for dim in reduce_dims:
-        if dim not in reference.dims:
-            raise _invalid(
-                f"dims names {dim!r}, which is not a dimension of the inputs {reference.dims}.",
-                "dims",
-                dim,
-                ", ".join(map(str, reference.dims)),
-            )
+    reduce_dims = _reduction_dims(dims, tuple(reference.dims))
+    kept_clash = {"reference_category", "alternative_category"} & (set(reference.dims) - set(reduce_dims))
+    if kept_clash:
+        raise _invalid(
+            f"{sorted(kept_clash)} are reserved for the confusion matrix and cannot stay as input dimensions; "
+            "rename them or reduce over them.",
+            "dims",
+            sorted(kept_clash),
+            "other dimension names",
+        )
 
-    valid = (reference >= 0) & (alternative >= 0)
+    # a code outside 0 to 5 (possible only for a lazy input, which is not range-checked) is excluded
+    # everywhere, so n_valid, the shares and the confusion matrix always count the same pairs
+    valid = (reference >= 0) & (reference < _N_CATEGORIES) & (alternative >= 0) & (alternative < _N_CATEGORIES)
     n_valid = valid.sum(reduce_dims)
     changed = n_valid - ((reference == alternative) & valid).sum(reduce_dims)
     n_none = ((reference == 0) & (alternative == 0)).sum(reduce_dims)
@@ -874,9 +910,12 @@ def compare_categories(
         population is empty.
 
     Raises:
-        InvalidArgumentError: The codes are not integers from -1 to 5 (a Dask-backed input is not read
-            to check the range), the inputs differ in shape, dimensions or coordinates, ``dims`` names a
-            missing dimension or is given for NumPy input, or only one input is a DataArray.
+        InvalidArgumentError: The codes are not integers from -1 to 5, the inputs differ in shape,
+            dimensions or coordinates, ``dims`` is empty, repeats or names a missing dimension or is given
+            for NumPy input, an input dimension that stays is named ``reference_category`` or
+            ``alternative_category``, or only one input is a DataArray. A Dask-backed input is not read
+            to check the range, so a code outside -1 to 5 in it is excluded from every field like a
+            missing one. A masked NumPy code counts as missing.
 
     Warns:
         BetaFeatureWarning: Always; the module is Beta.

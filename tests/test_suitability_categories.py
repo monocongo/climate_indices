@@ -61,6 +61,21 @@ class TestDroughtCategory:
         values = np.ma.masked_array([-1.0, -1.0, 0.5], mask=[False, True, False])
         assert _categories(values).tolist() == [2, -1, 0]
 
+    @pytest.mark.parametrize("dtype", [np.float16, np.float32, np.float64])
+    def test_masked_edges_keep_the_input_width(self, dtype):
+        # a masked float32 or float16 must not be widened to float64 before the edges are compared
+        edges = np.array([-0.5, -0.8, -1.3, -1.6, -2.0], dtype=dtype)
+        plain = _categories(edges)
+        assert plain.tolist() == [1, 2, 3, 4, 5]
+        assert _categories(np.ma.masked_array(edges, mask=False)).tolist() == plain.tolist()
+
+    def test_infinity_in_a_lazy_input_raises_when_computed(self):
+        dask_array = pytest.importorskip("dask.array")
+        da = xr.DataArray(dask_array.from_array(np.array([np.inf, 1.0]), chunks=1), dims="x")
+        lazy = _categories(da)  # the data is not read at call time
+        with pytest.raises(InvalidArgumentError, match="infinite"):
+            lazy.compute()
+
     def test_int8_output_and_shape_preserved(self):
         out = _categories(np.zeros((4, 3, 2)))
         assert out.dtype == np.int8
@@ -148,10 +163,22 @@ class TestCompareCategoriesNumpy:
         assert result.confusion.sum() == result.n_valid
 
     def test_symmetric_roles_for_in_drought_denominator(self):
-        # (0, 3) and (3, 0): one side is in drought either way, so both pairs enter the denominator
-        result = suitability.compare_categories(np.array([0, 3, 0]), np.array([3, 0, 0]))
-        assert result.share_changed == pytest.approx(2 / 3)
-        assert result.share_changed_in_drought == pytest.approx(2 / 2)
+        # (0, 3) and (3, 0) change into and out of drought, (3, 3) is unchanged drought, (0, 0) is outside it.
+        # Counting only reference-in-drought or only alternative-in-drought pairs would give 1/2, not 2/3.
+        result = suitability.compare_categories(np.array([0, 3, 3, 0]), np.array([3, 0, 3, 0]))
+        assert result.share_changed == pytest.approx(2 / 4)
+        assert result.share_changed_in_drought == pytest.approx(2 / 3)
+
+    def test_masked_code_counts_as_missing(self):
+        # the value under the mask (2) must not be counted as a valid pair
+        masked = np.ma.masked_array([1, 2, 3], mask=[False, True, False])
+        result = suitability.compare_categories(masked, np.array([1, 2, 3]))
+        assert result.n_valid == 2
+        assert result.confusion[2, 2] == 0
+
+    def test_masked_non_integer_codes_are_rejected(self):
+        with pytest.raises(InvalidArgumentError, match="integer"):
+            suitability.compare_categories(np.ma.masked_array([1.0, 2.0], mask=[False, True]), np.array([1, 2]))
 
     def test_identical_categories_have_no_change(self):
         result = suitability.compare_categories(REF, REF)
@@ -225,6 +252,7 @@ def _grid(seed: int = 0, shape: tuple[int, int, int] = (40, 3, 2)):
     ref_values = rng.normal(size=shape)
     alt_values = ref_values + rng.normal(scale=0.3, size=shape)
     ref_values[rng.random(shape) < 0.05] = np.nan
+    alt_values[rng.random(shape) < 0.05] = np.nan  # a different set, so a pair can miss on either side
     return _categories(ref_values), _categories(alt_values)
 
 
@@ -244,6 +272,23 @@ class TestCompareCategoriesXarray:
         assert out["share_changed_in_drought"].item() == pytest.approx(expected.share_changed_in_drought)
         np.testing.assert_array_equal(out["reference_counts"].values, expected.reference_counts)
         np.testing.assert_array_equal(out["alternative_counts"].values, expected.alternative_counts)
+
+    def test_hand_computed_fixture(self):
+        # the NumPy fixture's hand-derived values, so this route is checked against them and not only the NumPy route
+        out = suitability.compare_categories(xr.DataArray(REF, dims="time"), xr.DataArray(ALT, dims="time"))
+        np.testing.assert_array_equal(out["confusion"].values, CONFUSION)
+        assert out["n_valid"].item() == 8
+        assert out["share_changed"].item() == pytest.approx(4 / 8)
+        assert out["share_changed_in_drought"].item() == pytest.approx(4 / 7)
+        np.testing.assert_array_equal(out["reference_counts"].values, [2, 2, 2, 0, 1, 1])
+        np.testing.assert_array_equal(out["alternative_counts"].values, [2, 2, 2, 0, 2, 0])
+
+    def test_pair_missing_only_in_the_alternative_is_excluded(self):
+        ref = xr.DataArray(np.array([0, 1, -1, 2], dtype=np.int8), dims="time")
+        alt = xr.DataArray(np.array([0, -1, 0, 2], dtype=np.int8), dims="time")
+        out = suitability.compare_categories(ref, alt)
+        assert out["n_valid"].item() == 2
+        assert out["confusion"].sum().item() == 2
 
     def test_category_coordinates_are_labels(self):
         ref, alt = _grid()
@@ -298,6 +343,28 @@ class TestCompareCategoriesXarray:
         with pytest.raises(InvalidArgumentError):
             suitability.compare_categories(a, a.assign_coords(time=[1, 2, 4]))
 
+    @pytest.mark.parametrize("bad", [["time", "time"], 0, ..., []])
+    def test_invalid_dims_raise_invalid_argument_error(self, bad):
+        da = xr.DataArray(np.zeros((3, 2), dtype=np.int8), dims=("time", "x"))
+        with pytest.raises(InvalidArgumentError, match="dim"):
+            suitability.compare_categories(da, da, dims=bad)
+
+    def test_kept_dimension_named_like_a_confusion_axis_is_rejected(self):
+        da = xr.DataArray(np.zeros((3, 2), dtype=np.int8), dims=("time", "reference_category"))
+        with pytest.raises(InvalidArgumentError, match="reserved"):
+            suitability.compare_categories(da, da, dims="time")
+        # reducing over it is fine
+        assert suitability.compare_categories(da, da, dims="reference_category")["n_valid"].dims == ("time",)
+
+    def test_stray_code_in_a_lazy_input_is_excluded_from_every_field(self):
+        dask_array = pytest.importorskip("dask.array")
+        ref = xr.DataArray(dask_array.from_array(np.array([0, 7, -5, 1, 2], dtype=np.int8), chunks=2), dims="t")
+        alt = xr.DataArray(dask_array.from_array(np.array([0, 1, 1, 2, 2], dtype=np.int8), chunks=2), dims="t")
+        out = suitability.compare_categories(ref, alt).compute()
+        # pairs (0,0), (1,2), (2,2) remain; the 7 and the -5 are not counted anywhere
+        assert out["n_valid"].item() == out["confusion"].sum().item() == 3
+        assert out["share_changed"].item() == pytest.approx(1 / 3)
+
     def test_non_integer_dtype_is_rejected(self):
         da = xr.DataArray(np.array([0.0, 1.0]), dims="time")
         with pytest.raises(InvalidArgumentError, match="integer"):
@@ -333,7 +400,8 @@ class TestCompareCategoriesXarray:
         ref_da = xr.DataArray(dask_array.from_array(ref, chunks=(7, 3, 1)), dims=("time", "y", "x"))
         alt_da = xr.DataArray(dask_array.from_array(alt, chunks=(11, 3, 2)), dims=("time", "y", "x"))
         out = suitability.compare_categories(ref_da, alt_da)
-        assert out["confusion"].chunks is not None
+        for name in ("confusion", "reference_counts", "alternative_counts", "n_valid", "share_changed"):
+            assert out[name].chunks is not None, name
         expected = suitability.compare_categories(ref, alt)
         np.testing.assert_array_equal(out["confusion"].values, expected.confusion)
         assert float(out["share_changed"]) == pytest.approx(expected.share_changed)
