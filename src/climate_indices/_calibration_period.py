@@ -151,8 +151,9 @@ def resolve_calibration_period(
         calibration_end_year: Last requested year, inclusive.
         policy: What to do with a window that starts before the record or ends after
             it. ``"clamp"`` uses the whole record instead, except that a window ending
-            exactly one year after the record keeps its start and is cut at the
-            record's last year: the fits have always honoured that start (the WMO
+            exactly one year after the record keeps its start, when that start lies
+            inside the record, and is cut at the record's last year: the fits have
+            always honoured that start (the WMO
             1981-2010 window on a record ending in 2009 fits 1981-2009), and making
             it uniform with the other out-of-range windows would change results.
             ``"reject"`` raises :class:`CalibrationPeriodError` for any window the
@@ -172,7 +173,11 @@ def resolve_calibration_period(
     data_end_year = data_start_year + n_years - 1
     if policy == "reject":
         _reject_uncovered(data_start_year, data_end_year, calibration_start_year, calibration_end_year)
-    elif calibration_start_year < data_start_year or calibration_end_year > data_end_year + 1:
+    elif (
+        calibration_start_year < data_start_year
+        or calibration_start_year > data_end_year
+        or calibration_end_year > data_end_year + 1
+    ):
         calibration_start_year, calibration_end_year = data_start_year, data_end_year
     else:
         calibration_end_year = min(calibration_end_year, data_end_year)
