@@ -111,6 +111,7 @@ exclude_patterns = [
     "research/earthengine-climate-engine-pilot.md",
     "research/maifi-event-grouping.md",
     "research/major-event-day-conventions.md",
+    "research/reference-papers/**",
     "explorer/**",
     "architecture-deepening-review-*.md",
     "ai-assisted-development-report-*.md",
