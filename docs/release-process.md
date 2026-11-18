@@ -34,6 +34,8 @@ namespace and never publishes to PyPI.
    cd ../climate_indices-release-X.Y.Z
    ```
 4. Update `pyproject.toml` to `X.Y.Z` and refresh `uv.lock` if the version changes.
+   Set `version:` in `CITATION.cff` to the same `X.Y.Z`; nothing checks it, and it
+   went stale at 3.1.0 through the 3.1.1 and 3.2.0 releases.
 5. Keep the versioned `CHANGELOG.md` entry marked `unreleased` while the date is
    undecided; replace it with `## [X.Y.Z] - YYYY-MM-DD` before freezing the
    candidate. On a tag build `tests/test_release_integrity.py` requires that day to
