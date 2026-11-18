@@ -530,7 +530,7 @@ class CalendarPlan:
                     after = source_year[steps_before_february_29].astype(endpoint_dtype)
                     synthetic_start = target_index + self._synthetic_step_start
                     if steps == 1:
-                        # the daily fill stays the exact midpoint in the input dtype
+                        # the daily fill stays the exact midpoint, computed in the widened dtype
                         transformed[synthetic_start] = (before + after) / 2
                     else:
                         # a linear ramp between the last step before the gap and the first after it
