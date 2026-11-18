@@ -863,7 +863,7 @@ re-export, and `compare_distributions` emits `BetaFeatureWarning`.
 `compare_distributions` scores gamma, Pearson Type III and (for SPEI) log-logistic and GEV on one
 shared calibration sample and reports log-likelihood, AIC, AICc, BIC and the best candidate per
 calendar step and cell. The criteria are penalized likelihoods **at the library's own estimates**
-(gamma by Thom's approximation, the others by L-moments), not at maximum-likelihood estimates, so a
+(gamma by Thom's (1958) closed-form approximation, the others by L-moments), not at maximum-likelihood estimates, so a
 ranking mixes distribution fit with estimator efficiency and is not textbook AIC. About 30 values
 per calendar step discriminate weakly, so `delta_to_runner_up` is returned and no threshold is
 applied. A sample value outside a candidate's fitted support gives zero likelihood, so that
