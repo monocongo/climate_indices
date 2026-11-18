@@ -90,7 +90,7 @@ class TestClamp:
         assert (period.start_year, period.end_year, period.n_years) == (1985, 1995, 11)
         assert period.rows == slice(4, 15)
 
-    @pytest.mark.parametrize("window", [(1981, 2010), (1981, 2030), (1970, 2000), (1970, 2030), (2020, 2030)])
+    @pytest.mark.parametrize("window", [(1981, 2010), (1981, 2030), (1970, 2000), (1970, 2030), (2020, 2030), (2010, 2010)])
     def test_window_the_record_does_not_cover_is_clamped_to_the_true_record(self, window):
         # the last data year is 2009, so the record holds 29 years, not 30
         period = self.resolve(*window)
