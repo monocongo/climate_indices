@@ -413,17 +413,45 @@ def test_dimensional_parameters_omit_units_when_the_sample_has_none() -> None:
     assert dataset["alpha"].attrs["units"] == "1"
 
 
+@pytest.mark.parametrize(("pet_units", "expected"), [("mm", "mm"), (None, None), ("mm/day", None)])
+def test_spei_dimensional_parameter_units_need_both_samples(pet_units: str | None, expected: str | None) -> None:
+    """ADR-0028 §6: a dimensional parameter is known only when values and pet_mm agree."""
+    precip = _grid(seed=1, masked_cell=False)
+    pet = precip * 0.6
+    if pet_units is None:
+        pet.attrs.pop("units", None)
+    else:
+        pet.attrs["units"] = pet_units
+    dataset = _compare(precip, 3, index="spei", pet_mm=pet)
+    for name in ("beta", "loc", "scale"):
+        assert dataset[name].attrs.get("units") == expected, name
+    assert dataset["alpha"].attrs["units"] == "1"
+
+
 def test_input_packing_attributes_are_not_carried_into_the_comparison(tmp_path: Path) -> None:
     grid = _grid(seed=7)
-    grid.attrs.update(add_offset=100.0, scale_factor=0.5)
+    grid.attrs.update(
+        add_offset=100.0,
+        scale_factor=0.5,
+        _FillValue=np.nan,
+        missing_value=0.0,
+        valid_min=0.0,
+        valid_max=1000.0,
+    )
     dataset = _compare(grid, 3, index="spi")
+    stale = ("add_offset", "scale_factor", "_FillValue", "missing_value", "valid_min", "valid_max")
     for name, variable in dataset.data_vars.items():
-        assert not {"add_offset", "scale_factor"} & set(variable.attrs), name
+        assert not set(stale) & set(variable.attrs), name
     path = tmp_path / "packed.nc"
     dataset.to_netcdf(path, engine="h5netcdf")
     with xr.open_dataset(path, engine="h5netcdf") as reopened:
         loaded = reopened.load()
     np.testing.assert_array_equal(loaded["n"].values, dataset["n"].values)
+    # an inherited missing_value of 0.0 used to mask the genuine zeros of prob_zero on re-read
+    zeros = int((dataset["prob_zero"] == 0.0).sum())
+    assert zeros
+    np.testing.assert_array_equal(loaded["prob_zero"].values, dataset["prob_zero"].values)
+    assert int((loaded["prob_zero"] == 0.0).sum()) == zeros
 
 
 def test_beta_warning_is_emitted_once_per_call_not_once_per_block() -> None:
@@ -451,6 +479,74 @@ def test_numpy_route_warnings_point_at_the_caller() -> None:
     ]
     assert overlap
     assert all(Path(item.filename).name == Path(__file__).name for item in overlap)
+
+
+def test_xarray_route_warnings_point_at_the_caller() -> None:
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        suitability.compare_distributions(_grid(), 13, index="spi")
+    overlap = [
+        item for item in caught if issubclass(item.category, ClimateIndicesWarning) and "exceeds" in str(item.message)
+    ]
+    assert overlap
+    assert all(Path(item.filename).name == Path(__file__).name for item in overlap)
+
+
+def test_provenance_parameters_keep_native_types() -> None:
+    dataset = _compare(_grid(seed=20, masked_cell=False), 3, index="spi")
+    parameters = json.loads(dataset["best"].attrs["climate_indices_provenance"])["parameters"]
+    assert parameters["scale"] == 3
+    assert parameters["data_start_year"] == START
+    assert parameters["calibration_year_initial"] == START
+    assert parameters["calibration_year_final"] == END
+    assert parameters["clip_negatives"] is True
+
+
+def test_spatial_time_major_is_ignored_for_xarray_input() -> None:
+    grid = _grid(seed=21, masked_cell=False)
+    xr.testing.assert_equal(_compare(grid, 3, index="spi", spatial_time_major=True), _compare(grid, 3, index="spi"))
+
+
+def test_a_transposed_pet_aligns_by_label() -> None:
+    precip = _grid(seed=22, masked_cell=False)
+    pet = (precip * 0.5).transpose("lat", "lon", "time")
+    xr.testing.assert_equal(
+        _compare(precip, 3, index="spei", pet_mm=pet),
+        _compare(precip, 3, index="spei", pet_mm=pet.transpose("time", "lat", "lon")),
+    )
+
+
+def test_a_pet_that_trims_the_record_requires_the_matching_data_start_year() -> None:
+    precip = _grid(seed=23, masked_cell=False)
+    pet = (precip * 0.5).isel(time=slice(12, None))
+    with pytest.raises(InvalidArgumentError, match="match the first year"):
+        _compare(precip, 3, index="spei", pet_mm=pet, data_start_year=START)
+    assert "best" in _compare(precip, 3, index="spei", pet_mm=pet)
+
+
+def test_clip_negatives_is_recorded_per_index() -> None:
+    grid = _grid(seed=24, masked_cell=False)
+    signed = grid - 500.0
+    with pytest.raises(InvalidArgumentError):
+        _compare(signed, 3, index="standardized_index", clip_negatives=False)
+    assert _compare(signed, 3, index="standardized_index")["best"].attrs["clip_negatives"] == "True"
+    pet = grid * 0.6
+    assert _compare(grid, 3, index="spei", pet_mm=pet, clip_negatives=True)["best"].attrs["clip_negatives"] == "False"
+
+
+def test_a_cftime_time_coordinate_is_rejected() -> None:
+    pytest.importorskip("cftime")
+    times = xr.date_range(f"{START}-01-01", periods=YEARS * 12, freq="MS", use_cftime=True)
+    values = xr.DataArray(_precip(25), dims=("time",), coords={"time": times})
+    with pytest.raises(CoordinateValidationError, match="Unsupported calendar"):
+        _compare(values, 3, index="spi")
+
+
+def test_a_daily_record_shorter_than_the_scale_raises_insufficient_data() -> None:
+    times = pd.date_range("1980-01-01", periods=3, freq="D")
+    values = xr.DataArray([1.0, 2.0, 3.0], dims=("time",), coords={"time": times})
+    with pytest.raises(InsufficientDataError, match="Insufficient data for scale=7"):
+        _compare(values, 7, index="spi")
 
 
 def test_inferred_and_explicit_temporal_arguments_agree() -> None:
