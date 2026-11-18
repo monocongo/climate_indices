@@ -6542,7 +6542,8 @@ Where:
 - Γ(α) = gamma function
 
 Parameters are estimated with Thom's (1958) closed-form approximation to the maximum-likelihood
-estimate on the calibration period data for each calendar month independently.
+estimate on the calibration period data for each calendar month (monthly input) or each day of the
+year (daily input) independently.
 The closed form is `A = ln(mean) - mean(ln x)`, `α = (1 + sqrt(1 + 4A/3)) / (4A)`,
 `β = mean / α`, with zeros and missing values excluded from both means.
 
