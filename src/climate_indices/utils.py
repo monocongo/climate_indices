@@ -509,6 +509,8 @@ class CalendarPlan:
 
         steps = self.steps_per_day
         transformed = np.full((self.all_leap_length, *source.shape[1:]), np.nan, dtype=float)
+        # widen only the endpoints so their sum cannot wrap in a narrow integer dtype
+        endpoint_dtype = float if source.dtype.kind in "biu" else source.dtype
         source_index = 0
         target_index = 0
 
@@ -524,8 +526,8 @@ class CalendarPlan:
                     :steps_before_february_29
                 ]
                 if observed_steps > self._synthetic_step_start:
-                    before = source_year[steps_before_february_29 - 1]
-                    after = source_year[steps_before_february_29]
+                    before = source_year[steps_before_february_29 - 1].astype(endpoint_dtype)
+                    after = source_year[steps_before_february_29].astype(endpoint_dtype)
                     synthetic_start = target_index + self._synthetic_step_start
                     if steps == 1:
                         # the daily fill stays the exact midpoint in the input dtype
