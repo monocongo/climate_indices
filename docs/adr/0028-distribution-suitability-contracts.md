@@ -114,6 +114,10 @@ It is returned whenever it is defined, and no significance threshold is applied.
   - `climate_indices_gof_bootstrap_samples`
   - `climate_indices_rng_seed` (decimal string, so seeds above 64 bits round-trip through NetCDF)
   - `climate_indices_version`
+- Dimensional fitted parameters (`beta`, `loc`, `scale`) carry the sample's `units` string,
+  unchanged for `sum` and `mean`, when it is known. For SPEI, `values` and `pet_mm` must
+  carry the same string; otherwise the attribute is absent, never `"1"`. Every other fitted
+  parameter is `"1"`. `fit_diagnostics()` follows the same rule (#1650).
 
 ### 7. Surface
 

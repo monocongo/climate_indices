@@ -608,6 +608,65 @@ def test_netcdf_round_trip(tmp_path, distribution: Distribution) -> None:
                 np.testing.assert_allclose(reopened[name].values, result[name].values, equal_nan=True)
         assert reopened["alpha"].attrs["long_name"] == "Gamma shape parameter"
         assert reopened["alpha"].attrs["units"] == "1"
+        assert reopened["beta"].attrs["units"] == "mm"
         assert reopened["alpha"].attrs["distribution"] == distribution.value
         assert reopened["alpha"].attrs["calibration_year_initial"] == _CALIBRATION_START_YEAR
         assert "history" in reopened["alpha"].attrs
+
+
+_DIMENSIONAL = {Distribution.gamma: ("beta",), Distribution.pearson: ("beta", "loc", "scale")}
+_DIMENSIONLESS = {
+    Distribution.gamma: ("alpha", "prob_zero"),
+    Distribution.pearson: ("alpha", "skew", "prob_zero"),
+}
+
+
+@pytest.mark.parametrize("aggregation", ["sum", "mean"])
+@pytest.mark.parametrize("distribution", [Distribution.gamma, Distribution.pearson])
+def test_dimensional_parameters_carry_sample_units(distribution: Distribution, aggregation: str) -> None:
+    """Scale and location parameters are in the sample's units; shape-like ones are dimensionless."""
+    result = fit_diagnostics(
+        _monthly_series_da(),
+        3,
+        distribution,
+        calibration_year_initial=_CALIBRATION_START_YEAR,
+        calibration_year_final=_CALIBRATION_END_YEAR,
+        aggregation=aggregation,  # type: ignore[arg-type]
+    )
+    for name in _DIMENSIONAL[distribution]:
+        assert result[name].attrs["units"] == "mm", name
+    for name in _DIMENSIONLESS[distribution]:
+        assert result[name].attrs["units"] == "1", name
+
+
+@pytest.mark.parametrize("distribution", [Distribution.gamma, Distribution.pearson])
+def test_dimensional_parameters_omit_unknown_units(distribution: Distribution) -> None:
+    """Without input units a dimensional parameter has none, never ``"1"`` and never a guess."""
+    values = _monthly_series_da()
+    del values.attrs["units"]
+    result = fit_diagnostics(
+        values,
+        3,
+        distribution,
+        calibration_year_initial=_CALIBRATION_START_YEAR,
+        calibration_year_final=_CALIBRATION_END_YEAR,
+    )
+    for name in _DIMENSIONAL[distribution]:
+        assert "units" not in result[name].attrs, name
+    for name in _DIMENSIONLESS[distribution]:
+        assert result[name].attrs["units"] == "1", name
+
+
+def test_fitted_parameter_units_rule() -> None:
+    """The shared rule: samples must agree on a known string for a dimensional parameter."""
+    from climate_indices.xarray_adapter import _fitted_parameter_units
+
+    mm = xr.DataArray([1.0], attrs={"units": "mm"})
+    inch = xr.DataArray([1.0], attrs={"units": "in"})
+    bare = xr.DataArray([1.0])
+    assert _fitted_parameter_units("alpha", bare) == "1"
+    assert _fitted_parameter_units("beta", mm) == "mm"
+    assert _fitted_parameter_units("scale", mm, mm) == "mm"
+    assert _fitted_parameter_units("loc", mm, inch) is None
+    assert _fitted_parameter_units("loc", mm, bare) is None
+    assert _fitted_parameter_units("beta", bare) is None
