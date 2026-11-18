@@ -170,7 +170,13 @@ def test_empirical_fit_rejects_mismatched_sample_cells() -> None:
 
 
 @pytest.mark.parametrize(
-    "distribution", [indices.Distribution.pearson, indices.Distribution.beta, indices.Distribution.loglogistic]
+    "distribution",
+    [
+        indices.Distribution.pearson,
+        indices.Distribution.beta,
+        indices.Distribution.loglogistic,
+        indices.Distribution.gev,
+    ],
 )
 @pytest.mark.parametrize("value", [np.nan, "bad"])
 def test_reused_fit_checks_cells_before_missing_detection(distribution: indices.Distribution, value: object) -> None:
@@ -263,6 +269,7 @@ def test_reused_fit_checks_arguments_before_cells(
     [
         (indices.Distribution.pearson, {"locs": np.ones(12)}),
         (indices.Distribution.loglogistic, {"locs": np.ones(12)}),
+        (indices.Distribution.gev, {"locs": np.ones(12)}),
         (indices.Distribution.beta, {"alphas": np.ones(11)}),
     ],
 )

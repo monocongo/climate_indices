@@ -121,7 +121,7 @@ def _ncei_comparison(
     dataset: xr.Dataset, data: xr.DataArray, variable: str, scale: int | None, parser: argparse.ArgumentParser
 ) -> tuple[str, str, str, xr.DataArray]:
     """Check the local grid and return its label, month, NCEI URL, and matching grid."""
-    match = re.fullmatch(r"(spi|spei)(?:_(gamma|pearson|loglogistic))?(?:_(\d+))?", variable, flags=re.IGNORECASE)
+    match = re.fullmatch(r"(spi|spei)(?:_(gamma|pearson|loglogistic|gev))?(?:_(\d+))?", variable, flags=re.IGNORECASE)
     if not match or "time" not in dataset[variable].dims:
         parser.error("comparison requires a time-dependent SPI/SPEI variable (e.g. spi_03)")
     scale = _comparison_scale(match, data, scale, parser)

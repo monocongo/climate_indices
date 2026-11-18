@@ -55,8 +55,8 @@ rejects unrecognized declarations.
 
 - The calibration period is the baseline the index is fitted or ranked
   against, and it must fall inside the input's year coverage. A window the
-  record does not cover is clamped by the gamma, Pearson Type III and
-  log-logistic fits, which emit `CalibrationPeriodClampedWarning`, and the
+  record does not cover is clamped by the gamma, Pearson Type III, log-logistic
+  and GEV fits, which emit `CalibrationPeriodClampedWarning`, and the
   xarray result's `calibration_year_initial` and `calibration_year_final`
   attributes name the years the fit used.
 - 30 years is the documented minimum. A shorter period emits
@@ -94,7 +94,7 @@ rejects unrecognized declarations.
   precipitation, and inspect output and fit diagnostics.
 - SPI, SPEI, `standardized_index()`, EDDI, Palmer, and
   `percentage_of_normal()` reject a reversed Calibration Period with
-  `CalibrationPeriodError`. Gamma, Pearson Type III, and log-logistic fits
+  `CalibrationPeriodError`. Gamma, Pearson Type III, log-logistic, and GEV fits
   clamp a non-reversed window the record does not cover; EDDI, Palmer, and
   `percentage_of_normal()` reject uncovered windows with
   `CalibrationPeriodError`. Supplied fitting parameters do not bypass the

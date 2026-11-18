@@ -22,7 +22,7 @@ def test_indices_reexports_distribution() -> None:
     assert indices.Distribution is vocabulary.Distribution
 
 
-@pytest.mark.parametrize("name", ["pearson", "gamma", "loglogistic", "empirical", "beta"])
+@pytest.mark.parametrize("name", ["pearson", "gamma", "loglogistic", "gev", "empirical", "beta"])
 def test_distribution_legacy_pickle_and_metadata(name: str) -> None:
     member = vocabulary.Distribution[name]
     # Protocol-0 payloads captured before the move still load; new payloads name the canonical path.

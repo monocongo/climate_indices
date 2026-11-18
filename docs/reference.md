@@ -860,7 +860,7 @@ keeps the public-study frequency reproduction separate from event matching and i
 Import it explicitly: `import climate_indices.suitability as suitability`. It has no root
 re-export, and `compare_distributions` emits `BetaFeatureWarning`.
 
-`compare_distributions` scores gamma, Pearson Type III and (for SPEI) log-logistic on one
+`compare_distributions` scores gamma, Pearson Type III and (for SPEI) log-logistic and GEV on one
 shared calibration sample and reports log-likelihood, AIC, AICc, BIC and the best candidate per
 calendar step and cell. The criteria are penalized likelihoods **at the library's own estimates**
 (gamma by Thom's approximation, the others by L-moments), not at maximum-likelihood estimates, so a
