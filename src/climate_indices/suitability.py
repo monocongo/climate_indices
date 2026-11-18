@@ -4,6 +4,8 @@ Which distribution should an index use for a region, season and Timescale? This 
 gathers relative-fit evidence without changing any index: :func:`compare_distributions`
 scores every likelihood-based candidate on one shared calibration sample and returns
 log-likelihood, AIC, AICc, BIC and the best candidate for every calendar step (and cell).
+:func:`drought_category` and :func:`compare_categories` then show whether the choice changes
+the U.S. Drought Monitor class an index value falls in.
 
 The criteria are **penalized likelihoods at the library's own estimates**: gamma by Thom's
 (1958) closed-form approximation, Pearson Type III, log-logistic and GEV by L-moments. They are
@@ -25,6 +27,7 @@ from typing import Any, Literal, get_args
 import numpy as np
 import scipy.special
 import scipy.stats
+import xarray as xr
 
 from climate_indices import __version__, compute, provenance
 from climate_indices._calibration_period import MIN_CALIBRATION_YEARS, resolve_calibration_period
@@ -36,9 +39,18 @@ from climate_indices.exceptions import (
     InvalidArgumentError,
     ShortCalibrationWarning,
 )
-from climate_indices.vocabulary import Aggregation, Distribution
+from climate_indices.vocabulary import OUTPUT_SCALES, Aggregation, Distribution
 
-__all__ = ["Criterion", "DistributionComparison", "IndexRoute", "compare_distributions"]
+__all__ = [
+    "DROUGHT_CATEGORY_LABELS",
+    "CategoryComparison",
+    "Criterion",
+    "DistributionComparison",
+    "IndexRoute",
+    "compare_categories",
+    "compare_distributions",
+    "drought_category",
+]
 
 Criterion = Literal["aicc", "aic", "bic"]
 IndexRoute = Literal["spi", "spei", "standardized_index"]
@@ -580,3 +592,311 @@ def compare_distributions(
         parameters=parameters,
         metadata=metadata,
     )
+
+
+# ---------------------------------------------------------------------------
+# Drought categories and category-change metrics (#1587, ADR-0028 section 7)
+# ---------------------------------------------------------------------------
+
+#: Class labels in code order. Code 0 is "none", codes 1 to 5 are D0 to D4, and -1 marks a missing value.
+DROUGHT_CATEGORY_LABELS: tuple[str, ...] = ("none", "D0", "D1", "D2", "D3", "D4")
+_N_CATEGORIES = len(DROUGHT_CATEGORY_LABELS)
+
+# class boundaries in ascending order; each class includes its upper edge and excludes its lower one
+_USDM_EDGES = (-2.0, -1.6, -1.3, -0.8, -0.5)
+_USDM_SOURCE = (
+    "U.S. Drought Monitor drought classification, SPI/SPEI column "
+    "(https://droughtmonitor.unl.edu/About/AbouttheData/DroughtClassification.aspx). The table gives -0.5 to -0.79 "
+    "for D0, -0.8 to -1.29 for D1, -1.3 to -1.59 for D2, -1.6 to -1.99 for D3, -2.0 or less for D4 and -0.49 or "
+    "above for none; it does not state boundary handling, so each class includes its upper edge (ADR-0028)."
+)
+
+
+def _category_attributes() -> dict[str, str]:
+    return {
+        "climate_indices_category_edges": json.dumps(list(_USDM_EDGES)),
+        "climate_indices_category_source": _USDM_SOURCE,
+        "climate_indices_version": __version__,
+    }
+
+
+def _classify(values: np.ndarray) -> np.ndarray:
+    """USDM class codes of normal-scale values: NaN (or a mask) is -1, everything else 0 to 5."""
+    x = _as_float_array(values)
+    # the edges take the input's width, so a float32 -1.3 sits on the edge instead of just above it
+    edges = np.asarray(_USDM_EDGES, dtype=x.dtype)
+    codes = len(edges) - np.searchsorted(edges, x, side="left")
+    return np.where(np.isnan(x), -1, codes).astype(np.int8)
+
+
+def drought_category(index_values: Any, *, output_scale: Any) -> Any:
+    """Classify normal-scale SPI/SPEI values into the U.S. Drought Monitor classes.
+
+    The classes follow the USDM table for the Standardized Precipitation Index and the
+    Standardized Precipitation-Evapotranspiration Index. Each class includes its upper edge, so
+    -0.5 is D0, -0.8 is D1, -1.3 is D2, -1.6 is D3 and -2.0 is D4, while -0.49 is none (ADR-0028).
+    Wet values are all "none"; no wet-side classes are defined.
+
+    Args:
+        index_values: Index values on the normal scale, a NumPy array (or masked array) or an
+            ``xarray.DataArray``, which may be Dask-backed. A value clipped at +-3.09 classifies
+            normally; an infinity is rejected.
+        output_scale: The scale ``index_values`` is on. Required, with no default, because values alone
+            cannot show whether they are probabilities or normal-scale. Only ``"normal"`` classifies;
+            ``"probability"`` and ``"bounded"`` raise.
+
+    Returns:
+        ``int8`` codes in the shape of the input: -1 missing (NaN or masked), 0 none, 1 to 5 for
+        D0 to D4 (see :data:`DROUGHT_CATEGORY_LABELS`). A DataArray comes back as a DataArray with
+        the edges, their source and the provenance record in its attributes.
+
+    Raises:
+        InvalidArgumentError: ``output_scale`` is not ``"normal"``, or the values are not numeric or
+            hold an infinity.
+
+    Warns:
+        BetaFeatureWarning: Always; the module is Beta.
+    """
+    if not isinstance(output_scale, str) or output_scale != "normal":
+        known = isinstance(output_scale, str) and output_scale in OUTPUT_SCALES
+        detail = "convert the index to the normal scale first" if known else f"expected one of {OUTPUT_SCALES}"
+        raise _invalid(
+            f"drought_category classifies normal-scale values only, got output_scale={output_scale!r}; {detail}.",
+            "output_scale",
+            output_scale,
+            "'normal'",
+        )
+    warnings.warn(_BETA_MESSAGE, BetaFeatureWarning, stacklevel=2)
+    if not isinstance(index_values, xr.DataArray):
+        return _classify(index_values)
+    codes = xr.apply_ufunc(_classify, index_values, dask="parallelized", output_dtypes=[np.int8])
+    codes.attrs = {
+        "long_name": "U.S. Drought Monitor drought category",
+        "units": "1",
+        "flag_values": [-1, *range(_N_CATEGORIES)],
+        "flag_meanings": " ".join(["missing", *DROUGHT_CATEGORY_LABELS]),
+        **_category_attributes(),
+        **provenance.provenance_attributes(
+            index="drought category",
+            implementation="climate_indices.suitability.drought_category",
+            interface="python",
+            parameters={"output_scale": output_scale},
+            inputs={"index_values": index_values},
+        ),
+    }
+    return codes
+
+
+@dataclasses.dataclass(frozen=True, eq=False)
+class CategoryComparison:
+    """How many drought categories change between two classifications of the same values.
+
+    Only pairs where both categories are present count; a pair with a missing category is left out of every
+    field. A change is a pair whose two categories differ.
+    """
+
+    #: Pair counts, ``(6, 6)`` ``int64``: row = the reference class, column = the alternative class, in
+    #: :data:`DROUGHT_CATEGORY_LABELS` order.
+    confusion: np.ndarray
+    #: Valid pairs per reference class, ``(6,)``: the row sums of ``confusion``.
+    reference_counts: np.ndarray
+    #: Valid pairs per alternative class, ``(6,)``: the column sums of ``confusion``.
+    alternative_counts: np.ndarray
+    #: Number of valid pairs.
+    n_valid: int
+    #: Share of valid pairs whose category changed; NaN with no valid pair.
+    share_changed: float
+    #: Changed pairs over valid pairs where at least one side is in drought (D0 to D4); NaN when none is.
+    #: Neither input is privileged: a pair that moves into or out of drought counts as in drought.
+    share_changed_in_drought: float
+    #: The category edges, their source and the provenance record.
+    metadata: Mapping[str, str]
+
+
+def _require_integer_codes(dtype: np.dtype[Any], name: str) -> None:
+    if dtype.kind not in "iu":
+        raise _invalid(
+            f"{name} must hold integer category codes from drought_category, got dtype {dtype}.",
+            name,
+            dtype,
+            "integer codes -1 to 5",
+        )
+
+
+def _require_code_range(codes: np.ndarray, name: str) -> None:
+    # a stray code would otherwise land in another cell of the flattened confusion matrix
+    if codes.size and (codes.min() < -1 or codes.max() >= _N_CATEGORIES):
+        raise _invalid(
+            f"{name} holds a category code outside -1 to {_N_CATEGORIES - 1}.", name, "out of range", "codes -1 to 5"
+        )
+
+
+def _share(changed: Any, population: Any) -> Any:
+    """``changed / population``, NaN where the population is empty."""
+    if isinstance(population, xr.DataArray):
+        return changed / population.where(population > 0)
+    return float(changed / population) if population > 0 else float("nan")
+
+
+def _compare_categories_numpy(reference: Any, alternative: Any) -> CategoryComparison:
+    ref, alt = np.asarray(reference), np.asarray(alternative)
+    for name, codes in (("reference", ref), ("alternative", alt)):
+        _require_integer_codes(codes.dtype, name)
+        _require_code_range(codes, name)
+    if ref.shape != alt.shape:
+        raise _invalid(
+            f"reference and alternative must have the same shape, got {ref.shape} and {alt.shape}.",
+            "alternative",
+            alt.shape,
+            str(ref.shape),
+        )
+    valid = (ref >= 0) & (alt >= 0)
+    pairs = ref[valid].astype(np.intp) * _N_CATEGORIES + alt[valid].astype(np.intp)
+    counts = np.bincount(pairs, minlength=_N_CATEGORIES**2).astype(np.int64)
+    confusion = counts.reshape(_N_CATEGORIES, _N_CATEGORIES)
+    n_valid = int(confusion.sum())
+    changed = n_valid - int(np.trace(confusion))
+    metadata = {
+        **_category_attributes(),
+        **provenance.provenance_attributes(
+            index="drought category comparison",
+            implementation="climate_indices.suitability.compare_categories",
+            interface="python",
+            parameters={"dims": None},
+            inputs={"reference": ref, "alternative": alt},
+        ),
+    }
+    return CategoryComparison(
+        confusion=confusion,
+        reference_counts=confusion.sum(axis=1),
+        alternative_counts=confusion.sum(axis=0),
+        n_valid=n_valid,
+        share_changed=_share(changed, n_valid),
+        share_changed_in_drought=_share(changed, n_valid - int(confusion[0, 0])),
+        metadata=metadata,
+    )
+
+
+def _compare_categories_xarray(
+    reference: xr.DataArray, alternative: xr.DataArray, dims: str | Sequence[str] | None
+) -> xr.Dataset:
+    for name, codes in (("reference", reference), ("alternative", alternative)):
+        _require_integer_codes(codes.dtype, name)
+        if codes.chunks is None:  # a lazy array is not read just to check its range
+            _require_code_range(codes.values, name)
+    if set(reference.dims) != set(alternative.dims):
+        raise _invalid(
+            f"reference and alternative must have the same dimensions, got {reference.dims} and {alternative.dims}.",
+            "alternative",
+            alternative.dims,
+            str(reference.dims),
+        )
+    try:
+        reference, alternative = xr.align(reference, alternative, join="exact")
+    except ValueError as error:
+        raise _invalid(
+            f"reference and alternative must share their coordinates: {error}", "alternative", "mismatch", "equal"
+        ) from error
+    reduce_dims = (dims,) if isinstance(dims, str) else tuple(reference.dims if dims is None else dims)
+    if not reduce_dims:
+        raise _invalid("compare_categories needs at least one dimension to reduce.", "dims", dims, "dimension names")
+    for dim in reduce_dims:
+        if dim not in reference.dims:
+            raise _invalid(
+                f"dims names {dim!r}, which is not a dimension of the inputs {reference.dims}.",
+                "dims",
+                dim,
+                ", ".join(map(str, reference.dims)),
+            )
+
+    valid = (reference >= 0) & (alternative >= 0)
+    n_valid = valid.sum(reduce_dims)
+    changed = n_valid - ((reference == alternative) & valid).sum(reduce_dims)
+    n_none = ((reference == 0) & (alternative == 0)).sum(reduce_dims)
+    # one reduction per cell of the matrix keeps the transient memory at the size of the input
+    confusion = xr.concat(
+        [
+            xr.concat(
+                [((reference == r) & (alternative == a)).sum(reduce_dims) for a in range(_N_CATEGORIES)],
+                dim="alternative_category",
+            )
+            for r in range(_N_CATEGORIES)
+        ],
+        dim="reference_category",
+    )
+    labels = list(DROUGHT_CATEGORY_LABELS)
+    confusion = confusion.assign_coords(reference_category=labels, alternative_category=labels).transpose(
+        ..., "reference_category", "alternative_category"
+    )
+    return xr.Dataset(
+        {
+            "confusion": confusion,
+            "reference_counts": confusion.sum("alternative_category"),
+            "alternative_counts": confusion.sum("reference_category"),
+            "n_valid": n_valid,
+            "share_changed": _share(changed, n_valid),
+            "share_changed_in_drought": _share(changed, n_valid - n_none),
+        },
+        attrs={
+            **_category_attributes(),
+            **provenance.provenance_attributes(
+                index="drought category comparison",
+                implementation="climate_indices.suitability.compare_categories",
+                interface="python",
+                parameters={"dims": list(reduce_dims)},
+                inputs={"reference": reference, "alternative": alternative},
+            ),
+        },
+    )
+
+
+def compare_categories(
+    reference: Any, alternative: Any, *, dims: str | Sequence[str] | None = None
+) -> CategoryComparison | xr.Dataset:
+    """Compare two drought-category classifications of the same values.
+
+    Answers whether switching from one distribution to another changes the drought class managers
+    see. Classify each index with :func:`drought_category`, then compare the codes. Only pairs with
+    both categories present count.
+
+    Args:
+        reference: Category codes from :func:`drought_category`, an integer NumPy array or DataArray.
+        alternative: Category codes of the same shape, or an identically indexed DataArray.
+        dims: DataArray route only. The dimensions to reduce over, a name or a sequence of names;
+            ``None`` reduces every dimension. The others stay as dimensions of the result, so reducing
+            over ``"time"`` gives one confusion matrix per cell. The NumPy route always reduces every axis.
+
+    Returns:
+        A :class:`CategoryComparison` for NumPy input, or an ``xarray.Dataset`` for DataArrays with
+        ``confusion`` (the two category dimensions last, labelled by :data:`DROUGHT_CATEGORY_LABELS`),
+        ``reference_counts``, ``alternative_counts``, ``n_valid``, ``share_changed`` and
+        ``share_changed_in_drought``, which stay lazy for Dask input. The shares are NaN where their
+        population is empty.
+
+    Raises:
+        InvalidArgumentError: The codes are not integers from -1 to 5 (a Dask-backed input is not read
+            to check the range), the inputs differ in shape, dimensions or coordinates, ``dims`` names a
+            missing dimension or is given for NumPy input, or only one input is a DataArray.
+
+    Warns:
+        BetaFeatureWarning: Always; the module is Beta.
+    """
+    warnings.warn(_BETA_MESSAGE, BetaFeatureWarning, stacklevel=2)
+    is_ref, is_alt = isinstance(reference, xr.DataArray), isinstance(alternative, xr.DataArray)
+    if is_ref != is_alt:
+        raise _invalid(
+            "reference and alternative must both be NumPy arrays or both be xarray DataArrays.",
+            "alternative",
+            type(alternative).__name__,
+            type(reference).__name__,
+        )
+    if is_ref:
+        return _compare_categories_xarray(reference, alternative, dims)
+    if dims is not None:
+        raise _invalid(
+            "dims applies to DataArray inputs only; NumPy inputs reduce over every axis.",
+            "dims",
+            dims,
+            "None for NumPy input",
+        )
+    return _compare_categories_numpy(reference, alternative)
