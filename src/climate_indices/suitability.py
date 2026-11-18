@@ -878,6 +878,10 @@ def _validated_inputs(
         pet_da = pet_mm
 
     input_da = values
+    # the calendar adapter converts to float, so a numeric string would pass as data; the dtype is metadata only
+    _require_numeric_dtype(values.dtype, "values")
+    if pet_da is not None:
+        _require_numeric_dtype(pet_da.dtype, "pet_mm")
     validate_time_dimension(input_da, time_dim)
     validate_time_monotonicity(input_da[time_dim])
     # the calendar itself is checked before inference reads it, so a numeric, cftime or

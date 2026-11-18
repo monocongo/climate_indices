@@ -439,6 +439,16 @@ def test_numpy_input_still_returns_the_dataclass() -> None:
     assert result.candidates == (Distribution.pearson, Distribution.gamma)
 
 
+def test_non_numeric_daily_input_is_rejected_before_calendar_adaptation() -> None:
+    times = pd.date_range("1980-01-01", "2011-12-31", freq="D")
+    numeric = xr.DataArray(np.random.default_rng(0).gamma(2.0, 3.0, times.size), dims="time", coords={"time": times})
+    as_text = numeric.astype(str)
+    with pytest.raises(InvalidArgumentError, match="values must hold numeric values"):
+        suitability.compare_distributions(as_text, 7, index="spi")
+    with pytest.raises(InvalidArgumentError, match="pet_mm must hold numeric values"):
+        suitability.compare_distributions(numeric, 7, index="spei", pet_mm=as_text)
+
+
 def test_pet_must_be_a_matching_dataarray() -> None:
     grid = _grid(masked_cell=False)
     as_array, one_column = grid.values, grid.isel(lon=0)
