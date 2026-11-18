@@ -500,9 +500,6 @@ class CalendarPlan:
             DataShapeError: if the leading axis length is not ``original_length``.
         """
         source = np.asarray(values)
-        if source.dtype.kind in "biu":
-            # the endpoint sum must not wrap in a narrow integer dtype
-            source = source.astype(float)
         if source.ndim < 1 or source.shape[0] != self.original_length:
             raise DataShapeError(
                 "Calendar transformation requires one complete time-series slice",
@@ -529,6 +526,10 @@ class CalendarPlan:
                 if observed_steps > self._synthetic_step_start:
                     before = source_year[steps_before_february_29 - 1]
                     after = source_year[steps_before_february_29]
+                    if source.dtype.kind in "biu":
+                        # widen only the endpoints so their sum cannot wrap in a narrow integer dtype
+                        before = before.astype(float)
+                        after = after.astype(float)
                     synthetic_start = target_index + self._synthetic_step_start
                     if steps == 1:
                         # the daily fill stays the exact midpoint in the input dtype
