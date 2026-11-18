@@ -32,7 +32,8 @@ adr/index
 The project implements published climate and hydrologic indices for drought, evapotranspiration,
 fire weather, flood potential, energy, power-system reliability, and compound hazards.
 {doc}`project-overview` lists every index family with its scope, inputs, and goals.
-{doc}`algorithms` explains when to use each index, and the algorithm reference pages cite the
+{doc}`algorithms` explains when to use SPI, SPEI, PET, the Palmer indices, and the additional
+precipitation indices, and the algorithm reference pages cite the
 published methods for the indices they cover. `VALIDATION.md` in the repository root records the
 evidence for each index.
 

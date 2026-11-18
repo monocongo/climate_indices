@@ -35,7 +35,7 @@ the US Climate Divisions NetCDF dataset provided in the example inputs directory
 The input dataset is monthly data and the calibration period used will be
 Jan. 1951 through Dec. 2010. The indices will be computed at 3-month and 6-month scales.
 Upon completion the individual NetCDF files will contain variables for all computed indices:
-`/data/nclimdiv_pet.nc`, `/data/nclimdiv_pnp_03.nc`, `/data/nclimdiv_pnp_06.nc`,
+`/data/nclimdiv_pet_thornthwaite.nc`, `/data/nclimdiv_pnp_03.nc`, `/data/nclimdiv_pnp_06.nc`,
 `/data/nclimdiv_spi_gamma_03.nc`, `/data/nclimdiv_spi_gamma_06.nc`,
 `/data/nclimdiv_spi_pearson_03.nc`, `/data/nclimdiv_spi_pearson_06.nc`,
 `/data/nclimdiv_spei_gamma_03.nc`, `/data/nclimdiv_spei_gamma_06.nc`,

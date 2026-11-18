@@ -16,14 +16,14 @@
 The code is a fork of work originally developed by NIDIS/NCEI/NOAA for drought monitoring. It now also covers wildfire (fire weather), flood potential, and the climate-driven part of energy supply and demand, plus power-system reliability and compound-hazard statistics.
 Most functions accept NumPy arrays or `xarray.DataArray` input. The reliability indices take an interruption log instead. With Dask-backed `DataArray` input, most index routes stay lazy, so large grids can be written to NetCDF or Zarr chunk by chunk. A few routes compute eagerly, such as `energy.energy_drought_events()` on a one-dimensional series and the compound event catalogs. The [compatibility matrix](docs/xarray_compatibility.md) lists each route.
 An optional compiled Rust backend runs the numerical kernels of many indices behind the same API. Without it, the Python implementation runs.
-The library computes indices from data you supply. It does not download data.
+The library computes indices from data you supply, and index computation makes no network request. The optional `aws` extra fetches third-party soil rasters for available-water-capacity ingest; treat those tiles as untrusted input.
 
 ## Quickstart
 
 ```bash
-pip install "climate-indices>=3.1.1"
+pip install "climate-indices>=3.2.0"
 # or
-uv pip install "climate-indices>=3.1.1"
+uv pip install "climate-indices>=3.2.0"
 ```
 
 Compute a 3-month Standardized Precipitation Index (SPI) from 30 years of synthetic monthly precipitation:
@@ -112,13 +112,15 @@ Most indices are NumPy functions, and most of those also accept `DataArray` inpu
 ## Installation
 
 ```bash
-pip install "climate-indices>=3.1.1"          # into the current environment
-uv pip install "climate-indices>=3.1.1"       # uv, into the current environment
-uv add "climate-indices>=3.1.1"               # uv, as a dependency of a uv project
+pip install "climate-indices>=3.2.0"          # into the current environment
+uv pip install "climate-indices>=3.2.0"       # uv, into the current environment
+uv add "climate-indices>=3.2.0"               # uv, as a dependency of a uv project
 python -c "import climate_indices._native"  # succeeds when the Rust extension is installed
 ```
 
 A missing Rust extension is not an error. `climate_indices` still imports, and every computation runs the Python implementation.
+
+**Upgrading from 2.x?** 3.0.0 changes some computed values and exception types without a deprecation period. Each change, and how to detect it, is in [`docs/deprecations/api-changes.md`](docs/deprecations/api-changes.md).
 
 ### Supported Python versions
 
@@ -136,8 +138,6 @@ Supports Python **3.11–3.15**.
 **Icechunk.** The optional `icechunk` extra adds Icechunk-backed reads and writes. Releases up to and including 3.2.0 pin `icechunk>=1.1.21,<2`: `pip install "climate_indices[icechunk]>=3.1.0"`. The `icechunk>=2.2,<3` extra needs Python 3.12 or later and is not yet on PyPI. Until a release publishes it, install from a checkout with `pip install ".[icechunk]"`. See [writing outputs](docs/writing-outputs.md#read-and-write-icechunk-snapshots) and the [Icechunk notebook](notebooks/icechunk_spi_spei.ipynb).
 
 **Other extras.** `earthengine` adds the `xee` and `earthengine-api` packages that some notebooks use, and `aws` adds the raster dependencies for available-water-capacity ingest. See [Earth Engine and Climate Engine](docs/earthengine-climate-engine.md).
-
-**Upgrading from 2.x.** 3.0.0 changes some computed values and exception types without a deprecation period. Each change, and how to detect it, is in [`docs/deprecations/api-changes.md`](docs/deprecations/api-changes.md).
 
 </details>
 
