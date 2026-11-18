@@ -1,0 +1,178 @@
+# Comparator pins for the reference-paper work (REFIMPL-03, issue 1605).
+#
+# Direct pins plus the key resolved dependencies from the throwaway smoke
+# environments. This is not a full lockfile; REFIMPL-08 (issue 1610) owns the
+# harness environments and their locking. Narrative and decisions are in
+# comparators.md. Comparator code is never vendored.
+#
+# sha256 values were computed by downloading each artifact on 2026-11-18, and the
+# four PyPI hashes also match the index metadata. GitHub archive hashes are not
+# stable guarantees; the commit is the pin for those.
+schema_version: 1
+surveyed: 2026-11-18
+platform_tested: macOS arm64 (Darwin 27.2.0)   # Linux headless not run
+runtimes:
+  python: 3.12.13        # one `uv venv` per package, uv 0.13.9
+  r: 4.6.2
+  r_note: >-
+    The R builds used R_MAKEVARS_USER overriding FLIBS, because this machine's
+    Makeconf points at a gfortran runtime directory that does not exist.
+
+python:
+  - name: xclim
+    version: 1.0.0
+    decision: include
+    source: pypi
+    url: https://files.pythonhosted.org/packages/source/x/xclim/xclim-1.0.0.tar.gz
+    sha256: e06477defa0ce9bb599e426ff129c3f729bceae856c38cccdd1b69aeccf1c3d6
+    released: 2026-11-05
+    license: Apache-2.0
+    resolved: {numpy: 2.5.5, scipy: 1.18.1, pandas: 3.1.1, xarray: 2026.9.0, dask: 2026.8.0, numba: 0.68.1, pint: 0.26.2, cf-xarray: 0.11.3, boltons: 26.2.0, pyyaml: 6.0.3}
+  - name: spei
+    version: 0.8.3
+    decision: include
+    source: pypi
+    url: https://files.pythonhosted.org/packages/source/s/spei/spei-0.8.3.tar.gz
+    sha256: 502214088d77e2fcbae515747bff411577b843b2a8ed4fb82e9bef3e30ecc82f
+    released: 2026-10-28
+    license: MIT
+    resolved: {numpy: 2.5.5, scipy: 1.18.1, pandas: 3.1.1, matplotlib: 3.11.2}
+  - name: standard-precip
+    version: 2.0.0
+    decision: include
+    source: pypi
+    url: https://files.pythonhosted.org/packages/source/s/standard-precip/standard_precip-2.0.0.tar.gz
+    sha256: 6a1f65c093568248a093d9ef14e76d62dade6dee6064a381b9f044980f0ce323
+    released: 2026-09-01
+    license: Apache-2.0
+    resolved: {numpy: 2.5.5, scipy: 1.18.1, pandas: 3.1.1, matplotlib: 3.11.2, lmoments3: 1.0.8}
+  - name: pyet
+    version: 1.5.0
+    decision: include
+    source: pypi
+    url: https://files.pythonhosted.org/packages/source/p/pyet/pyet-1.5.0.tar.gz
+    sha256: 81bedbc592df50f83e917dd76b5d239516c150bae060c39c536169c57042888b
+    released: 2026-05-26
+    license: MIT
+    resolved: {numpy: 2.5.5, pandas: 2.3.3, xarray: 2026.9.0}
+  - name: PyETo
+    version: null          # no release; not on PyPI or conda-forge
+    decision: include
+    source: git
+    url: https://github.com/woodcrafty/PyETo
+    commit: 79ddd88d727c7ebdad0ce26e220528d2921b66ea
+    commit_date: 2022-08-31
+    archive_sha256: 92b971c1f0b82027a5ac5291ca3034fc9e19008d763bdb262a6b74ed44c2f83d   # unstable; pin by commit
+    license: BSD-3-Clause
+    lineage_note: climate_indices.eto is said to derive from PyETo; unverified (issue 1606)
+    resolved: {numpy: 2.5.5, pandas: 3.1.1}   # numpy and pandas only for the smoke script; PyETo has no dependencies
+  - name: precip-index
+    version: null
+    decision: exclude
+    source: git
+    url: https://github.com/bennyistanto/precip-index
+    commit: 1c2ef1c304196f74cb662fe6439d5e2c444cc0d8
+    license: BSD-3-Clause
+    reason: README states it is built on climate_indices; no package, no tagged release.
+
+r:
+  - name: SPEI
+    version: 1.8.1
+    decision: include
+    source: cran
+    url: https://cran.r-project.org/src/contrib/SPEI_1.8.1.tar.gz
+    sha256: 56cfcf6c7b7dc34fd05aa9cca3ee29d3b0628c82bcde80d6dc1519586483c7f6
+    published: 2023-03-02
+    license: GPL-2
+  - name: SCI
+    version: 1.0-3
+    decision: include
+    source: cran
+    url: https://cran.r-project.org/src/contrib/SCI_1.0-3.tar.gz
+    sha256: 1ec42a6c6ee7e238eca0e4e627cef286cd2d46eaca417c86f3cc27fb3aa4011a
+    published: 2025-05-04
+    license: GPL (>= 2)
+  - name: SEI
+    version: 0.2.0
+    decision: include
+    source: cran
+    url: https://cran.r-project.org/src/contrib/SEI_0.2.0.tar.gz
+    sha256: 55ac099c9d0794e61c792c30dc340de655d05875fdd6e15c82b887c097900c93
+    published: 2024-08-27
+    license: GPL (>= 2)
+  - name: Evapotranspiration
+    version: "1.16"
+    decision: include
+    source: cran
+    url: https://cran.r-project.org/src/contrib/Evapotranspiration_1.16.tar.gz
+    sha256: 2550a842196941f1e6c40be5e61ee480aab96d13b8828154980a7207844bbe55
+    published: 2022-01-10
+    license: GPL (>= 2)
+  - name: climatekit
+    version: 0.2.3
+    decision: include-provisional
+    source: cran
+    url: https://cran.r-project.org/src/contrib/climatekit_0.2.3.tar.gz
+    sha256: f3bdc9f8425c35c51174a011606d810083f4b87e81e2df13d7229b6e3e023531
+    published: 2026-11-01
+    license: MIT + file LICENSE
+  - name: standaRdized
+    version: "1.0"
+    decision: exclude
+    source: git
+    url: https://github.com/WillemMaetens/standaRdized
+    commit: 1400bf86c6ed06d3818b1cd99eab33d4e32e942c
+    commit_date: 2019-04-17
+    archive_sha256: 7932eea7958d9eefc2a745235d479bc40b08afefbdbaae76851a3b1256eb52ee   # unstable; pin by commit
+    license: MIT
+    reason: unmaintained since 2019, daily-only, not on CRAN, rounds output to two decimals by default.
+    extra_dependencies: {FAdist: "2.4", glogis: "1.0.3"}
+
+# R dependencies resolved at install time (CRAN current as of 2026-11-18); not separately pinned.
+r_resolved: {lmom: "3.3", lmomco: "2.5.8", TLMoments: "0.7.5.3", fitdistrplus: "1.2-6", gamlss: "5.5-5", flexsurv: "2.3.2", zoo: "1.9-1", xts: "0.14.3", goftest: "1.2-3", checkmate: "2.3.4"}
+r_lmom_archive_sha256: fdc3a798b2542a4677f4a89fd8f59d2dbe229deccc08cf63702490a448f7f458   # lmom 3.3; CPL-1.0, compiles Fortran
+
+services:
+  # Live products. No hash; the record is the access date and the exact request.
+  - name: Climate Engine API standard_index
+    decision: include
+    accessed: 2026-11-18
+    endpoint: https://api.climateengine.org/timeseries/standard_index/coordinates
+    request_shape: {dataset: GRIDMET, variable: pr, distribution: nonparametric, accumulation: 90, start_year: 1981, end_year: 2016, coordinates: 1}
+    credentials: environment variable CE_API_KEY (never committed)
+    requests_made: 1
+    raw_response_committed: false
+  - name: Earth Engine GRIDMET/DROUGHT
+    decision: include
+    accessed: 2026-11-18
+    collection: GRIDMET/DROUGHT
+    credentials: OAuth plus EE_PROJECT (never committed)
+    requests_made: 1
+
+products:
+  # Existing fixtures; provenance is in each fixture's provenance.json.
+  - name: NCEI climdiv SPI
+    decision: include
+    fixture: tests/fixture/ncei_spi/provenance.json
+  - name: SPEIbase v2.11
+    decision: include
+    fixture: tests/fixture/speibase/provenance.json
+    built_with: SPEI 1.8.1, CRU TS 4.09   # per spei.csic.es
+  - name: SPEI Global Drought Monitor
+    decision: exclude
+    reason: web viewer, no documented programmatic access found; Thornthwaite PET; same code lineage as SPEIbase.
+  - name: NDMC SPI Generator
+    decision: exclude
+    reason: no current download located (unverified, not known to be discontinued).
+  - name: nClimGrid SPI
+    decision: exclude
+    reason: same lineage as the NCEI climdiv fixture (per the ticket).
+
+other:
+  - name: NCL dim_spi_n
+    decision: exclude
+    package: conda-forge ncl 6.6.2 (osx-arm64 build h5d9bed2_44)
+    reason: build contains no ncl interpreter; NCL is in maintenance ("Pivot to Python"); licence includes a proprietary component. linux-64 build not tried.
+  - name: MATLAB SDAT
+    decision: exclude
+    reason: requires MATLAB; original toolbox not obtained. hydrocodeir/Standardized-Drought-Analysis-Toolbox (GPL-3.0) is a re-implementation, not the original.
