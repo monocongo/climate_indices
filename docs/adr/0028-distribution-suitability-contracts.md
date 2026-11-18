@@ -8,6 +8,8 @@ GEV for SPEI is implemented in [SUIT-02 (#1583)](https://github.com/monocongo/cl
 The maintainer approved these contracts.
 [SUIT-01 (#1582)](https://github.com/monocongo/climate_indices/issues/1582) records this decision under
 [epic #1581](https://github.com/monocongo/climate_indices/issues/1581).
+The §2 gamma estimator wording now names Thom's (1958) closed-form approximation
+([#1627](https://github.com/monocongo/climate_indices/issues/1627)).
 
 **The suitability API is being implemented issue by issue.** This record approves contracts, not scientific validation.
 The implementation responsibilities and their current state are explicit:
@@ -60,8 +62,8 @@ It is closed access and has not been read for this record, so none of its figure
 
 ### 2. Estimators
 
-The comparison uses each family's existing estimator: gamma by Thom's (1958) closed-form approximation to the maximum-likelihood estimate;
-Pearson III, GLO and GEV by L-moments.
+The comparison uses each family's existing estimator: gamma by Thom's (1958) closed-form
+approximation to the maximum-likelihood estimate; Pearson III, GLO and GEV by L-moments.
 Log-likelihood is evaluated at those estimates, because those are the parameters the index actually uses, and is labelled as such.
 These are not maximum-likelihood estimates in general, so the criteria are penalized likelihoods at fitted estimates,
 and a ranking mixes distribution fit with estimator efficiency.

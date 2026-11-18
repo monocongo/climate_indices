@@ -3,7 +3,7 @@
 //!
 //! Reference: McKee, Doesken, and Kleist (1993), "The relationship of drought
 //! frequency and duration to time scales"; the shape estimate is Thom's (1958)
-//! approximation to the maximum-likelihood estimate, "A note on the gamma
+//! closed-form approximation to the maximum-likelihood estimate, "A note on the gamma
 //! distribution", Monthly Weather Review 86(4), 117-122.
 //!
 //! The Python implementations in `climate_indices.compute` stay the reference

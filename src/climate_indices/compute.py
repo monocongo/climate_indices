@@ -1998,7 +1998,7 @@ def gamma_parameters(
     Computes the gamma distribution parameters alpha and beta.
 
     The fit is Thom's (1958) closed-form approximation to the maximum-likelihood estimate
-    (Thom, 1958, Monthly Weather Review 86(4), 117-122), not full maximum likelihood and not the
+    (Monthly Weather Review 86(4), 117-122), not full maximum likelihood and not the
     method of moments.
 
     :param values: 2-D array of values, with each row typically representing a year

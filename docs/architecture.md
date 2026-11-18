@@ -227,7 +227,7 @@ process_climate_indices = "climate_indices.__main__:main"
 - **`lmoments.py`**: L-moments for robust distribution fitting
   - Implements Hosking (1990) L-moments algorithm
   - Used for Pearson Type III parameter estimation
-  - More robust than the gamma closed-form fit for skewed distributions
+  - More robust than conventional moments for skewed distributions
 
 **Design Note**: This layer has no dependencies on upper layers and could be extracted as standalone utilities.
 
