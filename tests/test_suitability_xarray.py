@@ -373,7 +373,9 @@ def test_every_variable_carries_the_adr_attributes(lazy: bool) -> None:
         assert attributes["climate_indices_criterion"] == "aicc"
         assert attributes["scale"] == "3"
         assert (attributes["calibration_year_initial"], attributes["calibration_year_final"]) == (str(START), str(END))
-        assert attributes.get("units", "1") != "mm", f"{name} inherited the precipitation units"
+        # only the parameters fitted in the sample's units keep its units; every other output is dimensionless
+        expected_units = "mm" if name in ("beta", "loc", "scale") else "1"
+        assert attributes.get("units", "1") == expected_units, f"{name} has the wrong units"
         assert all(not isinstance(value, bool | list | type(None)) for value in attributes.values())
     # a calibration window beyond the record is recorded as the years actually used
     clamped = _compare(grid, 3, index="spi", calibration_year_initial=START - 10, calibration_year_final=END + 10)
@@ -398,6 +400,15 @@ def test_netcdf_round_trip_keeps_values_and_attributes(tmp_path: Path, lazy: boo
     for name in dataset.data_vars:
         for key in ADR_ATTRIBUTES:
             assert loaded[name].attrs[key] == dataset[name].attrs[key], f"{name}.{key}"
+
+
+def test_dimensional_parameters_omit_units_when_the_sample_has_none() -> None:
+    grid = _grid(seed=7)
+    grid.attrs.pop("units")
+    dataset = _compare(grid, 3, index="spi")
+    for name in ("beta", "loc", "scale"):
+        assert "units" not in dataset[name].attrs, name
+    assert dataset["alpha"].attrs["units"] == "1"
 
 
 def test_input_packing_attributes_are_not_carried_into_the_comparison(tmp_path: Path) -> None:

@@ -803,6 +803,8 @@ _PARAMETER_METADATA: dict[str, str] = {
     "shape": "Shape parameter",
 }
 
+# fitted in the sample's own units, so they inherit the input's units (or none) instead of a dimensionless "1"
+_DIMENSIONAL_PARAMETERS = frozenset({"beta", "loc", "scale"})
 _NO_BEST = "none"
 _UNITLESS_FIELDS = frozenset({"fit_failed", "best"})
 
@@ -1032,11 +1034,9 @@ def _compare_xarray(
     def declare(field: str, *, long_name: str | None = None, transform: Any = None) -> Any:
         metadata = dict(_FIELD_METADATA.get(field, {}))
         if long_name is not None:
-            metadata = {
-                "long_name": long_name,
-                "units": "1",
-                "description": f"{long_name}, per calendar step and cell.",
-            }
+            metadata = {"long_name": long_name, "description": f"{long_name}, per calendar step and cell."}
+            if field not in _DIMENSIONAL_PARAMETERS:
+                metadata["units"] = "1"
         return _SpatialOutput(
             period_dim,
             metadata,
