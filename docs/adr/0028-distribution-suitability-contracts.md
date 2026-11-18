@@ -86,7 +86,9 @@ If trace values are ever reclassified as zeros, the fitted samples and scores ch
 
 `best` is the argmin of the chosen criterion (default `aicc`) over candidates that fitted and have a defined criterion.
 Ties go to the earlier candidate in canonical enum order.
-The value is −1 when no candidate is eligible, and `delta_to_runner_up` is NaN when fewer than two candidates are eligible.
+The value is −1 when no candidate is eligible; the xarray route stores the string `"none"` in its `best` variable instead,
+because a name labels a candidate there while −1 would read as a valid index.
+`delta_to_runner_up` is NaN when fewer than two candidates are eligible.
 It is returned whenever it is defined, and no significance threshold is applied.
 
 ### 5. Goodness of fit
