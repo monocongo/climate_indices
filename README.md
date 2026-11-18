@@ -14,16 +14,16 @@
 
 `climate_indices` implements published climate index algorithms. Each one cites its source, and [`VALIDATION.md`](VALIDATION.md) records, index by index, what its results are checked against.
 The code is a fork of work originally developed by NIDIS/NCEI/NOAA for drought monitoring. It now also covers wildfire (fire weather), flood potential, and the climate-driven part of energy supply and demand, plus power-system reliability and compound-hazard statistics.
-The same functions accept NumPy arrays or `xarray.DataArray` input. With Dask-backed input they stay lazy, so large grids can be written to NetCDF or Zarr chunk by chunk.
+Most functions accept NumPy arrays or `xarray.DataArray` input. The reliability indices take an interruption log instead. With Dask-backed `DataArray` input, most index routes stay lazy, so large grids can be written to NetCDF or Zarr chunk by chunk. A few routes compute eagerly, such as `energy.energy_drought_events()` on a one-dimensional series and the compound event catalogs. The [compatibility matrix](docs/xarray_compatibility.md) lists each route.
 An optional compiled Rust backend runs the numerical kernels of many indices behind the same API. Without it, the Python implementation runs.
 The library computes indices from data you supply. It does not download data.
 
 ## Quickstart
 
 ```bash
-pip install "climate-indices>=3.0"
+pip install "climate-indices>=3.1.1"
 # or
-uv pip install "climate-indices>=3.0"
+uv pip install "climate-indices>=3.1.1"
 ```
 
 Compute a 3-month Standardized Precipitation Index (SPI) from 30 years of synthetic monthly precipitation:
@@ -33,7 +33,7 @@ import numpy as np
 import pandas as pd
 import xarray as xr
 from climate_indices import spi
-from climate_indices.drought.indices import Distribution
+from climate_indices.vocabulary import Distribution
 
 time = pd.date_range("1990-01-01", periods=360, freq="MS")  # 30 years, monthly
 precip = xr.DataArray(np.random.default_rng(42).gamma(2.0, 40.0, 360), coords={"time": time}, dims="time")
@@ -50,15 +50,15 @@ With a `DataArray`, the function reads the start year, the periodicity, and the 
 The first `scale - 1` values are missing because the 3-month window is not yet full. Values are standard-normal scores: negative means drier than the calibration period, and positive means wetter.
 The library logs progress to stderr; see [logging](docs/troubleshooting.md#logging-and-debugging) to change the level.
 
-The NumPy API takes plain arrays and needs the time information stated explicitly. It returns the same values:
+With a plain NumPy array, the same function needs the time information stated explicitly. It returns the same values:
 
 ```python
 import numpy as np
-from climate_indices.drought import indices
+from climate_indices import spi
 from climate_indices.vocabulary import Distribution, Periodicity
 
 precip_mm = np.random.default_rng(42).gamma(2.0, 40.0, 360)  # 30 years of monthly values, from 1990
-spi_3 = indices.spi(
+spi_3 = spi(
     precip_mm, scale=3, distribution=Distribution.gamma, data_start_year=1990,
     calibration_year_initial=1990, calibration_year_final=2019, periodicity=Periodicity.monthly,
 )
@@ -78,7 +78,7 @@ For a longer walkthrough, open the [xarray getting-started notebook](notebooks/x
 
 ## Supported indices
 
-Each index is available as a NumPy function. Most also accept `DataArray` input. Beta marks an interface that may still change; see [API stability](#api-stability).
+Most indices are NumPy functions, and most of those also accept `DataArray` input. The reliability indices take an interruption log instead. Beta marks an interface that may still change; see [API stability](#api-stability).
 
 | Category | Index | Description | Docs |
 |:--|:--|:--|:--|
@@ -98,7 +98,7 @@ Each index is available as a NumPy function. Most also accept `DataArray` input.
 | Energy | Degree days, wind | Heating, cooling, and energy degree days; hub-height wind speed | [energy](docs/energy_applications.md) |
 | Energy | Capacity factors | Wind and temperature-derated PV capacity factor (NumPy only) | [energy](docs/energy_applications.md) |
 | Energy | SREPI, demand index, SRLI | Standardized energy production, demand, and residual-load indices; run-theory energy-drought events | [energy](docs/energy_applications.md) |
-| Reliability | SAIFI, SAIDI, CAIDI, MAIFI, ASAI | IEEE Std 1366 distribution reliability indices from an interruption log | [reliability](docs/reliability_applications.md) |
+| Reliability | SAIFI, SAIDI, CAIDI, MAIFI, MAIFI_E, ASAI | IEEE Std 1366 distribution reliability indices from an interruption log | [reliability](docs/reliability_applications.md) |
 | Compound | Compound hazards | Joint counts, likelihood multiplication factor, conditional probability, event matching, block bootstrap | [compound hazards](docs/compound-hazards.md) |
 
 **Scope notes**
@@ -106,15 +106,15 @@ Each index is available as a NumPy function. Most also accept `DataArray` input.
 - Flood indices measure accumulated wetness that indicates flood potential. They do not model flooding.
 - Energy indices describe the climate-driven part of supply and demand, not actual generation or load.
 - Reliability indices (IEEE Std 1366) describe past service interruptions. They are not resilience metrics.
-- Compound statistics describe co-occurrence. They make no causal or significance claim.
+- Compound counts and probabilities describe co-occurrence. They make no causal claim. Block-bootstrap p-values are supported only within the scope that [`VALIDATION.md`](VALIDATION.md#compound-bootstrap-characterization) characterizes.
 - Distribution choices, time-scale limits, and per-index validation caveats are in the linked docs and in [`VALIDATION.md`](VALIDATION.md).
 
 ## Installation
 
 ```bash
-pip install "climate-indices>=3.0"          # into the current environment
-uv pip install "climate-indices>=3.0"       # uv, into the current environment
-uv add "climate-indices>=3.0"               # uv, as a dependency of a uv project
+pip install "climate-indices>=3.1.1"          # into the current environment
+uv pip install "climate-indices>=3.1.1"       # uv, into the current environment
+uv add "climate-indices>=3.1.1"               # uv, as a dependency of a uv project
 python -c "import climate_indices._native"  # succeeds when the Rust extension is installed
 ```
 
@@ -165,7 +165,7 @@ The full documentation is on [Read the Docs](https://climate-indices.readthedocs
 
 ## API stability
 
-The NumPy index functions and the xarray index functions that accept a `DataArray` are **Stable**: they follow semantic versioning, with no breaking changes in minor releases. The compound Dataset routes, the eager compound event catalogs, and SPAI are **Beta**. They emit `BetaFeatureWarning`, and their interfaces may change in minor releases but not in patch releases. See the [compatibility matrix](docs/xarray_compatibility.md).
+The NumPy index functions and the xarray index functions that accept a `DataArray` are **Stable**, except the Beta routes below. Stable routes follow semantic versioning, with no breaking changes in minor releases. The Beta routes are the compound Dataset routes, the eager compound event catalogs, SPAI (NumPy and `DataArray`), and `energy.energy_drought_events()` with `DataArray` input. Their interfaces may change in minor releases but not in patch releases, and most of them emit `BetaFeatureWarning`. See the [compatibility matrix](docs/xarray_compatibility.md).
 
 ## Contributing
 
