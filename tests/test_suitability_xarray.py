@@ -440,9 +440,20 @@ def test_input_packing_attributes_are_not_carried_into_the_comparison(tmp_path: 
         missing_value=0.0,
         valid_min=0.0,
         valid_max=1000.0,
+        valid_range=(0.0, 1000.0),
+        actual_range=(0.0, 1000.0),
     )
     dataset = _compare(grid, 3, index="spi")
-    stale = ("add_offset", "scale_factor", "_FillValue", "missing_value", "valid_min", "valid_max")
+    stale = (
+        "add_offset",
+        "scale_factor",
+        "_FillValue",
+        "missing_value",
+        "valid_min",
+        "valid_max",
+        "valid_range",
+        "actual_range",
+    )
     for name, variable in dataset.data_vars.items():
         assert not set(stale) & set(variable.attrs), name
     path = tmp_path / "packed.nc"
@@ -524,7 +535,10 @@ def test_a_pet_that_trims_the_record_requires_the_matching_data_start_year() -> 
     pet = (precip * 0.5).isel(time=slice(12, None))
     with pytest.raises(InvalidArgumentError, match="match the first year"):
         _compare(precip, 3, index="spei", pet_mm=pet, data_start_year=START)
-    assert "best" in _compare(precip, 3, index="spei", pet_mm=pet)
+    trimmed = _compare(precip, 3, index="spei", pet_mm=pet)
+    assert "best" in trimmed
+    parameters = json.loads(trimmed["best"].attrs["climate_indices_provenance"])["parameters"]
+    assert parameters["data_start_year"] == START + 1
 
 
 def test_clip_negatives_is_recorded_per_index() -> None:
