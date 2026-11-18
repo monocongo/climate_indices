@@ -72,8 +72,8 @@ python:
     source: git
     url: https://github.com/bennyistanto/precip-index
     commit: 1c2ef1c304196f74cb662fe6439d5e2c444cc0d8
-    license: BSD-3-Clause
-    reason: README states it is built on climate_indices; no package, no tagged release.
+    license: BSD-3-Clause   # per its LICENSE file; the GitHub API reports NOASSERTION
+    reason: README states it is built upon climate_indices (extent of shared code not examined); no package, no tagged release.
 
 r:
   - name: SPEI
@@ -158,12 +158,13 @@ products:
     decision: include
     fixture: tests/fixture/speibase/provenance.json
     built_with: SPEI 1.8.1, CRU TS 4.09   # per spei.csic.es
+    license: "unresolved: ODbL 1.0 (spei.csic.es, share-alike) and CC-BY 4.0 (Earth Engine catalog); see comparators.md"
   - name: SPEI Global Drought Monitor
     decision: exclude
-    reason: web viewer, no documented programmatic access found; Thornthwaite PET; same code lineage as SPEIbase.
+    reason: JavaScript map viewer; no download or API documentation located; Thornthwaite PET. Shared SPEI code with SPEIbase is an inference, not stated by the site.
   - name: NDMC SPI Generator
     decision: exclude
-    reason: no current download located (unverified, not known to be discontinued).
+    reason: Windows-only .NET 4.0 console application and DLL (zip at drought.unl.edu/archive/Programs/SPI/SPIgenerator.zip, 2018 release); not downloaded or run; Linux operation unverified.
   - name: nClimGrid SPI
     decision: exclude
     reason: same lineage as the NCEI climdiv fixture (per the ticket).
