@@ -17,7 +17,8 @@ use ndarray::{Array1, Array2, ArrayView1, ArrayView2, Zip};
 use crate::ClimateError;
 use crate::special::{igam, igamc};
 
-/// Approximate maximum-likelihood gamma shape and scale per calibration column.
+/// Gamma shape and scale per calibration column, by Thom's (1958) closed-form approximation to
+/// the maximum-likelihood estimate.
 ///
 /// # Numerical contract
 ///
@@ -39,7 +40,8 @@ use crate::special::{igam, igamc};
 ///   sequentially over years, the order NumPy reduces axis 0 in, and every
 ///   expression keeps NumPy's operation order.
 ///
-/// The formula is Thom's (1958) approximate maximum-likelihood shape estimate.
+/// The formula is Thom's (1958) closed-form approximation to the maximum-likelihood estimate, with
+/// the scale taken as `mean / alpha`.
 /// Input values and `betas` share units, usually mm; `alphas` are dimensionless.
 /// Calendar columns follow [`crate`]; the caller selects the Calibration Period.
 /// Empty columns return NaN parameters. No physical-range validation occurs.

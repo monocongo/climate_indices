@@ -34,7 +34,7 @@ The SPI computation follows these steps:
    **Gamma distribution** (default):
 
    - Two-parameter gamma distribution with shape (α) and scale (β) parameters
-   - Parameters estimated using maximum likelihood estimation
+   - Parameters estimated with Thom's (1958) closed-form approximation to the maximum-likelihood estimate
    - Suitable for most precipitation distributions
 
    **Pearson Type III distribution** (alternative):
@@ -338,7 +338,7 @@ Where:
 - β = scale parameter
 - Γ(α) = gamma function
 
-Parameters are estimated using maximum likelihood estimation (MLE) on the calibration period data for each calendar month independently.
+Parameters are estimated with Thom's (1958) closed-form approximation to the maximum-likelihood estimate, on the calibration period data for each calendar month independently. The closed form is `A = ln(mean) - mean(ln x)`, `α = (1 + sqrt(1 + 4A/3)) / (4A)`, `β = mean / α`, computed over the non-zero values.
 
 **Pearson Type III distribution**:
 

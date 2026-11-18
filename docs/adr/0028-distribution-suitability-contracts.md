@@ -60,7 +60,7 @@ It is closed access and has not been read for this record, so none of its figure
 
 ### 2. Estimators
 
-The comparison uses each family's existing estimator: gamma by Thom's MLE approximation;
+The comparison uses each family's existing estimator: gamma by Thom's (1958) closed-form approximation to the maximum-likelihood estimate;
 Pearson III, GLO and GEV by L-moments.
 Log-likelihood is evaluated at those estimates, because those are the parameters the index actually uses, and is labelled as such.
 These are not maximum-likelihood estimates in general, so the criteria are penalized likelihoods at fitted estimates,

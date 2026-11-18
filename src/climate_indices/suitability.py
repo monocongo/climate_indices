@@ -5,8 +5,8 @@ gathers relative-fit evidence without changing any index: :func:`compare_distrib
 scores every likelihood-based candidate on one shared calibration sample and returns
 log-likelihood, AIC, AICc, BIC and the best candidate for every calendar step (and cell).
 
-The criteria are **penalized likelihoods at the library's own estimates**: gamma by Thom's
-approximation, Pearson Type III, log-logistic and GEV by L-moments. They are not maximum-likelihood
+The criteria are **penalized likelihoods at the library's own estimates**: gamma by Thom's (1958)
+closed-form approximation, Pearson Type III, log-logistic and GEV by L-moments. They are not maximum-likelihood
 estimates in general, so a ranking mixes how well a family fits with how efficient its
 estimator is, and the ``aic``, ``aicc`` and ``bic`` values are not textbook AIC, AICc and BIC.
 The module is Beta and has no root re-export: import it explicitly,
@@ -388,7 +388,7 @@ def compare_distributions(
     The Pearson-to-gamma fallback is disabled: a failed fit is recorded in ``fit_failed``,
     not replaced.
 
-    Because the likelihood is taken at Thom's gamma approximation and at L-moment estimates,
+    Because the likelihood is taken at Thom's (1958) closed-form gamma approximation and at L-moment estimates,
     not at maximum-likelihood estimates, the criteria are penalized likelihoods at fitted
     estimates and a ranking mixes distribution fit with estimator efficiency. About 30 values
     per calendar step discriminate weakly, so treat ``best`` as evidence, not as "correct".
