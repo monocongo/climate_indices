@@ -294,8 +294,9 @@ def test_non_default_calibration_window_matches_the_core() -> None:
 
 @pytest.mark.parametrize("name", ["n", "best", "scale", "candidate", "month"])
 def test_a_dimension_named_like_an_output_is_rejected(name: str) -> None:
+    grid = _grid(masked_cell=False).rename(lat=name)
     with pytest.raises(InvalidArgumentError, match="named like an output"):
-        suitability.compare_distributions(_grid(masked_cell=False).rename(lat=name), 3, index="spi")
+        suitability.compare_distributions(grid, 3, index="spi")
 
 
 @pytest.mark.parametrize("name", ["n", "best", "scale"])
@@ -306,15 +307,15 @@ def test_a_scalar_coordinate_named_like_an_output_is_rejected(name: str) -> None
 
 
 def test_a_time_dimension_named_like_an_output_is_rejected() -> None:
+    grid = _grid(masked_cell=False).rename(time="month")
     with pytest.raises(InvalidArgumentError, match="named like an output"):
-        suitability.compare_distributions(
-            _grid(masked_cell=False).rename(time="month"), 3, index="spi", time_dim="month"
-        )
+        suitability.compare_distributions(grid, 3, index="spi", time_dim="month")
 
 
 def test_time_split_across_dask_chunks_raises() -> None:
+    grid = _grid().chunk({"time": 120})
     with pytest.raises(CoordinateValidationError, match="single chunk"):
-        suitability.compare_distributions(_grid().chunk({"time": 120}), 3, index="spi")
+        suitability.compare_distributions(grid, 3, index="spi")
 
 
 @pytest.mark.parametrize("lazy", [False, True], ids=["eager", "dask"])
@@ -410,8 +411,9 @@ def test_inferred_and_explicit_temporal_arguments_agree() -> None:
 
 
 def test_numpy_input_still_requires_the_temporal_arguments() -> None:
+    precip = _precip(0)
     with pytest.raises(InvalidArgumentError, match="required for NumPy input"):
-        suitability.compare_distributions(_precip(0), 1, index="spi")
+        suitability.compare_distributions(precip, 1, index="spi")
 
 
 def test_numpy_input_still_returns_the_dataclass() -> None:
@@ -430,10 +432,11 @@ def test_numpy_input_still_returns_the_dataclass() -> None:
 
 def test_pet_must_be_a_matching_dataarray() -> None:
     grid = _grid(masked_cell=False)
+    as_array, one_column = grid.values, grid.isel(lon=0)
     with pytest.raises(InvalidArgumentError, match="DataArray"):
-        suitability.compare_distributions(grid, 3, index="spei", pet_mm=grid.values)
+        suitability.compare_distributions(grid, 3, index="spei", pet_mm=as_array)
     with pytest.raises(InvalidArgumentError, match="same dimensions"):
-        suitability.compare_distributions(grid, 3, index="spei", pet_mm=grid.isel(lon=0))
+        suitability.compare_distributions(grid, 3, index="spei", pet_mm=one_column)
     with pytest.raises(InvalidArgumentError, match="requires pet_mm"):
         suitability.compare_distributions(grid, 3, index="spei")
 
@@ -445,5 +448,6 @@ def test_non_january_start_is_rejected() -> None:
 
 
 def test_unknown_candidate_still_raises_before_any_work() -> None:
+    grid = _grid()
     with pytest.raises(InvalidArgumentError):
-        suitability.compare_distributions(_grid(), 3, index="spi", candidates=[Distribution.beta])
+        suitability.compare_distributions(grid, 3, index="spi", candidates=[Distribution.beta])
