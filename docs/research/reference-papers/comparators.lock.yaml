@@ -138,7 +138,8 @@ services:
     decision: include
     accessed: 2026-11-18
     endpoint: https://api.climateengine.org/timeseries/standard_index/coordinates
-    request_shape: {dataset: GRIDMET, variable: pr, distribution: nonparametric, accumulation: 90, start_year: 1981, end_year: 2016, coordinates: 1}
+    request_shape: {dataset: GRIDMET, variable: pr, distribution: nonparametric, accumulation: 90, start_year: 1981, end_year: 2016, coordinates: [[-84.9, 30.7]]}
+    last_returned_date: 2020-07-30
     credentials: environment variable CE_API_KEY (never committed)
     requests_made: 1
     raw_response_committed: false
@@ -146,6 +147,7 @@ services:
     decision: include
     accessed: 2026-11-18
     collection: GRIDMET/DROUGHT
+    request_shape: {image: "20200628", band: spi90d, point: [-84.9, 30.7]}
     credentials: OAuth plus EE_PROJECT (never committed)
     requests_made: 1
 
