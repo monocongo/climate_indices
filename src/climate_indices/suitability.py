@@ -495,7 +495,7 @@ def compare_distributions(
             ``data_start_year`` that disagrees with the time coordinate, or an input dimension or
             a coordinate that does not span the time dimension named like an output variable. A
             coordinate that spans the time dimension is allowed, since the reduction over time
-            drops it.
+            drops it. A Dask input reports an invalid value when it is computed.
         ValueError: If a NumPy ``values`` holds no valid value.
         InsufficientDataError: If the record, or a calendar-adapted daily record, is shorter
             than ``scale``.
