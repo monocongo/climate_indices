@@ -33,6 +33,7 @@ from climate_indices.drought import indices as _indices
 from climate_indices.exceptions import (
     BetaFeatureWarning,
     ClimateIndicesWarning,
+    CoordinateValidationError,
     DistributionFittingError,
     InvalidArgumentError,
     ShortCalibrationWarning,
@@ -424,10 +425,10 @@ def compare_distributions(
             log-logistic for ``"spei"``. Naming any other family raises.
         pet_mm: Potential evapotranspiration matching ``values``; required for, and only for,
             ``index="spei"``. A NumPy spatial block also accepts a per-step series or singleton
-            cell axes; a shape that would broadcast over a larger cell grid raises. For NumPy
-            ``values`` it must be an array, because pairing a DataArray by position would ignore
-            its labels. For xarray input it must be a DataArray with the same dimensions as
-            ``values``.
+            cell axes; a shape that would broadcast over a larger cell grid raises. A labelled
+            ``DataArray`` is refused rather than paired by position, which would ignore its
+            labels; any other array-like is paired by position. For xarray input it must be a
+            DataArray with the same dimensions as ``values``.
         aggregation: ``"sum"`` or ``"mean"`` window aggregation; ``"standardized_index"`` only.
         clip_negatives: Clip negative input to zero. ``False`` rejects negatives, as
             ``standardized_index`` does for gamma and Pearson; ``"standardized_index"`` only.
@@ -454,8 +455,9 @@ def compare_distributions(
             periodicity, non-numeric or infinite input, an argument combination the route
             does not accept, a NumPy call that omits a required temporal argument, an xarray
             ``data_start_year`` that disagrees with the time coordinate, or an input dimension or
-            a coordinate over the cell dimensions named like an output variable. A coordinate that
-            spans the time dimension is allowed, since the reduction over time drops it.
+            a coordinate that does not span the time dimension named like an output variable. A
+            coordinate that spans the time dimension is allowed, since the reduction over time
+            drops it.
         ValueError: If a NumPy ``values`` holds no valid value.
         InsufficientDataError: If the record, or a calendar-adapted daily record, is shorter
             than ``scale``.
@@ -507,14 +509,6 @@ def compare_distributions(
         )
     # a DataArray pet_mm would be paired by position, so a transposed or mislabelled one
     # silently yields the wrong water balance; the xarray route rejects the mirror case
-    if isinstance(pet_mm, xr.DataArray):
-        raise _invalid(
-            "pet_mm must be a NumPy array when values is; transpose a DataArray into the values' "
-            "dimension order before converting it, and only index='spei' accepts pet_mm.",
-            "pet_mm",
-            type(pet_mm).__name__,
-            "np.ndarray",
-        )
     return _compare_numpy(
         values,
         scale,
@@ -556,7 +550,7 @@ def _compare_numpy(
     calibration_year_final: int,
     periodicity: compute.Periodicity,
     candidates: Sequence[Distribution] | None = None,
-    pet_mm: np.ndarray | None = None,
+    pet_mm: np.ndarray | xr.DataArray | None = None,
     aggregation: Aggregation = "sum",
     clip_negatives: bool = True,
     criterion: Criterion = "aicc",
@@ -569,6 +563,16 @@ def _compare_numpy(
     grid: it scores as no usable fit instead of aborting the whole grid.
     """
     _validate_arguments(index, criterion, pet_mm, aggregation, clip_negatives)
+    # a DataArray would be paired with values by position, ignoring its labels, and a
+    # transposed or mislabelled one would silently yield the wrong water balance
+    if isinstance(pet_mm, xr.DataArray):
+        raise _invalid(
+            "pet_mm must be a NumPy array when values is; transpose a DataArray into the values' "
+            "dimension order before converting it.",
+            "pet_mm",
+            type(pet_mm).__name__,
+            "np.ndarray",
+        )
     chosen = _resolve_candidates(index, candidates)
     _indices._validate_periodicity(periodicity)
     _indices._validate_scale(scale, periodicity)
@@ -822,6 +826,22 @@ def _label_best(labels: Sequence[str]) -> Any:
     return transform
 
 
+def _validate_calendar(time_coord: xr.DataArray) -> None:
+    """Reject a calendar the NumPy core cannot represent, including a pandas time zone.
+
+    ``_validate_supported_calendar`` probes the dtype with ``np.issubdtype``, which raises on a
+    pandas extension dtype, so a timezone-aware coordinate would escape as ``TypeError``.
+    """
+    dtype = time_coord.dtype
+    if not (isinstance(dtype, np.dtype) and dtype.kind == "M"):
+        raise CoordinateValidationError(
+            message="Unsupported calendar: a non-datetime or timezone-aware time coordinate is not supported.",
+            coordinate_name=str(time_coord.name) if time_coord.name is not None else "time",
+            reason="unsupported_calendar",
+        )
+    _validate_supported_calendar(time_coord)
+
+
 def _validated_inputs(
     values: xr.DataArray, pet_mm: np.ndarray | xr.DataArray | None, time_dim: str
 ) -> tuple[xr.DataArray, xr.DataArray | None]:
@@ -841,13 +861,13 @@ def _validated_inputs(
     input_da = values
     validate_time_dimension(input_da, time_dim)
     validate_time_monotonicity(input_da[time_dim])
-    # the calendar itself is checked before inference reads it, so a numeric or cftime
-    # coordinate fails as CoordinateValidationError rather than inside pandas
-    _validate_supported_calendar(input_da[time_dim])
+    # the calendar itself is checked before inference reads it, so a numeric, cftime or
+    # timezone-aware coordinate fails as CoordinateValidationError rather than inside pandas
+    _validate_calendar(input_da[time_dim])
     if pet_da is not None:
         validate_time_dimension(pet_da, time_dim)
         validate_time_monotonicity(pet_da[time_dim])
-        _validate_supported_calendar(pet_da[time_dim])
+        _validate_calendar(pet_da[time_dim])
         input_da, aligned = _align_inputs(input_da, {"pet": pet_da}, time_dim)
         pet_da = aligned["pet"]
     for dataarray in (input_da, pet_da):

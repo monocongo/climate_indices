@@ -463,7 +463,7 @@ def test_pet_must_be_an_array_for_numpy_values() -> None:
             periodicity=MONTHLY,
             pet_mm=grid.transpose("time", "lon", "lat") * 0.5,
         )
-    with pytest.raises(InvalidArgumentError, match="only index='spei' accepts pet_mm"):
+    with pytest.raises(InvalidArgumentError, match="applies only to index='spei'"):
         suitability.compare_distributions(
             grid.values,
             3,
@@ -500,6 +500,19 @@ def test_a_non_monotonic_time_coordinate_is_rejected() -> None:
     times[[0, 1]] = times[[1, 0]]
     with pytest.raises(CoordinateValidationError, match="not monotonically increasing"):
         _compare(grid.assign_coords(time=times), 3, index="spi")
+
+
+def test_a_time_coord_with_a_timezone_is_rejected() -> None:
+    times = pd.date_range(f"{START}-01-01", periods=YEARS * 12, freq="MS", tz="UTC")
+    values = xr.DataArray(_precip(17), dims=("time",), coords={"time": times})
+    with pytest.raises(CoordinateValidationError, match="Unsupported calendar"):
+        _compare(values, 3, index="spi")
+
+
+def test_a_cell_coordinate_named_like_an_output_is_rejected() -> None:
+    grid = _grid(seed=18, masked_cell=False).assign_coords(best=(("lat", "lon"), np.zeros((3, 2))))
+    with pytest.raises(InvalidArgumentError, match="named like an output"):
+        _compare(grid, 3, index="spi")
 
 
 def test_a_non_datetime_time_coordinate_is_rejected() -> None:
