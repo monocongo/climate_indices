@@ -881,10 +881,10 @@ ADR-0028 provenance attributes, including `climate_indices_candidates`,
 `climate_indices_log_likelihood_at`, and they survive a NetCDF round trip. Time must be a single
 Dask chunk ([ADR-0003](adr/0003-dask-time-dimension-single-chunk.md)), and a Dask input stays lazy
 until `.compute()`, so its fits and warnings also run then. A fully missing input is accepted and
-scores as no usable fit (`n` is 0, `best` is `"none"`) instead of raising. Input dimension and
-coordinate names must not match an output name such as `n`, `best`, `scale` or `candidate`, and an
-explicit `data_start_year` must match the time coordinate. The example uses synthetic values to
-show the interface, not observations.
+scores as no usable fit (`n` is 0, `best` is `"none"`) instead of raising. An input dimension, or
+a coordinate that does not span the time dimension, must not match an output name such as `n`,
+`best`, `scale` or `candidate`, and an explicit `data_start_year` must match the time coordinate.
+The example uses synthetic values to show the interface, not observations.
 
 ```{testcode}
 import numpy as np

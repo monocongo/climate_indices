@@ -69,6 +69,13 @@ def _grid(seed: int = 0, *, masked_cell: bool = True) -> xr.DataArray:
     return xr.DataArray(data, dims=("time", "lat", "lon"), coords={"time": _times()}, attrs={"units": "mm"})
 
 
+def _compare(values: xr.DataArray, scale: int, **kwargs: Any) -> xr.Dataset:
+    """Call the public comparison on one DataArray and keep its Dataset result."""
+    result = suitability.compare_distributions(values, scale, **kwargs)
+    assert isinstance(result, xr.Dataset)
+    return result
+
+
 def _core(values: np.ndarray, scale: int, **kwargs: Any) -> suitability.DistributionComparison:
     """The NumPy core on the same block, the way the xarray route calls it."""
     kwargs.setdefault("index", "spi")
@@ -104,7 +111,7 @@ def _assert_matches_core(dataset: xr.Dataset, core: suitability.DistributionComp
 
 def test_three_dimensional_grid_matches_the_numpy_core() -> None:
     grid = _grid()
-    dataset = suitability.compare_distributions(grid, 3, index="spi")
+    dataset = _compare(grid, 3, index="spi")
     assert isinstance(dataset, xr.Dataset)
     assert dataset["log_likelihood"].dims == ("candidate", "month", "lat", "lon")
     assert dataset["best"].dims == ("month", "lat", "lon")
@@ -114,14 +121,14 @@ def test_three_dimensional_grid_matches_the_numpy_core() -> None:
 
 def test_one_dimensional_series_matches_the_numpy_core() -> None:
     series = _grid(masked_cell=False).isel(lat=1, lon=1)
-    dataset = suitability.compare_distributions(series, 1, index="spi")
+    dataset = _compare(series, 1, index="spi")
     assert dataset["log_likelihood"].dims == ("candidate", "month")
     _assert_matches_core(dataset, _core(series.values, 1))
 
 
 def test_two_dimensional_input_is_read_cell_by_cell() -> None:
     grid = _grid(masked_cell=False).isel(lon=0)
-    dataset = suitability.compare_distributions(grid, 1, index="spi")
+    dataset = _compare(grid, 1, index="spi")
     assert dataset["log_likelihood"].dims == ("candidate", "month", "lat")
     for cell in range(grid.sizes["lat"]):
         _assert_matches_core(dataset.isel(lat=cell), _core(grid.isel(lat=cell).values, 1))
@@ -130,7 +137,7 @@ def test_two_dimensional_input_is_read_cell_by_cell() -> None:
 def test_spei_route_scores_the_water_balance_with_the_log_logistic_candidate() -> None:
     precip = _grid(seed=1, masked_cell=False)
     pet = precip * 0.6
-    dataset = suitability.compare_distributions(precip, 3, index="spei", pet_mm=pet)
+    dataset = _compare(precip, 3, index="spei", pet_mm=pet)
     assert list(dataset["candidate"].values) == ["pearson", "gamma", "loglogistic"]
     # the log-logistic family has no zero mass, and its parameters are the only `shape` ones
     assert np.isnan(dataset["shape"].sel(candidate="gamma")).all()
@@ -140,7 +147,7 @@ def test_spei_route_scores_the_water_balance_with_the_log_logistic_candidate() -
 
 def test_standardized_index_route_applies_the_aggregation() -> None:
     grid = _grid(seed=2, masked_cell=False)
-    dataset = suitability.compare_distributions(grid, 3, index="standardized_index", aggregation="mean")
+    dataset = _compare(grid, 3, index="standardized_index", aggregation="mean")
     _assert_matches_core(
         dataset, _core(grid.values, 3, index="standardized_index", aggregation="mean", spatial_time_major=True)
     )
@@ -162,7 +169,7 @@ def _masked_cases() -> dict[str, tuple[xr.DataArray, dict[str, int]]]:
 @pytest.mark.parametrize("case", list(_masked_cases()))
 def test_all_missing_series_cell_or_chunk_has_no_best_candidate(case: str) -> None:
     values, masked = _masked_cases()[case]
-    dataset = suitability.compare_distributions(values, 3, index="spi").compute()
+    dataset = _compare(values, 3, index="spi").compute()
     cell = dataset.isel(masked)
     assert (cell["best"] == "none").all()
     assert (cell["n"] == 0).all()
@@ -175,7 +182,7 @@ def test_all_missing_series_cell_or_chunk_has_no_best_candidate(case: str) -> No
 
 def test_all_missing_spei_cell_has_no_best_candidate() -> None:
     precip = _grid()
-    dataset = suitability.compare_distributions(precip.isel(lon=0), 3, index="spei", pet_mm=precip.isel(lon=0) * 0.6)
+    dataset = _compare(precip.isel(lon=0), 3, index="spei", pet_mm=precip.isel(lon=0) * 0.6)
     assert (dataset.isel(lat=0)["best"] == "none").all()
     assert (dataset.isel(lat=1)["best"] != "none").any()
 
@@ -184,7 +191,7 @@ def test_daily_input_matches_the_numpy_core_on_the_366_day_calendar() -> None:
     times = pd.date_range("1980-01-01", "2011-12-31", freq="D")
     values = np.random.default_rng(3).gamma(2.0, 3.0, size=(len(times), 2))
     daily = xr.DataArray(values, dims=("time", "cell"), coords={"time": times})
-    dataset = suitability.compare_distributions(daily, 7, index="spi")
+    dataset = _compare(daily, 7, index="spi")
     assert dataset["log_likelihood"].dims == ("candidate", "dayofyear", "cell")
     assert list(dataset["dayofyear"].values) == list(range(1, 367))
     assert dataset["best"].attrs["periodicity"] == "daily"
@@ -208,8 +215,8 @@ def test_daily_input_matches_the_numpy_core_on_the_366_day_calendar() -> None:
 @pytest.mark.parametrize("chunks", [{"lat": 1}, {"lat": 2, "lon": 1}])
 def test_dask_spatial_chunks_match_the_in_memory_route_and_stay_lazy(chunks: dict[str, int]) -> None:
     grid = _grid(seed=4)
-    eager = suitability.compare_distributions(grid, 3, index="spi")
-    lazy = suitability.compare_distributions(grid.chunk({"time": -1, **chunks}), 3, index="spi")
+    eager = _compare(grid, 3, index="spi")
+    lazy = _compare(grid.chunk({"time": -1, **chunks}), 3, index="spi")
     assert all(variable.chunks is not None for variable in lazy.data_vars.values())
     xr.testing.assert_equal(lazy.compute(), eager)
 
@@ -217,20 +224,16 @@ def test_dask_spatial_chunks_match_the_in_memory_route_and_stay_lazy(chunks: dic
 def test_dask_spei_matches_the_in_memory_route() -> None:
     precip = _grid(seed=5, masked_cell=False)
     pet = precip * 0.5
-    eager = suitability.compare_distributions(precip, 3, index="spei", pet_mm=pet)
-    lazy = suitability.compare_distributions(
-        precip.chunk({"time": -1, "lat": 1}), 3, index="spei", pet_mm=pet.chunk({"time": -1, "lat": 1})
-    )
+    eager = _compare(precip, 3, index="spei", pet_mm=pet)
+    lazy = _compare(precip.chunk({"time": -1, "lat": 1}), 3, index="spei", pet_mm=pet.chunk({"time": -1, "lat": 1}))
     xr.testing.assert_allclose(lazy.compute(), eager)
 
 
 def test_dask_pet_chunked_differently_from_values_matches_the_in_memory_route() -> None:
     precip = _grid(seed=5, masked_cell=False)
     pet = precip * 0.5
-    eager = suitability.compare_distributions(precip, 3, index="spei", pet_mm=pet)
-    lazy = suitability.compare_distributions(
-        precip.chunk({"time": -1, "lat": 1}), 3, index="spei", pet_mm=pet.chunk({"time": -1, "lat": 2})
-    )
+    eager = _compare(precip, 3, index="spei", pet_mm=pet)
+    lazy = _compare(precip.chunk({"time": -1, "lat": 1}), 3, index="spei", pet_mm=pet.chunk({"time": -1, "lat": 2}))
     xr.testing.assert_allclose(lazy.compute(), eager)
 
 
@@ -247,9 +250,7 @@ def test_candidate_subsets_and_criteria_match_the_core(
 ) -> None:
     precip = _grid(seed=10, masked_cell=False)
     extra: dict[str, Any] = {"pet_mm": precip * 0.6} if index == "spei" else {}
-    dataset = suitability.compare_distributions(
-        precip, 3, index=index, candidates=candidates, criterion=criterion, **extra
-    )
+    dataset = _compare(precip, 3, index=index, candidates=candidates, criterion=criterion, **extra)
     core = _core(
         precip.values,
         3,
@@ -268,18 +269,16 @@ def test_candidate_subsets_and_criteria_match_the_core(
 
 def test_non_default_time_dimension_name_and_position() -> None:
     grid = _grid(seed=11, masked_cell=False)
-    expected = suitability.compare_distributions(grid, 3, index="spi")
-    renamed = suitability.compare_distributions(grid.rename(time="t"), 3, index="spi", time_dim="t")
+    expected = _compare(grid, 3, index="spi")
+    renamed = _compare(grid.rename(time="t"), 3, index="spi", time_dim="t")
     xr.testing.assert_equal(renamed, expected)
-    last = suitability.compare_distributions(grid.transpose("lat", "lon", "time"), 3, index="spi")
+    last = _compare(grid.transpose("lat", "lon", "time"), 3, index="spi")
     xr.testing.assert_equal(last, expected)
 
 
 def test_non_default_calibration_window_matches_the_core() -> None:
     grid = _grid(seed=12, masked_cell=False)
-    dataset = suitability.compare_distributions(
-        grid, 3, index="spi", calibration_year_initial=1960, calibration_year_final=1990
-    )
+    dataset = _compare(grid, 3, index="spi", calibration_year_initial=1960, calibration_year_final=1990)
     core = suitability._compare_numpy(
         grid.values,
         3,
@@ -297,14 +296,14 @@ def test_non_default_calibration_window_matches_the_core() -> None:
 def test_a_dimension_named_like_an_output_is_rejected(name: str) -> None:
     grid = _grid(masked_cell=False).rename(lat=name)
     with pytest.raises(InvalidArgumentError, match="named like an output"):
-        suitability.compare_distributions(grid, 3, index="spi")
+        _compare(grid, 3, index="spi")
 
 
 @pytest.mark.parametrize("name", ["n", "best", "scale"])
 def test_a_scalar_coordinate_named_like_an_output_is_rejected(name: str) -> None:
     grid = _grid(masked_cell=False).assign_coords({name: 3})
     with pytest.raises(InvalidArgumentError, match="named like an output"):
-        suitability.compare_distributions(grid, 3, index="spi")
+        _compare(grid, 3, index="spi")
 
 
 def test_a_time_indexed_coordinate_named_like_an_output_is_accepted() -> None:
@@ -312,27 +311,27 @@ def test_a_time_indexed_coordinate_named_like_an_output_is_accepted() -> None:
     grid = _grid(seed=16, masked_cell=False)
     tagged = grid.assign_coords(month=("time", grid["time"].dt.month.values))
     xr.testing.assert_equal(
-        suitability.compare_distributions(tagged, 3, index="spi"),
-        suitability.compare_distributions(grid, 3, index="spi"),
+        _compare(tagged, 3, index="spi"),
+        _compare(grid, 3, index="spi"),
     )
 
 
 def test_a_time_dimension_named_like_an_output_is_rejected() -> None:
     grid = _grid(masked_cell=False).rename(time="month")
     with pytest.raises(InvalidArgumentError, match="named like an output"):
-        suitability.compare_distributions(grid, 3, index="spi", time_dim="month")
+        _compare(grid, 3, index="spi", time_dim="month")
 
 
 def test_time_split_across_dask_chunks_raises() -> None:
     grid = _grid().chunk({"time": 120})
     with pytest.raises(CoordinateValidationError, match="single chunk"):
-        suitability.compare_distributions(grid, 3, index="spi")
+        _compare(grid, 3, index="spi")
 
 
 @pytest.mark.parametrize("lazy", [False, True], ids=["eager", "dask"])
 def test_every_variable_carries_the_adr_attributes(lazy: bool) -> None:
     grid = _grid(seed=6)
-    dataset = suitability.compare_distributions(grid.chunk({"time": -1, "lat": 1}) if lazy else grid, 3, index="spi")
+    dataset = _compare(grid.chunk({"time": -1, "lat": 1}) if lazy else grid, 3, index="spi")
     assert set(dataset.data_vars) >= {*CANDIDATE_VARIABLES, *STEP_VARIABLES, "alpha", "beta", "loc", "scale", "skew"}
     assert dataset["fit_failed"].dtype == bool
     assert dataset["n"].dtype.kind == dataset["n_parameters"].dtype.kind == "i"
@@ -353,9 +352,7 @@ def test_every_variable_carries_the_adr_attributes(lazy: bool) -> None:
         assert attributes.get("units", "1") != "mm", f"{name} inherited the precipitation units"
         assert all(not isinstance(value, bool | list | type(None)) for value in attributes.values())
     # a calibration window beyond the record is recorded as the years actually used
-    clamped = suitability.compare_distributions(
-        grid, 3, index="spi", calibration_year_initial=START - 10, calibration_year_final=END + 10
-    )
+    clamped = _compare(grid, 3, index="spi", calibration_year_initial=START - 10, calibration_year_final=END + 10)
     assert clamped["best"].attrs["calibration_year_initial"] == str(START)
     assert clamped["best"].attrs["calibration_year_final"] == str(END)
 
@@ -363,7 +360,7 @@ def test_every_variable_carries_the_adr_attributes(lazy: bool) -> None:
 @pytest.mark.parametrize("lazy", [False, True], ids=["eager", "dask"])
 def test_netcdf_round_trip_keeps_values_and_attributes(tmp_path: Path, lazy: bool) -> None:
     grid = _grid(seed=7)
-    dataset = suitability.compare_distributions(grid.chunk({"time": -1, "lat": 1}) if lazy else grid, 3, index="spi")
+    dataset = _compare(grid.chunk({"time": -1, "lat": 1}) if lazy else grid, 3, index="spi")
     path = tmp_path / "comparison.nc"
     dataset.to_netcdf(path, engine="h5netcdf")
     with xr.open_dataset(path, engine="h5netcdf") as reopened:
@@ -383,7 +380,7 @@ def test_beta_warning_is_emitted_once_per_call_not_once_per_block() -> None:
     grid = _grid(seed=8).chunk({"time": -1, "lat": 1})
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter("always")
-        suitability.compare_distributions(grid, 3, index="spi").compute()
+        _compare(grid, 3, index="spi").compute()
     assert sum(issubclass(item.category, BetaFeatureWarning) for item in caught) == 1
 
 
@@ -408,8 +405,8 @@ def test_numpy_route_warnings_point_at_the_caller() -> None:
 
 def test_inferred_and_explicit_temporal_arguments_agree() -> None:
     grid = _grid(seed=9, masked_cell=False)
-    inferred = suitability.compare_distributions(grid, 3, index="spi")
-    explicit = suitability.compare_distributions(
+    inferred = _compare(grid, 3, index="spi")
+    explicit = _compare(
         grid,
         3,
         index="spi",
@@ -466,6 +463,17 @@ def test_pet_must_be_an_array_for_numpy_values() -> None:
             periodicity=MONTHLY,
             pet_mm=grid.transpose("time", "lon", "lat") * 0.5,
         )
+    with pytest.raises(InvalidArgumentError, match="only index='spei' accepts pet_mm"):
+        suitability.compare_distributions(
+            grid.values,
+            3,
+            index="spi",
+            data_start_year=START,
+            calibration_year_initial=START,
+            calibration_year_final=END,
+            periodicity=MONTHLY,
+            pet_mm=grid,
+        )
 
 
 def test_non_january_start_is_rejected() -> None:
@@ -477,13 +485,13 @@ def test_non_january_start_is_rejected() -> None:
 def test_a_missing_time_dimension_is_rejected() -> None:
     grid = _grid(masked_cell=False).rename(time="t")
     with pytest.raises(CoordinateValidationError, match="Time dimension 'time' not found"):
-        suitability.compare_distributions(grid, 3, index="spi")
+        _compare(grid, 3, index="spi")
 
 
 def test_a_time_dimension_without_a_coordinate_is_rejected() -> None:
     grid = _grid(masked_cell=False).drop_vars("time")
     with pytest.raises(CoordinateValidationError, match="Unsupported calendar"):
-        suitability.compare_distributions(grid, 3, index="spi")
+        _compare(grid, 3, index="spi")
 
 
 def test_a_non_monotonic_time_coordinate_is_rejected() -> None:
@@ -491,27 +499,27 @@ def test_a_non_monotonic_time_coordinate_is_rejected() -> None:
     times = grid["time"].values.copy()
     times[[0, 1]] = times[[1, 0]]
     with pytest.raises(CoordinateValidationError, match="not monotonically increasing"):
-        suitability.compare_distributions(grid.assign_coords(time=times), 3, index="spi")
+        _compare(grid.assign_coords(time=times), 3, index="spi")
 
 
 def test_a_non_datetime_time_coordinate_is_rejected() -> None:
     grid = _grid(masked_cell=False).assign_coords(time=np.arange(YEARS * 12))
     with pytest.raises(CoordinateValidationError, match="Unsupported calendar"):
-        suitability.compare_distributions(grid, 3, index="spi")
+        _compare(grid, 3, index="spi")
 
 
 def test_hourly_input_is_rejected() -> None:
     times = pd.date_range("2000-01-01", periods=48, freq="h")
     values = xr.DataArray(np.linspace(1.0, 2.0, len(times)), dims=("time",), coords={"time": times})
     with pytest.raises(InvalidArgumentError, match="Hourly periodicity"):
-        suitability.compare_distributions(values, 3, index="spi")
+        _compare(values, 3, index="spi")
 
 
 def test_a_periodicity_that_mismatches_the_coordinate_is_rejected() -> None:
     times = pd.date_range("1980-01-01", periods=24 * 366, freq="D")
     values = xr.DataArray(np.linspace(1.0, 2.0, len(times)), dims=("time",), coords={"time": times})
     with pytest.raises(CoordinateValidationError, match="periodicity"):
-        suitability.compare_distributions(values, 3, index="spi", periodicity=MONTHLY)
+        _compare(values, 3, index="spi", periodicity=MONTHLY)
 
 
 def test_a_record_shorter_than_the_scale_raises_insufficient_data() -> None:
@@ -519,16 +527,16 @@ def test_a_record_shorter_than_the_scale_raises_insufficient_data() -> None:
     times = pd.date_range("1950-01-01", periods=3, freq="MS")
     values = xr.DataArray([1.0, 2.0, 3.0], dims=("time",), coords={"time": times})
     with pytest.raises(InsufficientDataError, match="Insufficient data for scale=12"):
-        suitability.compare_distributions(values, 12, index="spi")
+        _compare(values, 12, index="spi")
 
 
 def test_an_explicit_data_start_year_must_match_the_time_coordinate() -> None:
     grid = _grid(seed=14, masked_cell=False)
     with pytest.raises(InvalidArgumentError, match="match the first year"):
-        suitability.compare_distributions(grid, 3, index="spi", data_start_year=START + 1)
+        _compare(grid, 3, index="spi", data_start_year=START + 1)
     xr.testing.assert_equal(
-        suitability.compare_distributions(grid, 3, index="spi", data_start_year=START),
-        suitability.compare_distributions(grid, 3, index="spi"),
+        _compare(grid, 3, index="spi", data_start_year=START),
+        _compare(grid, 3, index="spi"),
     )
 
 
@@ -536,7 +544,8 @@ def test_a_grid_whose_first_cell_axis_is_a_calendar_length_matches_the_core() ->
     # a (time, 12, 2) block reads as (years, periods, *cells) unless it is declared time-major
     data = _precip(15, 12, 2)
     grid = xr.DataArray(data, dims=("time", "lat", "lon"), coords={"time": _times()})
-    dataset = suitability.compare_distributions(grid, 3, index="spi")
+    dataset = _compare(grid, 3, index="spi")
+    assert isinstance(dataset, xr.Dataset)
     assert dataset["log_likelihood"].dims == ("candidate", "month", "lat", "lon")
     _assert_matches_core(dataset, _core(grid.values, 3, spatial_time_major=True))
 
@@ -544,4 +553,4 @@ def test_a_grid_whose_first_cell_axis_is_a_calendar_length_matches_the_core() ->
 def test_unknown_candidate_still_raises_before_any_work() -> None:
     grid = _grid()
     with pytest.raises(InvalidArgumentError):
-        suitability.compare_distributions(grid, 3, index="spi", candidates=[Distribution.beta])
+        _compare(grid, 3, index="spi", candidates=[Distribution.beta])

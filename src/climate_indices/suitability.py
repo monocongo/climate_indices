@@ -453,8 +453,9 @@ def compare_distributions(
         InvalidArgumentError: For an unsupported route, criterion, candidate, hourly
             periodicity, non-numeric or infinite input, an argument combination the route
             does not accept, a NumPy call that omits a required temporal argument, an xarray
-            ``data_start_year`` that disagrees with the time coordinate, or an input dimension
-            or coordinate named like an output variable.
+            ``data_start_year`` that disagrees with the time coordinate, or an input dimension or
+            a coordinate over the cell dimensions named like an output variable. A coordinate that
+            spans the time dimension is allowed, since the reduction over time drops it.
         ValueError: If a NumPy ``values`` holds no valid value.
         InsufficientDataError: If the record, or a calendar-adapted daily record, is shorter
             than ``scale``.
@@ -508,7 +509,8 @@ def compare_distributions(
     # silently yields the wrong water balance; the xarray route rejects the mirror case
     if isinstance(pet_mm, xr.DataArray):
         raise _invalid(
-            "pet_mm must be a NumPy array when values is; pass pet_mm.to_numpy() to pair it by position.",
+            "pet_mm must be a NumPy array when values is; transpose a DataArray into the values' "
+            "dimension order before converting it, and only index='spei' accepts pet_mm.",
             "pet_mm",
             type(pet_mm).__name__,
             "np.ndarray",
@@ -897,7 +899,8 @@ def _compare_xarray(
     coordinate_start_year = _infer_data_start_year(input_da[time_dim])
     if provided["data_start_year"] != coordinate_start_year:
         raise _invalid(
-            "data_start_year must match the first year of the time coordinate for xarray input.",
+            f"data_start_year ({provided['data_start_year']}) must match the first year of the time "
+            f"coordinate ({coordinate_start_year}) for xarray input; the record may have been aligned to pet_mm.",
             "data_start_year",
             provided["data_start_year"],
             str(coordinate_start_year),
