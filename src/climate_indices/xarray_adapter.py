@@ -1170,6 +1170,11 @@ def _apply_calculation_metadata(output_attrs: dict[str, Any], calculation_metada
             )
 
 
+# an input's stored-byte packing describes the input, never a computed result: a CF-decoded
+# read would re-apply it to different values and a different dtype
+_STALE_INPUT_ATTRS = ("dtype", "_Unsigned", "scale_factor", "add_offset", "_FillValue", "missing_value")
+
+
 def build_output_attrs(
     input_da: xr.DataArray,
     cf_metadata: dict[str, str] | None = None,
@@ -1213,9 +1218,7 @@ def build_output_attrs(
     output_attrs = copy.deepcopy(input_da.attrs)
     for key in provenance.OWN_ATTRS:
         output_attrs.pop(key, None)
-    # the input's NetCDF packing describes its stored bytes, and a CF-decoded read would
-    # re-apply it to the computed result (e.g. add_offset turning a count of 60 into 160)
-    for key in ("add_offset", "scale_factor"):
+    for key in _STALE_INPUT_ATTRS:
         output_attrs.pop(key, None)
 
     # apply CF metadata overrides to DA-level attrs only
