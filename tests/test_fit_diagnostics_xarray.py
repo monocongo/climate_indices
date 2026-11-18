@@ -311,6 +311,9 @@ def test_pearson_fallback_reports_the_gamma_fit_and_values() -> None:
         np.testing.assert_allclose(result[name].values, _expected_array(expected, name), equal_nan=True)
     for name in ("loc", "scale", "skew"):
         assert result[name].isnull().all()
+    # the schema, units included, is fixed whichever family a block fell back to
+    assert result["loc"].attrs["units"] == result["scale"].attrs["units"] == "mm"
+    assert result["skew"].attrs["units"] == "1"
     assert set(np.unique(result["distribution_used"].values)) == {"gamma"}
 
 
