@@ -117,6 +117,9 @@ def test_three_dimensional_grid_matches_the_numpy_core() -> None:
     assert dataset["best"].dims == ("month", "lat", "lon")
     assert list(dataset["month"].values) == list(range(1, 13))
     _assert_matches_core(dataset, _core(grid.values, 3, spatial_time_major=True))
+    # a parameter only one family fits is NaN for the other, not a shifted column
+    assert np.isnan(dataset["alpha"].sel(candidate="pearson")).all()
+    assert np.isnan(dataset["loc"].sel(candidate="gamma")).all()
 
 
 def test_one_dimensional_series_matches_the_numpy_core() -> None:
