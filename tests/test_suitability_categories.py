@@ -372,6 +372,15 @@ class TestCompareCategoriesXarray:
         # reducing over it is fine
         assert suitability.compare_categories(da, da, dims="reference_category")["n_valid"].dims == ("time",)
 
+    def test_surviving_coordinate_named_like_a_confusion_axis_is_rejected(self):
+        da = xr.DataArray(
+            np.zeros((3, 2), dtype=np.int8), dims=("time", "x"), coords={"reference_category": ("x", [7, 8])}
+        )
+        with pytest.raises(InvalidArgumentError, match="reserved"):
+            suitability.compare_categories(da, da, dims="time")
+        # reducing over the coordinate's dimension drops it, so the names are free
+        assert suitability.compare_categories(da, da, dims=("time", "x"))["n_valid"].item() == 6
+
     def test_stray_code_in_a_lazy_input_is_excluded_from_every_field(self):
         dask_array = pytest.importorskip("dask.array")
         ref = xr.DataArray(dask_array.from_array(np.array([0, 7, -5, 1, 2], dtype=np.int8), chunks=2), dims="t")

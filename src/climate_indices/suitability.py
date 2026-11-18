@@ -843,10 +843,13 @@ def _compare_categories_xarray(
             f"reference and alternative must share their coordinates: {error}", "alternative", "mismatch", "equal"
         ) from error
     reduce_dims = _reduction_dims(dims, tuple(reference.dims))
-    kept_clash = {"reference_category", "alternative_category"} & (set(reference.dims) - set(reduce_dims))
+    kept_names = set(reference.dims) - set(reduce_dims)
+    for array in (reference, alternative):  # a surviving coordinate would collide with the matrix axes too
+        kept_names |= {name for name, coord in array.coords.items() if not set(coord.dims) & set(reduce_dims)}
+    kept_clash = {"reference_category", "alternative_category"} & kept_names
     if kept_clash:
         raise _invalid(
-            f"{sorted(kept_clash)} are reserved for the confusion matrix and cannot stay as input dimensions; "
+            f"{sorted(kept_clash)} are reserved for the confusion matrix and cannot stay as input dimensions or coordinates; "
             "rename them or reduce over them.",
             "dims",
             sorted(kept_clash),
@@ -922,7 +925,7 @@ def compare_categories(
     Raises:
         InvalidArgumentError: The codes are not integers from -1 to 5, the inputs differ in shape,
             dimensions or coordinates, ``dims`` is empty, repeats or names a missing dimension or is given
-            for NumPy input, an input dimension that stays is named ``reference_category`` or
+            for NumPy input, an input dimension or coordinate that stays is named ``reference_category`` or
             ``alternative_category``, or only one input is a DataArray. A Dask-backed input is not read
             to check the range, so a code outside -1 to 5 in it is excluded from every field like a
             missing one. A masked NumPy code counts as missing.
