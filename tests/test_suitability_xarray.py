@@ -17,6 +17,7 @@ from climate_indices.exceptions import (
     BetaFeatureWarning,
     ClimateIndicesWarning,
     CoordinateValidationError,
+    InsufficientDataError,
     InvalidArgumentError,
 )
 from climate_indices.vocabulary import Distribution
@@ -306,6 +307,16 @@ def test_a_scalar_coordinate_named_like_an_output_is_rejected(name: str) -> None
         suitability.compare_distributions(grid, 3, index="spi")
 
 
+def test_a_time_indexed_coordinate_named_like_an_output_is_accepted() -> None:
+    # apply_ufunc drops a coordinate over the core time dimension, so it cannot collide
+    grid = _grid(seed=16, masked_cell=False)
+    tagged = grid.assign_coords(month=("time", grid["time"].dt.month.values))
+    xr.testing.assert_equal(
+        suitability.compare_distributions(tagged, 3, index="spi"),
+        suitability.compare_distributions(grid, 3, index="spi"),
+    )
+
+
 def test_a_time_dimension_named_like_an_output_is_rejected() -> None:
     grid = _grid(masked_cell=False).rename(time="month")
     with pytest.raises(InvalidArgumentError, match="named like an output"):
@@ -441,10 +452,93 @@ def test_pet_must_be_a_matching_dataarray() -> None:
         suitability.compare_distributions(grid, 3, index="spei")
 
 
+def test_pet_must_be_an_array_for_numpy_values() -> None:
+    grid = _grid(masked_cell=False)
+    # pairing a DataArray by position would ignore labels, so a transposed PET is refused
+    with pytest.raises(InvalidArgumentError, match="NumPy array"):
+        suitability.compare_distributions(
+            grid.values,
+            3,
+            index="spei",
+            data_start_year=START,
+            calibration_year_initial=START,
+            calibration_year_final=END,
+            periodicity=MONTHLY,
+            pet_mm=grid.transpose("time", "lon", "lat") * 0.5,
+        )
+
+
 def test_non_january_start_is_rejected() -> None:
     grid = _grid(masked_cell=False).isel(time=slice(1, None))
     with pytest.raises(CoordinateValidationError):
         suitability.compare_distributions(grid, 3, index="spi")
+
+
+def test_a_missing_time_dimension_is_rejected() -> None:
+    grid = _grid(masked_cell=False).rename(time="t")
+    with pytest.raises(CoordinateValidationError, match="Time dimension 'time' not found"):
+        suitability.compare_distributions(grid, 3, index="spi")
+
+
+def test_a_time_dimension_without_a_coordinate_is_rejected() -> None:
+    grid = _grid(masked_cell=False).drop_vars("time")
+    with pytest.raises(CoordinateValidationError, match="Unsupported calendar"):
+        suitability.compare_distributions(grid, 3, index="spi")
+
+
+def test_a_non_monotonic_time_coordinate_is_rejected() -> None:
+    grid = _grid(masked_cell=False)
+    times = grid["time"].values.copy()
+    times[[0, 1]] = times[[1, 0]]
+    with pytest.raises(CoordinateValidationError, match="not monotonically increasing"):
+        suitability.compare_distributions(grid.assign_coords(time=times), 3, index="spi")
+
+
+def test_a_non_datetime_time_coordinate_is_rejected() -> None:
+    grid = _grid(masked_cell=False).assign_coords(time=np.arange(YEARS * 12))
+    with pytest.raises(CoordinateValidationError, match="Unsupported calendar"):
+        suitability.compare_distributions(grid, 3, index="spi")
+
+
+def test_hourly_input_is_rejected() -> None:
+    times = pd.date_range("2000-01-01", periods=48, freq="h")
+    values = xr.DataArray(np.linspace(1.0, 2.0, len(times)), dims=("time",), coords={"time": times})
+    with pytest.raises(InvalidArgumentError, match="Hourly periodicity"):
+        suitability.compare_distributions(values, 3, index="spi")
+
+
+def test_a_periodicity_that_mismatches_the_coordinate_is_rejected() -> None:
+    times = pd.date_range("1980-01-01", periods=24 * 366, freq="D")
+    values = xr.DataArray(np.linspace(1.0, 2.0, len(times)), dims=("time",), coords={"time": times})
+    with pytest.raises(CoordinateValidationError, match="periodicity"):
+        suitability.compare_distributions(values, 3, index="spi", periodicity=MONTHLY)
+
+
+def test_a_record_shorter_than_the_scale_raises_insufficient_data() -> None:
+    # three month-starts beginning in January: a valid calendar, too short for a 12-step scale
+    times = pd.date_range("1950-01-01", periods=3, freq="MS")
+    values = xr.DataArray([1.0, 2.0, 3.0], dims=("time",), coords={"time": times})
+    with pytest.raises(InsufficientDataError, match="Insufficient data for scale=12"):
+        suitability.compare_distributions(values, 12, index="spi")
+
+
+def test_an_explicit_data_start_year_must_match_the_time_coordinate() -> None:
+    grid = _grid(seed=14, masked_cell=False)
+    with pytest.raises(InvalidArgumentError, match="match the first year"):
+        suitability.compare_distributions(grid, 3, index="spi", data_start_year=START + 1)
+    xr.testing.assert_equal(
+        suitability.compare_distributions(grid, 3, index="spi", data_start_year=START),
+        suitability.compare_distributions(grid, 3, index="spi"),
+    )
+
+
+def test_a_grid_whose_first_cell_axis_is_a_calendar_length_matches_the_core() -> None:
+    # a (time, 12, 2) block reads as (years, periods, *cells) unless it is declared time-major
+    data = _precip(15, 12, 2)
+    grid = xr.DataArray(data, dims=("time", "lat", "lon"), coords={"time": _times()})
+    dataset = suitability.compare_distributions(grid, 3, index="spi")
+    assert dataset["log_likelihood"].dims == ("candidate", "month", "lat", "lon")
+    _assert_matches_core(dataset, _core(grid.values, 3, spatial_time_major=True))
 
 
 def test_unknown_candidate_still_raises_before_any_work() -> None:

@@ -46,12 +46,14 @@ from climate_indices.vocabulary import Aggregation, Distribution
 from climate_indices.xarray_adapter import (
     _align_inputs,
     _effective_calibration_years,
+    _infer_data_start_year,
     _infer_temporal_parameters,
     _OutputProvenance,
     _resolve_calendar_plan,
     _spatial_kernel_call,
     _SpatialOutput,
     _validate_sufficient_data,
+    _validate_supported_calendar,
 )
 
 __all__ = ["Criterion", "DistributionComparison", "IndexRoute", "compare_distributions"]
@@ -411,7 +413,7 @@ def compare_distributions(
         scale: Timescale in time steps accumulated before fitting.
         index: ``"spi"``, ``"spei"`` or ``"standardized_index"``.
         data_start_year: First year of ``values``. Required for NumPy input; inferred from the time
-            coordinate for xarray input.
+            coordinate for xarray input, where an explicit value must match that coordinate.
         calibration_year_initial: First calibration year; clamped to the record. Required for NumPy
             input; inferred from the time range for xarray input.
         calibration_year_final: Last calibration year; clamped to the record. Required for NumPy
@@ -422,8 +424,10 @@ def compare_distributions(
             log-logistic for ``"spei"``. Naming any other family raises.
         pet_mm: Potential evapotranspiration matching ``values``; required for, and only for,
             ``index="spei"``. A NumPy spatial block also accepts a per-step series or singleton
-            cell axes; a shape that would broadcast over a larger cell grid raises. For xarray
-            input it must be a DataArray with the same dimensions as ``values``.
+            cell axes; a shape that would broadcast over a larger cell grid raises. For NumPy
+            ``values`` it must be an array, because pairing a DataArray by position would ignore
+            its labels. For xarray input it must be a DataArray with the same dimensions as
+            ``values``.
         aggregation: ``"sum"`` or ``"mean"`` window aggregation; ``"standardized_index"`` only.
         clip_negatives: Clip negative input to zero. ``False`` rejects negatives, as
             ``standardized_index`` does for gamma and Pearson; ``"standardized_index"`` only.
@@ -441,13 +445,19 @@ def compare_distributions(
         ``bic``, ``n_parameters``, ``fit_failed`` and every fitted parameter, NaN where a family
         has no such parameter) and per-step variables over ``(month | dayofyear, *cells)``
         (``n``, ``best`` as the winning candidate's name or ``"none"``, ``delta_to_runner_up``).
-        Every variable carries the ADR-0028 section 6 attributes that apply to this route.
+        Every variable carries the ADR-0028 section 6 attributes that apply to this route. A fully
+        missing input is accepted and scores as no usable fit (``n`` is 0 and ``best`` is
+        ``"none"``) instead of raising as the NumPy route does.
 
     Raises:
         InvalidArgumentError: For an unsupported route, criterion, candidate, hourly
             periodicity, non-numeric or infinite input, an argument combination the route
-            does not accept, or a NumPy call that omits a required temporal argument.
+            does not accept, a NumPy call that omits a required temporal argument, an xarray
+            ``data_start_year`` that disagrees with the time coordinate, or an input dimension
+            or coordinate named like an output variable.
         ValueError: If a NumPy ``values`` holds no valid value.
+        InsufficientDataError: If the record, or a calendar-adapted daily record, is shorter
+            than ``scale``.
         CoordinateValidationError: For an xarray time dimension that is missing, non-monotonic,
             unsupported, does not begin in January, mismatches ``periodicity``, or is split
             across Dask chunks.
@@ -459,6 +469,8 @@ def compare_distributions(
             period of 30 years or more; ``actual_years`` then holds the smallest step or cell count.
         Warnings the fits raise (``CalibrationPeriodClampedWarning``, ``MissingDataWarning``, ``GoodnessOfFitWarning``)
             reach the caller as they do from the index; each candidate's fit can raise them.
+            The xarray route evaluates one series per block or cell, so these repeat there, and a
+            Dask input defers them to ``.compute()``.
         ClimateIndicesWarning: If ``scale`` exceeds 12 (monthly) or 365 (daily) steps, where
             consecutive years share overlapping windows and effective sample sizes shrink.
     """
@@ -492,6 +504,15 @@ def compare_distributions(
             None,
             "all four temporal arguments",
         )
+    # a DataArray pet_mm would be paired by position, so a transposed or mislabelled one
+    # silently yields the wrong water balance; the xarray route rejects the mirror case
+    if isinstance(pet_mm, xr.DataArray):
+        raise _invalid(
+            "pet_mm must be a NumPy array when values is; pass pet_mm.to_numpy() to pair it by position.",
+            "pet_mm",
+            type(pet_mm).__name__,
+            "np.ndarray",
+        )
     return _compare_numpy(
         values,
         scale,
@@ -501,7 +522,7 @@ def compare_distributions(
         calibration_year_final=calibration_year_final,
         periodicity=periodicity,
         candidates=candidates,
-        pet_mm=pet_mm.to_numpy() if isinstance(pet_mm, xr.DataArray) else pet_mm,
+        pet_mm=pet_mm,
         aggregation=aggregation,
         clip_negatives=clip_negatives,
         criterion=criterion,
@@ -818,9 +839,13 @@ def _validated_inputs(
     input_da = values
     validate_time_dimension(input_da, time_dim)
     validate_time_monotonicity(input_da[time_dim])
+    # the calendar itself is checked before inference reads it, so a numeric or cftime
+    # coordinate fails as CoordinateValidationError rather than inside pandas
+    _validate_supported_calendar(input_da[time_dim])
     if pet_da is not None:
         validate_time_dimension(pet_da, time_dim)
         validate_time_monotonicity(pet_da[time_dim])
+        _validate_supported_calendar(pet_da[time_dim])
         input_da, aligned = _align_inputs(input_da, {"pet": pet_da}, time_dim)
         pet_da = aligned["pet"]
     for dataarray in (input_da, pet_da):
@@ -867,6 +892,16 @@ def _compare_xarray(
     }
     # inference is metadata-only, so it stays safe for Dask-backed input
     provided.update(_infer_temporal_parameters(_compare_numpy, input_da, [input_da], provided, time_dim))
+    # the coordinate is authoritative here: a data_start_year that disagrees with it would
+    # slice the record from a different origin than the years recorded in every attribute
+    coordinate_start_year = _infer_data_start_year(input_da[time_dim])
+    if provided["data_start_year"] != coordinate_start_year:
+        raise _invalid(
+            "data_start_year must match the first year of the time coordinate for xarray input.",
+            "data_start_year",
+            provided["data_start_year"],
+            str(coordinate_start_year),
+        )
     resolved_periodicity: compute.Periodicity = provided["periodicity"]
     _indices._validate_periodicity(resolved_periodicity)
     _indices._validate_scale(scale, resolved_periodicity)
@@ -886,9 +921,15 @@ def _compare_xarray(
 
     # an input dimension or coordinate with an output's name would drop that variable or fail deep in the merge
     reserved = {"candidate", period_dim, *_CANDIDATE_FIELDS, *_STEP_FIELDS, *(name for name, _ in slots)}
-    taken = {time_dim, *input_da.dims, *input_da.coords}
+    # apply_ufunc drops a coordinate that spans the core time dimension, so only dimensions
+    # and the coordinates that can survive into the output can collide with a variable name
+    taken = {time_dim, *input_da.dims} | {
+        name for name, coordinate in input_da.coords.items() if time_dim not in coordinate.dims
+    }
     if pet_da is not None:
-        taken |= {*pet_da.dims, *pet_da.coords}
+        taken |= {*pet_da.dims} | {
+            name for name, coordinate in pet_da.coords.items() if time_dim not in coordinate.dims
+        }
     if clash := sorted(reserved & taken):
         raise _invalid(
             f"Input dimensions and coordinates must not be named like an output: {', '.join(clash)}.",
