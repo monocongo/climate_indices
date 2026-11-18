@@ -800,7 +800,7 @@ _PARAMETER_METADATA: dict[str, str] = {
     "loc": "Location parameter",
     "scale": "Scale parameter",
     "skew": "Pearson Type III skew parameter",
-    "shape": "Log-logistic shape parameter",
+    "shape": "Shape parameter",
 }
 
 _NO_BEST = "none"
