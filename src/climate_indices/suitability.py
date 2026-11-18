@@ -559,6 +559,19 @@ def _shape_all_missing(
     return np.full((-(-prepared.shape[0] // step_count), step_count, *prepared.shape[1:]), np.nan)
 
 
+def _warn_overlapping_windows(scale: int, periodicity: compute.Periodicity) -> None:
+    """Warn that a timescale beyond one year of steps makes consecutive years' windows overlap."""
+    window_limit = 365 if periodicity is compute.Periodicity.daily else 12
+    if scale > window_limit:
+        warnings.warn(
+            f"Timescale {scale} exceeds {window_limit} steps, so accumulation windows ending on the same "
+            "calendar step in consecutive years overlap; effective sample sizes shrink and goodness-of-fit "
+            "p-values are invalid.",
+            ClimateIndicesWarning,
+            stacklevel=_CALLER_STACKLEVEL + 1,  # one frame deeper than _compare_numpy's own warnings
+        )
+
+
 def _compare_numpy(
     values: np.ndarray,  # NOSONAR (S107) mirrors the public keywords, which the temporal-inference helpers bind against
     scale: int,
@@ -672,15 +685,7 @@ def _compare_numpy(
             ShortCalibrationWarning(message, actual_years=int(short.min()), required_years=MIN_CALIBRATION_YEARS),
             stacklevel=_CALLER_STACKLEVEL,
         )
-    window_limit = 365 if periodicity is compute.Periodicity.daily else 12
-    if scale > window_limit:
-        warnings.warn(
-            f"Timescale {scale} exceeds {window_limit} steps, so accumulation windows ending on the same "
-            "calendar step in consecutive years overlap; effective sample sizes shrink and goodness-of-fit "
-            "p-values are invalid.",
-            ClimateIndicesWarning,
-            stacklevel=_CALLER_STACKLEVEL,
-        )
+    _warn_overlapping_windows(scale, periodicity)
 
     inputs: dict[str, Any] = {"values": values}
     if pet_mm is not None:
