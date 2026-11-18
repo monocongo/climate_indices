@@ -31,7 +31,7 @@ Each statement was read in the file named.
 
 | Statement | Source |
 | --- | --- |
-| `xclim` SPI and SPEI signatures; `gamma` and `fisk`; methods `ML`, `APP`, `PWM`; zero inflation fixed on for SPI and off for SPEI; bound at plus or minus 8.21; SPEI `offset` deprecated; a note that `climate_indices` results are reproduced with `method="APP"` and `fitkwargs={"floc": 0}`; no Palmer function in the module | https://xclim.readthedocs.io/en/latest/_modules/xclim/indices/_agro.html |
+| `xclim` 1.0.0 SPI and SPEI accept the named distributions `gamma`, `fisk`, `genextreme`, and `lognorm`. Named `gamma` and `fisk` support `ML` and `APP`, while `PWM` requires a compatible distribution object. When fitting, SPI enables zero inflation and SPEI disables it. Both clip to ±8.21. The SPEI signature drops the former `offset` parameter. The SPI docstring describes matching `climate_indices` with `method="APP"` and `fitkwargs={"floc": 0}`, subject to different clipping bounds. The module has no Palmer function. | [SPI and SPEI source](https://xclim.readthedocs.io/en/v1.0.0/_modules/xclim/compute/_agro.html), [standardization source](https://xclim.readthedocs.io/en/v1.0.0/_modules/xclim/compute/stats.html#standardized_index) |
 | `xclim` 0.40.0 history: SPEI offset changed "to better reproduce results in the reference library monocongo/climate_indices" | https://pypi.org/project/xclim/0.40.0 |
 | `xclim` PET methods and default `BR65`; Hargreaves method modified in its pull request 1723 | https://github.com/Ouranosinc/xclim/pull/1723 |
 | R `SPEI` fits by unbiased PWM by default; plotting-position PWM and maximum likelihood also available | https://rdrr.io/pkg/SPEI/man/Drought-indices.html |
