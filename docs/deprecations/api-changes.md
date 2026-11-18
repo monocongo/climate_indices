@@ -128,7 +128,8 @@ had `units = "1"`.
 | `alpha`, `skew`, `prob_zero` | `"1"` | `"1"` (unchanged) |
 
 The input string is reused unchanged for both `aggregation="sum"` and `"mean"`, so for a
-rate input (`"mm/day"`) a `sum` fit is a window total. Only metadata changes; fitted
+rate input (`"mm/day"`) a `sum` fit is an unweighted sum of the rate samples, not a
+time-integrated window total. Only metadata changes; fitted
 values are identical. Code that assumed `units == "1"` on `beta`, `loc`, or `scale`
 should read `attrs.get("units")` instead. Unit conversion is out of scope.
 

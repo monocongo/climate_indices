@@ -3490,7 +3490,8 @@ def fit_diagnostics(
         input's cell dimensions, each variable carrying CF attributes and provenance
         (scale, distribution, calibration period, version, and history). The
         dimensional parameters (``beta``, ``loc``, ``scale``) carry the input's ``units``
-        string unchanged for both aggregations, so a ``sum`` of a rate is a window total;
+        string unchanged for both aggregations, so a ``sum`` of rate samples is their
+        unweighted sum, not a time-integrated total;
         they have no ``units`` when the input has none. The shape-like parameters and
         ``prob_zero`` are ``"1"``. A Pearson
         Type III request keeps both parameter families: the one that does not apply
