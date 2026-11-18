@@ -121,11 +121,12 @@ def _validate_distribution(
 ) -> None:
     """Validate that distribution is a Distribution enum member allowed on this surface.
 
-    The default ``allowed`` set omits log-logistic, so a zero-mass-sensitive surface
-    that forgets to pass an explicit set fails safe: the generalized logistic is the
-    SPEI reference distribution, whose offset P−PET input has no physical zero mass,
-    and the zero-placement treatment a precipitation or generic non-negative series
-    needs is not implemented for it (#106). ``spei()`` passes the three-member set.
+    The default ``allowed`` set omits log-logistic and gev, so a zero-mass-sensitive
+    surface that forgets to pass an explicit set fails safe: the generalized logistic
+    is the SPEI reference distribution, and the generalized extreme value a candidate
+    for it, whose offset P−PET input has no physical zero mass, and the zero-placement
+    treatment a precipitation or generic non-negative series needs is not implemented
+    for either (#106). ``spei()`` passes the four-member ``_SPEI_DISTRIBUTIONS`` set.
 
     Args:
         distribution: The distribution parameter to validate
@@ -146,6 +147,12 @@ def _validate_distribution(
             " Log-logistic has no zero-placement treatment for a series with a physical "
             "zero mass; use gamma or Pearson Type III here. SPEI is the supported "
             "log-logistic surface."
+        )
+    elif distribution is Distribution.gev:
+        message += (
+            " GEV has no zero-placement treatment for a series with a physical "
+            "zero mass; use gamma or Pearson Type III here. SPEI is the supported "
+            "GEV surface."
         )
     elif distribution is Distribution.beta:
         message += (
@@ -552,7 +559,7 @@ def _standardized_index_pipeline(
             clipped to the z-score range.
         zero_handling: Where a zero accumulation is placed within the zero mass.
         allowed_distributions: The distribution members this surface accepts; the
-            default omits log-logistic, which only :func:`spei` supports.
+            default omits log-logistic and gev, which only :func:`spei` supports.
         clip_negatives: Whether preparation clips negative values to zero before
             scaling. :func:`spei` passes False because it clips precipitation and
             adds its +1000 offset before this pipeline.
@@ -712,7 +719,8 @@ def standardized_index(
     the input's valid values; input that was already missing does not count.
     Log-logistic (generalized logistic) fitting is available for :func:`spei` but is
     rejected here: a non-negative series has a physical zero mass that the GLO path
-    does not yet place.
+    does not yet place. The generalized extreme value (``gev``) is rejected for the
+    same reason.
 
     ``Distribution.empirical`` standardizes by rank instead of a fit: each value's
     probability is its plotting position, ``(1 + k) / (n + 2)``, among the ``n`` valid
@@ -880,7 +888,7 @@ def fit_diagnostics(
             see :func:`spi` for the accepted layouts.
         scale: Number of time steps accumulated before fitting.
         distribution: Distribution to fit, gamma or Pearson Type III; the
-            log-logistic (generalized logistic) and beta fits are rejected on this
+            log-logistic (generalized logistic), gev and beta fits are rejected on this
             surface.
         data_start_year: Initial year of the input values.
         calibration_year_initial: Initial year of the calibration period.
@@ -979,8 +987,8 @@ def spi(
         before the index is computed
     :param distribution: distribution type to be used for the internal
         fitting/transform computation: gamma or Pearson Type III. The
-        log-logistic (generalized logistic) fit is rejected here, since it has no
-        zero-placement treatment for the precipitation series; use :func:`spei`.
+        log-logistic (generalized logistic) and gev fits are rejected here, since they
+        have no zero-placement treatment for the precipitation series; use :func:`spei`.
     :param data_start_year: the initial year of the input precipitation dataset
     :param calibration_year_initial: initial year of the calibration period
     :param calibration_year_final: final year of the calibration period
@@ -1122,8 +1130,10 @@ def spei(
         scaled before computing the indicator (months for monthly data, days
         for daily data)
     :param distribution: distribution type to be used for the internal
-        fitting/transform computation: gamma, Pearson Type III, or loglogistic
-        (the generalized logistic that SPEIbase standardizes with; see ADR-0016)
+        fitting/transform computation: gamma, Pearson Type III, loglogistic
+        (the generalized logistic that SPEIbase standardizes with; see ADR-0016),
+        or gev (the generalized extreme value, fitted by Hosking's L-moments; see
+        ADR-0028)
     :param periodicity: periodicity of the input time series; use
         ``compute.Periodicity.monthly`` for monthly data (12 values/year) or
         ``compute.Periodicity.daily`` for daily data (366 values/year).
@@ -1136,8 +1146,9 @@ def spei(
         contain two arrays, keyed as "alpha" and "beta", and optionally a third
         keyed as "prob_zero", if the distribution is Pearson then this dict
         should contain four arrays keyed as "prob_zero", "loc", "scale", and
-        "skew", and if the distribution is loglogistic then this dict should
-        contain three arrays keyed as "loc", "scale", and "shape". A gamma set
+        "skew", and if the distribution is loglogistic or gev then this dict
+        should contain three arrays keyed as "loc", "scale", and "shape" (for gev
+        the shape is Hosking's ``k``, SciPy's ``genextreme`` ``c``). A gamma set
         without "prob_zero" computes it over the calibration period of the values
         given.
         Older keys such as "alphas" and "probabilities_of_zero" are deprecated.
@@ -1174,7 +1185,7 @@ def spei(
         memory_arrays=(pet_mm,),
         preprocess=lambda precipitation: _spei_water_balance(precipitation, pet_mm),
         spatial_time_major=spatial_time_major,
-        allowed_distributions=(Distribution.gamma, Distribution.pearson, Distribution.loglogistic),
+        allowed_distributions=_SPEI_DISTRIBUTIONS,
         output_scale=output_scale,
         clip_negatives=False,
         fallback_to_gamma=False,
@@ -1184,6 +1195,8 @@ def spei(
 # SPAI subtracts each calendar period's calibration mean and fits one distribution to
 # the anomalies of every period pooled (#1480); gamma's positive support cannot hold a
 # signed anomaly
+_SPEI_DISTRIBUTIONS = (Distribution.gamma, Distribution.pearson, Distribution.loglogistic, Distribution.gev)
+
 _SPAI_DISTRIBUTIONS = (Distribution.t_location_scale, Distribution.pearson, Distribution.normal)
 
 # the parameters each SPAI distribution fits, one value per cell

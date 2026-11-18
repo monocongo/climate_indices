@@ -22,7 +22,10 @@ the value contract is in {doc}`data_requirements`.
 ## Choose the distribution
 
 SPI and SPEI take a `distribution` argument. The command line has no distribution
-option and writes both for every requested scale.
+option: for every requested scale it writes one SPI result per distribution `spi()`
+accepts (gamma and Pearson Type III) and one SPEI result per distribution `spei()`
+accepts (gamma, Pearson Type III, log-logistic and gev).
+Each requested Timescale requires four SPEI fits.
 
 - Use `indices.Distribution.gamma` as the starting point: it is the choice
   recommended by McKee et al. (1993), estimates few parameters, and is the right
@@ -37,6 +40,18 @@ option and writes both for every requested scale.
   the log-logistic path does not place, so those surfaces reject it
   ([ADR-0016](adr/0016-log-logistic-distribution-for-spei.md)). SPEI's `P - PET`
   series is offset and has no physical zero mass, so it accepts the fit directly.
+- Use `indices.Distribution.gev` for SPEI when you want to test whether a
+  generalized extreme value fits the `P - PET` series better than the log-logistic
+  or gamma; it is a candidate for the distribution-suitability tools of
+  [ADR-0028](adr/0028-distribution-suitability-contracts.md), not a default. It
+  fits Hosking's GEV by L-moments, and its shape is Hosking's `k`, which is SciPy's
+  `genextreme` `c`: positive for a distribution bounded above, negative for a
+  heavy upper tail. A value beyond the finite end of the fitted support scores
+  the extreme index (it is clipped at the usual limit). A calendar step whose
+  L-moments are invalid for a GEV, such as a sample of fewer than four values or an
+  L-skewness of magnitude 1 or more, is missing, with no gamma fallback. It is
+  SPEI-only for the same reason as the log-logistic: `spi()` and
+  `standardized_index()` reject it.
 - Use `indices.Distribution.empirical` on `standardized_index()` when the record is
   long enough to rank against, or the series is signed. It fits nothing: a value's
   probability is its plotting position `(1 + k) / (n + 2)` among the `n` valid

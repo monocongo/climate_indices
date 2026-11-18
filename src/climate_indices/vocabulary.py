@@ -20,7 +20,7 @@ class Distribution(Enum):
     """
     Enumeration type for the distribution families the fitting-based indices use.
 
-    SPI uses ``gamma`` and ``pearson``; SPEI also uses ``loglogistic``;
+    SPI uses ``gamma`` and ``pearson``; SPEI also uses ``loglogistic`` and ``gev``;
     ``standardized_index()`` also accepts ``empirical`` and ``beta``; ``spai()`` uses
     ``t_location_scale``, ``pearson``, and ``normal``.
     """
@@ -30,6 +30,10 @@ class Distribution(Enum):
     #: Generalized logistic (Hosking's GLO), the "log-Logistic" distribution R's
     #: SPEI package and SPEIbase fit; see ADR-0016. Supported by ``spei()`` only.
     loglogistic = "loglogistic"
+    #: Generalized extreme value, fitted by Hosking's L-moment estimator; its shape is
+    #: Hosking's ``k``, which is SciPy's ``genextreme`` ``c``. A candidate SPEI
+    #: distribution for the suitability tools of ADR-0028. Supported by ``spei()`` only.
+    gev = "gev"
     #: The empirical (rank-based) distribution: plotting-position probabilities over
     #: the Calibration Period, with no fitted parameters (#1168). Supported by
     #: ``standardized_index()`` only.
@@ -56,6 +60,7 @@ _DISTRIBUTION_DISPLAY_NAMES = {
     Distribution.pearson: "pearson",
     Distribution.gamma: "gamma",
     Distribution.loglogistic: "log-logistic",
+    Distribution.gev: "gev",
     Distribution.empirical: "empirical",
     Distribution.beta: "beta",
     Distribution.t_location_scale: "t location-scale",

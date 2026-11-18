@@ -134,14 +134,15 @@ def test_two_dimensional_input_is_read_cell_by_cell() -> None:
         _assert_matches_core(dataset.isel(lat=cell), _core(grid.isel(lat=cell).values, 1))
 
 
-def test_spei_route_scores_the_water_balance_with_the_log_logistic_candidate() -> None:
+def test_spei_route_scores_the_water_balance_with_the_log_logistic_and_gev_candidates() -> None:
     precip = _grid(seed=1, masked_cell=False)
     pet = precip * 0.6
     dataset = _compare(precip, 3, index="spei", pet_mm=pet)
-    assert list(dataset["candidate"].values) == ["pearson", "gamma", "loglogistic"]
-    # the log-logistic family has no zero mass, and its parameters are the only `shape` ones
+    assert list(dataset["candidate"].values) == ["pearson", "gamma", "loglogistic", "gev"]
+    # the log-logistic and GEV families have no zero mass, and gamma carries the only unused `shape`
     assert np.isnan(dataset["shape"].sel(candidate="gamma")).all()
     assert np.isfinite(dataset["shape"].sel(candidate="loglogistic")).any()
+    assert np.isfinite(dataset["shape"].sel(candidate="gev")).any()
     _assert_matches_core(dataset, _core(precip.values, 3, index="spei", pet_mm=pet.values, spatial_time_major=True))
 
 

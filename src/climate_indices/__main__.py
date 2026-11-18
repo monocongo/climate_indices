@@ -1615,10 +1615,11 @@ def _validate_degree_day_arguments(args: argparse.Namespace) -> None:
 
 
 # the distributions `--index spi` computes; log-logistic is the SPEI reference
-# distribution and `indices.spi()` rejects it (#106), and empirical (#1168) and beta
-# (#1169) are reserved for `indices.standardized_index()`
+# distribution and `indices.spi()` rejects it (#106), as it does gev (#1583), and
+# empirical (#1168) and beta (#1169) are reserved for `indices.standardized_index()`.
+# `--index spei` computes every distribution `indices.spei()` accepts.
 _SPI_DISTRIBUTIONS = (indices.Distribution.gamma, indices.Distribution.pearson)
-_SPEI_DISTRIBUTIONS = (*_SPI_DISTRIBUTIONS, indices.Distribution.loglogistic)
+_SPEI_DISTRIBUTIONS = indices._SPEI_DISTRIBUTIONS
 
 
 # The parser checks these declarations before opening any input files.

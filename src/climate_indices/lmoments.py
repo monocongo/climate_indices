@@ -204,6 +204,13 @@ def _estimate_lmoments_spatial(values: np.ndarray) -> tuple[np.ndarray, np.ndarr
     sorted_values = np.sort(values, axis=0)
 
     sample_count, *cell_shape = values.shape
+    # a constant cell has no spread: the sums below can carry a floating-point residue
+    # for a constant that is not exactly representable, and reading it as an L-scale
+    # would fit a degenerate distribution (#1583)
+    constant = np.zeros(cell_shape, dtype=bool)
+    if sample_count:
+        highest = np.take_along_axis(sorted_values, np.maximum(number_of_values - 1, 0)[np.newaxis], axis=0)[0]
+        constant = sorted_values[0] == highest  # NOSONAR (S1244) exact equality defines "constant"
     sums = np.zeros((3, *cell_shape))
     ranks = np.arange(sample_count)
     in_sample = ranks.reshape((sample_count,) + (1,) * len(cell_shape)) < number_of_values
@@ -240,7 +247,7 @@ def _estimate_lmoments_spatial(values: np.ndarray) -> tuple[np.ndarray, np.ndarr
 
     lmoments = np.zeros((3, *cell_shape))
     valid = number_of_values >= MIN_VALUES_FOR_LMOMENTS
-    valid = valid & (sums[1] != 0)
+    valid = valid & (sums[1] != 0) & ~constant
     lmoments[0] = np.where(valid, sums[0], 0.0)
     lmoments[1] = np.where(valid, sums[1], 0.0)
     with np.errstate(divide="ignore", invalid="ignore"):
@@ -248,8 +255,16 @@ def _estimate_lmoments_spatial(values: np.ndarray) -> tuple[np.ndarray, np.ndarr
     return lmoments, valid
 
 
+_SHORT_SAMPLE_HINT = (
+    "This commonly occurs in dry regions with extensive zero precipitation. "
+    "Consider using Gamma distribution instead of Pearson Type III for such areas."
+)
+
+
 def _estimate_lmoments(
     values: np.ndarray,
+    *,
+    hint: str = _SHORT_SAMPLE_HINT,
 ) -> np.ndarray:
     """
     Estimate sample L-moments, based on Fortran code written for inclusion
@@ -265,10 +280,16 @@ def _estimate_lmoments(
     and which has been optimized for calculating only the first three L-moments.
 
     :param values: 1-D (flattened) array of float values
+    :param hint: sentence appended to the error for a sample that is too short; the
+        default suggests the gamma fallback, which a caller with no such fallback
+        (the GEV fit) replaces
     :return: an estimate of the first three sample L-moments
     :rtype: 1-D numpy array of floats (the first three sample L-moments
         corresponding to the input values)
     """
+
+    if np.ma.isMaskedArray(values):
+        values = np.ma.compressed(values)
 
     # we need to have at least four values in order
     # to make a sample L-moments estimation
@@ -276,15 +297,21 @@ def _estimate_lmoments(
     if number_of_values < MIN_VALUES_FOR_LMOMENTS:
         message = (
             "Insufficient number of values to perform sample L-moments estimation: "
-            f"{number_of_values} non-NaN values found (minimum {MIN_VALUES_FOR_LMOMENTS} required). "
-            "This commonly occurs in dry regions with extensive zero precipitation. "
-            "Consider using Gamma distribution instead of Pearson Type III for such areas."
+            f"{number_of_values} non-NaN values found (minimum {MIN_VALUES_FOR_LMOMENTS} required)."
         )
+        if hint:
+            message += f" {hint}"
         _logger.warning(message)
         raise ValueError(message)
 
     # sort the values into ascending order
     values = np.sort(values)
+
+    # a constant sample has no spread: the sums below can carry a floating-point
+    # residue for a constant that is not exactly representable, and reading it as an
+    # L-scale would fit a degenerate distribution (#1583)
+    if values[0] == values[number_of_values - 1]:  # NOSONAR (S1244) exact equality defines "constant"
+        return np.zeros((3,))
 
     sums = np.zeros((3,))
 
@@ -424,5 +451,182 @@ def _estimate_glo_parameters_spatial(
         np.where(valid, loc, 0.0),
         np.where(valid, scale, 0.0),
         np.where(valid, np.where(negligible, 0.0, shape), 0.0),
+        valid,
+    )
+
+
+_LN2 = float(np.log(2.0))
+_LN3 = float(np.log(3.0))
+
+# the GEV shape k solving tau3(k) = tau3 lies in (-1, inf) for |tau3| < 1. A double
+# tau3 is at most 1.1e-16 above -1, which maps to k = 54, so this bound is never reached
+_GEV_SHAPE_UPPER_BOUND = 200.0
+
+# Newton's step ends when the shape moves by less than this, relative to max(1, |k|)
+_GEV_SHAPE_TOLERANCE = 1e-14
+_GEV_SHAPE_MAX_ITERATIONS = 60
+
+# Taylor coefficients c1..c5 of Gamma(1 + k) = 1 + c1 k + c2 k^2 + ... about k = 0,
+# from ln Gamma(1 + k) = -gamma_E k + sum_{n>=2} zeta(n) (-k)^n / n (tests re-derive
+# them). They give (1 - Gamma(1 + k)) / k below _GEV_GAMMA_SERIES_LIMIT, where
+# evaluating Gamma(1 + k) - 1 directly loses its digits to the rounding of 1 + k.
+# The truncation error there is below 1e-15 (rounding brings the series to about
+# 1.2e-15), and the direct form is accurate to a few 1e-13 above it.
+_GAMMA_TAYLOR = (-0.5772156649015329, 0.9890559953279725, -0.9074790760808862, 0.9817280868344002, -0.9819950689031453)
+_GEV_GAMMA_SERIES_LIMIT = 1e-3
+
+
+def _gev_tau3(shape: np.ndarray) -> np.ndarray:
+    """The GEV L-skewness for shape ``k``: ``2 (1 - 3^-k) / (1 - 2^-k) - 3``.
+
+    ``expm1`` keeps the ratio accurate as ``k`` approaches zero, where it tends to
+    the Gumbel value ``2 ln 3 / ln 2 - 3``.
+    """
+    with np.errstate(divide="ignore", invalid="ignore"):
+        ratio = np.expm1(-shape * _LN3) / np.expm1(-shape * _LN2)
+    gumbel = shape == 0.0  # NOSONAR (S1244) exact zero is the Gumbel limit, not a tolerance
+    result: np.ndarray = 2.0 * np.where(gumbel, _LN3 / _LN2, ratio) - 3.0
+    return result
+
+
+def _gev_shape(tau3: np.ndarray) -> np.ndarray:
+    """Solve ``_gev_tau3(k) = tau3`` for the GEV shape ``k``, for each element of ``tau3``.
+
+    The start is Hosking, Wallis and Wood's (1985) approximation
+    ``k = 7.8590 c + 2.9554 c**2`` with ``c = 2 / (3 + tau3) - ln 2 / ln 3``. Newton's
+    method then refines it, with the sign of each residual keeping a bracket around
+    the root, because the approximation is poor for strongly negative ``tau3`` (large
+    ``k``) and the L-skewness flattens there; a step that leaves the bracket is
+    replaced by its midpoint. ``tau3`` must satisfy ``|tau3| < 1``.
+
+    The solve stops when the shape moves by under ``1e-14`` relative to
+    ``max(1, |k|)``, which gives a round-trip shape error of about ``1e-14`` for
+    ``|k|`` up to 5 and a larger one beyond, where ``tau3`` is within ``1e-9`` of -1
+    and the float resolution of ``tau3`` limits it. No small ``|k|`` is snapped to the
+    Gumbel limit, because :func:`_gev_tau3` and the parameter formulas below are
+    stable near ``k = 0``; only ``k = 0`` exactly takes the limit branch.
+
+    :param tau3: sample L-skewness, an array with ``|tau3| < 1`` where it is used
+    :return: the shape, an array like ``tau3``
+    """
+    # ponytail: every iteration evaluates all elements until the slowest converges, so
+    # a converged cell keeps iterating and its last digits (about 1e-16 in k) can differ
+    # from fitting it alone; subset the unconverged cells if that shows up in a profile
+    tau3 = np.asarray(tau3, dtype=float)
+    c = 2.0 / (3.0 + tau3) - _LN2 / _LN3
+    shape = 7.8590 * c + 2.9554 * c * c
+    lower = np.full_like(tau3, -1.0)
+    upper = np.full_like(tau3, _GEV_SHAPE_UPPER_BOUND)
+    step = 1e-6
+    for _ in range(_GEV_SHAPE_MAX_ITERATIONS):
+        residual = _gev_tau3(shape) - tau3
+        # tau3(k) decreases in k: a positive residual means the root is above
+        lower = np.where(residual > 0.0, np.maximum(lower, shape), lower)
+        upper = np.where(residual > 0.0, upper, np.minimum(upper, shape))
+        slope = (_gev_tau3(shape + step) - _gev_tau3(shape - step)) / (2.0 * step)
+        with np.errstate(divide="ignore", invalid="ignore"):
+            candidate = shape - residual / slope
+        # inclusive: Newton converges from one side, so on reaching the root the
+        # bracket end equals the iterate, and a strict test would reject the converged
+        # step and bisect away from it
+        inside = np.isfinite(candidate) & (candidate >= lower) & (candidate <= upper)
+        updated = np.where(inside, candidate, 0.5 * (lower + upper))
+        converged = np.abs(updated - shape) <= _GEV_SHAPE_TOLERANCE * np.maximum(1.0, np.abs(shape))
+        shape = updated
+        if bool(np.all(converged | ~np.isfinite(tau3))):
+            break
+    return shape
+
+
+def _gev_parameters(
+    first_lmoment: np.ndarray, second_lmoment: np.ndarray, tau3: np.ndarray
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    """GEV (loc, scale, shape, valid) from L-moments, for scalars or arrays alike.
+
+    With Hosking's ``k = shape``, ``alpha = scale`` and ``xi = loc``:
+
+        ``alpha = lambda2 * k / ((1 - 2^-k) * Gamma(1 + k))``
+        ``xi = lambda1 - alpha * (1 - Gamma(1 + k)) / k``
+
+    and, in the Gumbel limit ``k = 0``, ``alpha = lambda2 / ln 2`` and
+    ``xi = lambda1 - gamma_E * alpha``. An element with a non-positive ``lambda2``, a
+    ``|tau3|`` of 1 or more, or a non-finite input is invalid; its outputs are zero.
+    """
+    first_lmoment = np.asarray(first_lmoment, dtype=float)
+    second_lmoment = np.asarray(second_lmoment, dtype=float)
+    tau3 = np.asarray(tau3, dtype=float)
+    valid = np.isfinite(first_lmoment) & np.isfinite(second_lmoment) & (second_lmoment > 0.0) & (np.abs(tau3) < 1.0)
+
+    shape = _gev_shape(np.where(valid, tau3, 0.0))
+    with np.errstate(divide="ignore", invalid="ignore", over="ignore", under="ignore"):
+        log_gamma = special.gammaln(1.0 + shape)
+        gamma_term = np.exp(log_gamma)
+        zero = shape == 0.0  # NOSONAR (S1244) exact zero is the Gumbel limit, not a tolerance
+        scale = np.where(
+            zero,
+            second_lmoment / _LN2,
+            second_lmoment * shape / (-np.expm1(-shape * _LN2) * gamma_term),
+        )
+        # (1 - Gamma(1 + k)) / k, which tends to the Euler constant as k -> 0
+        gamma_ratio = np.where(
+            np.abs(shape) < _GEV_GAMMA_SERIES_LIMIT,
+            -np.polyval(_GAMMA_TAYLOR[::-1], shape),
+            -np.expm1(log_gamma) / shape,
+        )
+        loc = first_lmoment - scale * gamma_ratio
+    valid = valid & np.isfinite(loc) & np.isfinite(scale) & (scale > 0.0)
+    return (
+        np.where(valid, loc, 0.0),
+        np.where(valid, scale, 0.0),
+        np.where(valid, shape, 0.0),
+        valid,
+    )
+
+
+def fit_gev(timeseries: np.ndarray) -> dict[str, float]:
+    """
+    Returns the generalized extreme value (GEV) L-moments fit (loc, scale, shape)
+    corresponding to the input array of values, by Hosking's estimator.
+
+    The shape is Hosking's ``k``, which is SciPy's ``genextreme`` ``c``: positive
+    for a distribution bounded above, negative for a heavy upper tail.
+
+    :param timeseries: 1-D (flattened) array of float values
+    :return: a dictionary with the keys "loc", "scale", and "shape"
+    :rtype: dict[str, float]
+    :raises ValueError: if the sample is too short or its L-moments are invalid
+        for a GEV fit
+    """
+    # no gamma remedy in the error: SPEI has no gamma fallback for a GEV fit
+    lmoments = _estimate_lmoments(timeseries, hint="")
+    locs, scales, shapes, valid = _gev_parameters(lmoments[0], lmoments[1], lmoments[2])
+    if not bool(valid):
+        message = "Unable to calculate GEV parameters due to invalid L-moments"
+        _logger.error(message)
+        raise ValueError(message)
+    return {"loc": float(locs), "scale": float(scales), "shape": float(shapes)}
+
+
+def fit_gev_spatial(values: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    """Returns the GEV L-moments fits (loc, scale, shape) for every cell of an
+    array whose first axis is the sample axis.
+
+    Cell-axis counterpart of :func:`fit_gev`: a cell whose sample is too short or
+    whose L-moments are invalid is marked in the returned validity mask rather
+    than raising on the first one.
+
+    Args:
+        values: Array of samples with shape (samples, *cells).
+
+    Returns:
+        Tuple of (loc, scale, shape, valid), each array shaped like values.shape[1:].
+    """
+    lmoments, valid = _estimate_lmoments_spatial(values)
+    locs, scales, shapes, gev_valid = _gev_parameters(lmoments[0], lmoments[1], lmoments[2])
+    valid = valid & gev_valid
+    return (
+        np.where(valid, locs, 0.0),
+        np.where(valid, scales, 0.0),
+        np.where(valid, shapes, 0.0),
         valid,
     )

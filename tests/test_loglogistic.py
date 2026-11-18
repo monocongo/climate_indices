@@ -271,12 +271,13 @@ def test_loglogistic_high_failure_rate_warning_names_loglogistic(caplog: pytest.
     assert "Pearson" not in caplog.text
 
 
-def test_spei_loglogistic_degenerate_series_is_missing() -> None:
+@pytest.mark.parametrize("precip_constant", [100.0, 100.1])
+def test_spei_loglogistic_degenerate_series_is_missing(precip_constant: float) -> None:
     """A series with no variability cannot be fitted and standardizes to NaN."""
     result = indices.spei(
-        np.full(60 * 12, 100.0),
+        np.full(60 * 12, precip_constant),
         np.full(60 * 12, 90.0),
-        scale=6,
+        scale=1,
         distribution=indices.Distribution.loglogistic,
         periodicity=compute.Periodicity.monthly,
         data_start_year=_DATA_START_YEAR,

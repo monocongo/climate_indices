@@ -66,8 +66,10 @@ __all__ = [
     "unfold_time_major",
     "sum_to_scale",
     "beta_parameters",
+    "gev_parameters",
     "transform_fitted_beta",
     "transform_fitted_gamma",
+    "transform_fitted_gev",
     "transform_fitted_loglogistic",
     "transform_fitted_pearson",
     "DistributionFittingError",
@@ -2962,6 +2964,189 @@ def transform_fitted_loglogistic(
     )
 
 
+def gev_parameters(
+    values: np.ndarray,
+    data_start_year: int,
+    calibration_start_year: int,
+    calibration_end_year: int,
+    periodicity: Periodicity,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """
+    Compute the generalized extreme value (GEV) distribution parameters corresponding
+    to an array of values, by Hosking's L-moment estimator.
+
+    Every value participates in the fit, including zeros, as in the log-logistic fit:
+    the GEV is an SPEI candidate, and SPEI's P−PET series has no physical zero mass.
+    A calendar step whose L-moments are invalid for a GEV (a sample too short, a
+    non-positive L-scale, or an L-skewness of magnitude 1 or more) has no fit: its
+    parameters are zero and the transform reports NaN there. There is no fallback to
+    another family.
+
+    The shape is Hosking's ``k``, which is SciPy's ``genextreme`` ``c``.
+
+    :param values: 2-D array of values, with each row representing a year containing
+        twelve columns representing the respective calendar months, or 366 days per
+        column as if all years were leap years; a time-major spatial block already
+        folded to (years, time_steps, ``*cells``) is also accepted, and then every
+        cell is fitted in one pass.
+    :param data_start_year: the initial year of the input values array
+    :param calibration_start_year: the initial year to use for the calibration period
+    :param calibration_end_year: the final year to use for the calibration period
+    :param periodicity: monthly or daily
+    :return: three arrays of fitting values for the GEV distribution, with shape
+        (12,) for monthly or (366,) for daily, or (time_steps, ``*cells``) for
+        spatial input: location, scale, and shape
+    :rtype: tuple of three numpy.ndarrays of floats (loc, scale, shape)
+    """
+    log = _logger.bind(
+        operation="gev_parameters",
+        distribution="gev",
+        periodicity=str(periodicity),
+        calibration_period=f"{calibration_start_year}-{calibration_end_year}",
+    )
+    log.info("distribution_fitting_started")
+
+    calibration_values, time_steps_per_year, period = _calibration_block(
+        values, data_start_year, calibration_start_year, calibration_end_year, periodicity
+    )
+    log = log.bind(calibration_period=f"{period.start_year}-{period.end_year}")
+
+    if calibration_values.ndim > 2:
+        locs, scales, shapes, valid = lmoments.fit_gev_spatial(calibration_values)
+        failed_fitting_count = int(np.count_nonzero(~valid))
+        total_fitting_count = time_steps_per_year * int(np.prod(calibration_values.shape[2:], dtype=np.intp))
+    else:
+        locs = np.zeros((time_steps_per_year,))
+        scales = np.zeros((time_steps_per_year,))
+        shapes = np.zeros((time_steps_per_year,))
+        failed_fitting_count = 0
+        for time_step_index in range(time_steps_per_year):
+            try:
+                params = lmoments.fit_gev(calibration_values[:, time_step_index])
+                locs[time_step_index] = params["loc"]
+                scales[time_step_index] = params["scale"]
+                shapes[time_step_index] = params["shape"]
+            except ValueError:
+                # a step that cannot be fitted is marked invalid by its zeroed scale
+                failed_fitting_count += 1
+        total_fitting_count = time_steps_per_year
+
+    if _default_fallback_strategy.should_warn_high_failure_rate(failed_fitting_count, total_fitting_count):
+        # not log_high_failure_rate: its text names Pearson Type III and a Gamma remedy,
+        # and a GEV fit has no gamma fallback
+        log.warning(
+            "high_fitting_failure_rate",
+            failure_count=failed_fitting_count,
+            total_count=total_fitting_count,
+        )
+    elif failed_fitting_count:
+        log.warning(
+            "distribution_fitting_failures",
+            failure_count=failed_fitting_count,
+            total_count=total_fitting_count,
+        )
+
+    log.info("distribution_fitting_completed", output_shape=str(locs.shape))
+    return locs, scales, shapes
+
+
+def _gev_fit(
+    values: np.ndarray,
+    locs: np.ndarray,
+    scales: np.ndarray,
+    shapes: np.ndarray,
+    output_scale: OutputScale = "normal",
+) -> np.ndarray:
+    """Transform values through the fitted GEV cumulative distribution.
+
+    With parameters (loc, scale, shape ``k``) and ``z = (x − loc) / scale``,
+
+        ``F(x) = exp(−(1 − k·z)^(1/k))``,
+
+    evaluated as ``exp(−exp(−y))`` with ``y = −log1p(−k·z) / k`` so it stays accurate
+    as ``k`` approaches zero, where ``y = z`` (the Gumbel limit, taken at ``k = 0``
+    exactly). The distribution has one finite end: above ``loc + scale/k`` for
+    ``k > 0`` and below it for ``k < 0``. A finite value beyond that end maps to a
+    probability of 1 (``k > 0``) or 0 (``k < 0``), whose normal-scale z is infinite
+    and which the index layer clips to its range.
+
+    A position whose parameters are missing, non-finite, or non-positive in scale is
+    reported as NaN.
+
+    :param values: an array of values to transform
+    :param locs: location parameter, broadcastable to ``values``
+    :param scales: scale parameter, broadcastable to ``values``
+    :param shapes: shape parameter ``k``, broadcastable to ``values``
+    :param output_scale: one of ``compute.OUTPUT_SCALES``
+    :return: transformed values, shaped like the broadcast of the parameters
+    """
+    if np.all(np.isnan(values)):
+        return values
+
+    valid = np.isfinite(locs) & np.isfinite(scales) & np.isfinite(shapes) & (scales > 0.0)
+    with np.errstate(divide="ignore", invalid="ignore", over="ignore", under="ignore"):
+        z = (values - locs) / scales
+        shape_z = shapes * z
+        gumbel = shapes == 0.0  # NOSONAR (S1244) exact zero is the Gumbel limit, not a tolerance
+        y = np.where(gumbel, z, -np.log1p(-shape_z) / shapes)
+        probabilities = np.exp(-np.exp(-y))
+    beyond_finite_end = shape_z >= 1.0
+    probabilities = np.where(beyond_finite_end, np.where(shapes > 0.0, 1.0, 0.0), probabilities)
+
+    scaled = _map_non_normal_scale(probabilities, output_scale)
+    if scaled is None:
+        scaled = scipy.stats.norm.ppf(probabilities)
+    result: np.ndarray = np.where(valid, scaled, np.nan)
+    return result
+
+
+def transform_fitted_gev(
+    values: np.ndarray,
+    data_start_year: int,
+    calibration_start_year: int,
+    calibration_end_year: int,
+    periodicity: Periodicity,
+    locs: np.ndarray | None = None,
+    scales: np.ndarray | None = None,
+    shapes: np.ndarray | None = None,
+    output_scale: OutputScale = "normal",
+) -> np.ndarray:
+    """
+    Fit values to a generalized extreme value (GEV) distribution and transform the
+    values to corresponding normalized sigmas.
+
+    :param values: 2-D array of values, with each row representing a year containing
+        twelve columns representing the respective calendar months, or 366 columns
+        representing days as if all years were leap years. A time-major spatial block
+        already folded to (years, time_steps, ``*cells``) is also accepted.
+    :param data_start_year: the initial year of the input values array
+    :param calibration_start_year: the initial year to use for the calibration period
+    :param calibration_end_year: the final year to use for the calibration period
+    :param periodicity: the periodicity of the time series represented by the input data
+    :param locs: pre-computed GEV location parameters, one per calendar step
+    :param scales: pre-computed GEV scale parameters, one per calendar step
+    :param shapes: pre-computed GEV shape parameters (Hosking's ``k``, SciPy's
+        ``genextreme`` ``c``), one per calendar step
+    :param output_scale: one of ``compute.OUTPUT_SCALES``; "probability" returns the
+        fitted cumulative probability, "bounded" returns ``2p - 1``, and "normal"
+        (the default) returns the standard-normal z-score
+    :return: 2-D array of transformed/fitted values, corresponding in size and shape
+        to the input array
+    :rtype: numpy.ndarray of floats
+    :raises ValueError: if only some of the three fitting parameters are provided
+    """
+    return _transform_fitted(
+        values,
+        Distribution.gev,
+        data_start_year,
+        calibration_start_year,
+        calibration_end_year,
+        periodicity,
+        {"loc": locs, "scale": scales, "shape": shapes},
+        output_scale,
+    )
+
+
 def transform_fitted_empirical(
     values: np.ndarray,
     data_start_year: int,
@@ -3297,6 +3482,7 @@ _PARAMETER_KEYS: dict[str, tuple[str, ...]] = {
     "gamma": ("alpha", "beta", "prob_zero"),
     "pearson": ("prob_zero", "loc", "scale", "skew"),
     "loglogistic": ("loc", "scale", "shape"),
+    "gev": ("loc", "scale", "shape"),
     "beta": ("alpha", "beta", "prob_zero", "prob_one"),
 }
 
@@ -3430,7 +3616,8 @@ def _resolve_beta_parameters(
     return parameters
 
 
-def _resolve_loglogistic_parameters(
+def _resolve_location_scale_shape_parameters(
+    kind: str,
     values: np.ndarray,
     params: dict[str, Any],
     data_start_year: int,
@@ -3438,15 +3625,14 @@ def _resolve_loglogistic_parameters(
     calibration_end_year: int,
     periodicity: Periodicity,
 ) -> dict[str, np.ndarray]:
-    """Fit or take the three generalized-logistic parameters as one set."""
-    # a mask is a missing marker, as the log-logistic transform treats it
+    """Fit or take the three (loc, scale, shape) parameters of a log-logistic or gev fit as one set."""
+    # a mask is a missing marker, as the log-logistic and gev transforms treat it
     if np.ma.isMaskedArray(values):
         values = np.ma.filled(values.astype(float), np.nan)
-    supplied = [params.get(key) for key in _PARAMETER_KEYS["loglogistic"]]
+    supplied = [params.get(key) for key in _PARAMETER_KEYS[kind]]
     if all(parameter is None for parameter in supplied):
-        locs, scales, shapes = loglogistic_parameters(
-            values, data_start_year, calibration_start_year, calibration_end_year, periodicity
-        )
+        fit = gev_parameters if kind == "gev" else loglogistic_parameters
+        locs, scales, shapes = fit(values, data_start_year, calibration_start_year, calibration_end_year, periodicity)
     else:
         locs, scales, shapes = cast("tuple[np.ndarray, np.ndarray, np.ndarray]", tuple(supplied))
     return {"loc": locs, "scale": scales, "shape": shapes}
@@ -3490,7 +3676,7 @@ class FittedDistribution:
     ``alpha``/``beta``/``prob_zero`` for gamma, ``alpha``/``beta``/
     ``prob_zero``/``prob_one`` for beta, ``prob_zero``/``loc``/``scale``/``skew``
     for Pearson Type III, and ``loc``/``scale``/``shape`` for the log-logistic
-    (generalized logistic).
+    (generalized logistic) and the gev (generalized extreme value).
     """
 
     distribution: "Distribution"
@@ -3530,7 +3716,7 @@ class FittedDistribution:
         keys = _PARAMETER_KEYS[kind]
         supplied = [params.get(key) for key in keys]
         if any(parameter is None for parameter in supplied) and not all(parameter is None for parameter in supplied):
-            label = "Pearson Type III" if kind == "pearson" else "log-logistic"
+            label = {"pearson": "Pearson Type III", "gev": "gev"}.get(kind, "log-logistic")
             raise ValueError(
                 f"At least one but not all of the {label} fitting parameters are specified -- "
                 "either none or all of these must be specified"
@@ -3592,10 +3778,12 @@ class FittedDistribution:
             parameters = _resolve_pearson_parameters(
                 values, params, data_start_year, calibration_start_year, calibration_end_year, periodicity
             )
-        else:
-            parameters = _resolve_loglogistic_parameters(
-                values, params, data_start_year, calibration_start_year, calibration_end_year, periodicity
+        elif kind in ("loglogistic", "gev"):
+            parameters = _resolve_location_scale_shape_parameters(
+                kind, values, params, data_start_year, calibration_start_year, calibration_end_year, periodicity
             )
+        else:
+            raise ValueError(f"Unsupported distribution: {distribution}")
         return cls(distribution, parameters, periodicity)
 
     def transform(
@@ -3683,6 +3871,8 @@ class FittedDistribution:
             result = _empirical_fit(
                 values, sample, output_scale, pool_window_days=self.pool_window_days, scale=self.scale
             )
+        elif kind == "gev":
+            result = _gev_fit(values, parameters["loc"], parameters["scale"], parameters["shape"], output_scale)
         else:
             result = _loglogistic_fit(values, parameters["loc"], parameters["scale"], parameters["shape"], output_scale)
         log.info("distribution_transform_completed", output_shape=str(result.shape))
@@ -3857,7 +4047,8 @@ def fit_and_standardize(
             months, or 366 days per column as if all years were leap years; a
             time-major spatial block with more than two dimensions is also accepted.
         distribution: The distribution to fit the values to: gamma, beta, Pearson Type III,
-            the generalized logistic ("loglogistic") that SPEI standardizes with, or
+            the generalized logistic ("loglogistic") that SPEI standardizes with, the
+            generalized extreme value ("gev"), or
             the empirical (rank-based) distribution, which fits nothing; see
             :func:`transform_fitted_empirical`. Beta is the bounded [0, 1] family,
             fitted over the interior values with a point mass at each boundary.
@@ -3870,8 +4061,9 @@ def fit_and_standardize(
         fitting_params: Optional dictionary of pre-computed distribution fitting
             parameters, with the keys "alpha" and "beta" (and optionally
             "prob_zero") when fitting to gamma or beta, "prob_one" as well when
-            fitting to beta, and "prob_zero", "loc", "scale", and
-            "skew" when fitting to Pearson Type III. Deprecated aliases such as
+            fitting to beta, "prob_zero", "loc", "scale", and
+            "skew" when fitting to Pearson Type III, and "loc", "scale", and "shape"
+            when fitting to log-logistic or gev. Deprecated aliases such as
             "alphas" and "probabilities_of_zero" are accepted, and an explicit None
             means "fit this parameter from the data". A gamma fit without
             "prob_zero" computes it over the calibration period.
@@ -3886,7 +4078,7 @@ def fit_and_standardize(
             cumulative probability in [0, 1], and "bounded" ``2p - 1`` in [-1, 1].
         zero_handling: Where a zero accumulation is placed within the zero mass,
             one of "classic" (the default), "center_of_mass", or "mean_zero"; see
-            ADR-0015. A gamma fall back applies the same mode. The log-logistic and
+            ADR-0015. A gamma fall back applies the same mode. The log-logistic, gev and
             empirical distributions have no zero mass, so the mode does not apply to
             them, and beta applies the mode to both of its boundary masses,
             mirroring the mass at 1 about 1/2.
@@ -3912,7 +4104,7 @@ def fit_and_standardize(
             fit is given a value outside [0, 1] beyond the rounding tolerance of a
             windowed mean.
         ValueError: If the distribution is none of gamma, beta, Pearson Type III,
-            log-logistic, or empirical, ``zero_handling`` is not one of the three modes, a beta
+            log-logistic, gev, or empirical, ``zero_handling`` is not one of the three modes, a beta
             mass pair sums above 1, or a Pearson
             ``fitting_params`` set is partial or does not carry the period (and cell) axes.
     """
@@ -3974,10 +4166,11 @@ def fit_and_standardize(
         FittedDistribution.validate_supplied(_validate_array(values, periodicity), distribution, params)
         return values
 
-    if distribution.value in ("gamma", "loglogistic", "beta"):
-        # the GLO is the SPEI reference distribution: P−PET is offset and has no
-        # physical zero mass, so it has no zero-placement mode and zero_handling is
-        # not applied on that branch (the transform ignores it). Gamma and beta each
+    if distribution.value in ("gamma", "loglogistic", "gev", "beta"):
+        # the GLO is the SPEI reference distribution, and the GEV a candidate for it: P−PET
+        # is offset and has no physical zero mass, so neither has a zero-placement mode
+        # and zero_handling is not applied on that branch (the transform ignores it).
+        # Gamma and beta each
         # place their own boundary mass; beta's second mass at 1 mirrors the one at 0.
         fitted = FittedDistribution.resolve(
             values,

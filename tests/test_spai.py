@@ -287,7 +287,12 @@ def test_daily_periodicity(seasonal: np.ndarray) -> None:
 
 @pytest.mark.parametrize(
     "distribution",
-    [indices.Distribution.gamma, indices.Distribution.loglogistic, indices.Distribution.empirical],
+    [
+        indices.Distribution.gamma,
+        indices.Distribution.loglogistic,
+        indices.Distribution.gev,
+        indices.Distribution.empirical,
+    ],
     ids=lambda d: d.name,
 )
 def test_rejects_distributions_outside_the_pooled_anomaly_fit(

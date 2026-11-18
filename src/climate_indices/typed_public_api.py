@@ -103,9 +103,7 @@ _SPI_VALIDATORS = (
 )
 _SPEI_VALIDATORS = (
     *_TEMPORAL_VALIDATORS,
-    lambda args: indices._validate_distribution(
-        args["distribution"], (Distribution.gamma, Distribution.pearson, Distribution.loglogistic)
-    ),
+    lambda args: indices._validate_distribution(args["distribution"], indices._SPEI_DISTRIBUTIONS),
     lambda args: compute.validate_output_scale(args["output_scale"]),
 )
 _SPAI_VALIDATORS = (
