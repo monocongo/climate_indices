@@ -61,7 +61,7 @@ resolution nClimGrid temperature dataset provided in the example inputs director
 The input dataset is monthly data. Thornthwaite PET is computed directly from the
 temperature values and the dataset's `lat` coordinate, so it uses no calibration
 period and the command takes no calibration options. The output file will be
-`<out_dir>/nclimgrid_lowres_pet.nc`.
+`<out_dir>/nclimgrid_lowres_pet_thornthwaite.nc`.
 Parallelization will occur utilizing all but one of the available CPUs.
 
 ### SPI daily
