@@ -3253,8 +3253,11 @@ def _fitted_parameter_units(name: str, *samples: xr.DataArray) -> str | None:
     """
     if name not in _DIMENSIONAL_PARAMETERS:
         return "1"
-    units = {sample.attrs.get("units") for sample in samples}
-    return units.pop() if len(units) == 1 and None not in units else None
+    units = [sample.attrs.get("units") for sample in samples]
+    # a non-string attribute (a list or array read back from NetCDF) is unknown, not an error
+    if all(isinstance(value, str) for value in units) and len(set(units)) == 1:
+        return str(units[0])
+    return None
 
 
 def _fitted_parameter_output(
@@ -3263,8 +3266,10 @@ def _fitted_parameter_output(
     """Declare a fitted-parameter output whose ``units`` follows :func:`_fitted_parameter_units`."""
     units = _fitted_parameter_units(name, *samples)
     # the output would otherwise inherit the input's units (build_output_attrs copies them)
-    metadata = {**base, "units": units} if units else {key: value for key, value in base.items() if key != "units"}
-    return _SpatialOutput(cf_metadata=metadata, drop_attrs=() if units else ("units",), **kwargs)
+    metadata = {key: value for key, value in base.items() if key != "units"}
+    if units is None:
+        return _SpatialOutput(cf_metadata=metadata, drop_attrs=("units",), **kwargs)
+    return _SpatialOutput(cf_metadata={**metadata, "units": units}, **kwargs)
 
 
 _FIT_DIAGNOSTICS_CF_METADATA: dict[str, dict[str, str]] = {

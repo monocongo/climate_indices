@@ -670,3 +670,80 @@ def test_fitted_parameter_units_rule() -> None:
     assert _fitted_parameter_units("loc", mm, inch) is None
     assert _fitted_parameter_units("loc", mm, bare) is None
     assert _fitted_parameter_units("beta", bare) is None
+    # an empty string is a known units value; a non-string attribute is unknown, not an error
+    assert _fitted_parameter_units("beta", xr.DataArray([1.0], attrs={"units": ""})) == ""
+    assert _fitted_parameter_units("beta", xr.DataArray([1.0], attrs={"units": ["mm"]})) is None
+    assert _fitted_parameter_units("beta", xr.DataArray([1.0], attrs={"units": np.array(["mm"])})) is None
+
+
+@pytest.mark.parametrize("units", [["mm"], np.array(["mm", "in"])])
+def test_non_string_units_are_unknown(units: object) -> None:
+    """A non-string input ``units`` omits the dimensional parameters' units instead of raising."""
+    values = _monthly_series_da()
+    values.attrs["units"] = units
+    result = fit_diagnostics(
+        values,
+        3,
+        Distribution.gamma,
+        calibration_year_initial=_CALIBRATION_START_YEAR,
+        calibration_year_final=_CALIBRATION_END_YEAR,
+    )
+    assert "units" not in result["beta"].attrs
+    assert result["alpha"].attrs["units"] == "1"
+
+
+def test_empty_string_units_are_kept() -> None:
+    """An input ``units`` of ``""`` is known, so the dimensional parameters keep it."""
+    values = _monthly_series_da()
+    values.attrs["units"] = ""
+    result = fit_diagnostics(
+        values,
+        3,
+        Distribution.gamma,
+        calibration_year_initial=_CALIBRATION_START_YEAR,
+        calibration_year_final=_CALIBRATION_END_YEAR,
+    )
+    assert result["beta"].attrs["units"] == ""
+
+
+def _daily_da() -> xr.DataArray:
+    days = pd.date_range("2001-01-01", periods=3 * 365, freq="D")
+    return xr.DataArray(np.arange(1.0, len(days) + 1.0), coords={"time": days}, dims=["time"], attrs={"units": "mm"})
+
+
+def _two_dimensional_da() -> xr.DataArray:
+    """A (time, cell) input: the single-cell-axis legacy per-cell path."""
+    values = _monthly_series_da()
+    return xr.concat([values, values + 1.0], dim="cell").transpose("time", "cell")
+
+
+@pytest.mark.parametrize(
+    "build",
+    [
+        lambda: _monthly_grid_da(),
+        lambda: _monthly_grid_da().chunk({"time": -1, "lat": 1, "lon": 2}),
+        _two_dimensional_da,
+        _daily_da,
+    ],
+    ids=["grid", "dask-grid", "time-cell", "daily"],
+)
+@pytest.mark.parametrize("has_units", [True, False])
+def test_units_on_every_adapter_path(build, has_units: bool) -> None:
+    """Units follow the same rule on the spatial, Dask, per-cell, and daily paths."""
+    values = build()
+    if not has_units:
+        del values.attrs["units"]
+    daily = "time" in values.dims and values.sizes["time"] == 3 * 365
+    result = fit_diagnostics(
+        values,
+        1,
+        Distribution.gamma,
+        calibration_year_initial=2001 if daily else _CALIBRATION_START_YEAR,
+        calibration_year_final=2003 if daily else _CALIBRATION_END_YEAR,
+    )
+    if has_units:
+        assert result["beta"].attrs["units"] == "mm"
+    else:
+        assert "units" not in result["beta"].attrs
+    for name in ("alpha", "prob_zero", "n_valid", "ks_statistic", "ks_p_value"):
+        assert result[name].attrs["units"] == "1", name
