@@ -868,6 +868,17 @@ def _validate_calendar(time_coord: xr.DataArray) -> None:
     _validate_supported_calendar(time_coord)
 
 
+def _validate_time_axis(dataarray: xr.DataArray, time_dim: str) -> None:
+    """Check the time dimension, ordering, calendar and ADR-0003 chunking of one caller array."""
+    validate_time_dimension(dataarray, time_dim)
+    validate_time_monotonicity(dataarray[time_dim])
+    # the calendar itself is checked before inference reads it, so a numeric, cftime or
+    # timezone-aware coordinate fails as CoordinateValidationError rather than inside pandas
+    _validate_calendar(dataarray[time_dim])
+    if dataarray.chunks is not None:
+        validate_dask_chunks(dataarray, time_dim)
+
+
 def _validated_inputs(
     values: xr.DataArray, pet_mm: np.ndarray | xr.DataArray | None, time_dim: str
 ) -> tuple[xr.DataArray, xr.DataArray | None]:
@@ -889,21 +900,10 @@ def _validated_inputs(
     _require_numeric_dtype(values.dtype, "values")
     if pet_da is not None:
         _require_numeric_dtype(pet_da.dtype, "pet_mm")
-    validate_time_dimension(input_da, time_dim)
-    validate_time_monotonicity(input_da[time_dim])
-    # the calendar itself is checked before inference reads it, so a numeric, cftime or
-    # timezone-aware coordinate fails as CoordinateValidationError rather than inside pandas
-    _validate_calendar(input_da[time_dim])
-    # ADR-0003 constrains the caller's array, and alignment to a shorter pet can hide a split time axis
-    if input_da.chunks is not None:
-        validate_dask_chunks(input_da, time_dim)
+    # ADR-0003 constrains the caller's arrays, and alignment to a shorter pet can hide a split time axis
+    _validate_time_axis(input_da, time_dim)
     if pet_da is not None:
-        validate_time_dimension(pet_da, time_dim)
-        validate_time_monotonicity(pet_da[time_dim])
-        _validate_calendar(pet_da[time_dim])
-        # alignment can trim a multi-chunk pet down to one chunk, so ADR-0003 is checked on the caller's array first
-        if pet_da.chunks is not None:
-            validate_dask_chunks(pet_da, time_dim)
+        _validate_time_axis(pet_da, time_dim)
         input_da, aligned = _align_inputs(input_da, {"pet": pet_da}, time_dim)
         pet_da = aligned["pet"]
     for dataarray in (input_da, pet_da):
@@ -918,6 +918,24 @@ def _validated_inputs(
             "at least one cell along every non-time dimension",
         )
     return input_da, pet_da
+
+
+def _reject_output_name_clashes(reserved: set[str], time_dim: str, *arrays: xr.DataArray | None) -> None:
+    """Reject an input dimension or coordinate named like an output, which would drop it or fail in the merge."""
+    # apply_ufunc drops a coordinate that spans the core time dimension, so only dimensions
+    # and the coordinates that can survive into the output can collide with a variable name
+    taken = {time_dim}
+    for array in arrays:
+        if array is not None:
+            taken |= {str(dim) for dim in array.dims}
+            taken |= {str(name) for name, coord in array.coords.items() if time_dim not in coord.dims}
+    if clash := sorted(reserved & taken):
+        raise _invalid(
+            f"Input dimensions and coordinates must not be named like an output: {', '.join(clash)}.",
+            "values",
+            ", ".join(clash),
+            "rename them, or drop a scalar coordinate such as the one a .sel() leaves behind",
+        )
 
 
 def _compare_xarray(
@@ -986,24 +1004,8 @@ def _compare_xarray(
         if name in compute._PARAMETER_KEYS[distribution.value]
     )
 
-    # an input dimension or coordinate with an output's name would drop that variable or fail deep in the merge
     reserved = {"candidate", period_dim, *_CANDIDATE_FIELDS, *_STEP_FIELDS, *(name for name, _ in slots)}
-    # apply_ufunc drops a coordinate that spans the core time dimension, so only dimensions
-    # and the coordinates that can survive into the output can collide with a variable name
-    taken = {time_dim, *input_da.dims} | {
-        name for name, coordinate in input_da.coords.items() if time_dim not in coordinate.dims
-    }
-    if pet_da is not None:
-        taken |= {*pet_da.dims} | {
-            name for name, coordinate in pet_da.coords.items() if time_dim not in coordinate.dims
-        }
-    if clash := sorted(reserved & taken):
-        raise _invalid(
-            f"Input dimensions and coordinates must not be named like an output: {', '.join(clash)}.",
-            "values",
-            ", ".join(clash),
-            "rename them, or drop a scalar coordinate such as the one a .sel() leaves behind",
-        )
+    _reject_output_name_clashes(reserved, time_dim, input_da, pet_da)
 
     first_year, last_year = _effective_calibration_years(
         input_da[time_dim],
