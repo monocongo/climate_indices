@@ -241,8 +241,9 @@ def test_dask_pet_chunked_differently_from_values_matches_the_in_memory_route() 
 def test_time_chunked_values_are_rejected_even_when_pet_covers_only_part_of_the_record() -> None:
     precip = _grid(seed=5, masked_cell=False)
     pet = (precip * 0.5).isel(time=slice(0, 12))  # aligns to exactly one of the values chunks
+    time_chunked, pet_whole = precip.chunk({"time": 12}), pet.chunk({"time": -1})
     with pytest.raises(CoordinateValidationError):
-        _compare(precip.chunk({"time": 12}), 3, index="spei", pet_mm=pet.chunk({"time": -1}))
+        _compare(time_chunked, 3, index="spei", pet_mm=pet_whole)
 
 
 def test_multi_chunk_pet_is_rejected_even_when_alignment_trims_it_to_one_chunk() -> None:
@@ -510,6 +511,7 @@ def test_pet_must_be_a_matching_dataarray() -> None:
 def test_pet_must_be_an_array_for_numpy_values() -> None:
     grid = _grid(masked_cell=False)
     # pairing a DataArray by position would ignore labels, so a transposed PET is refused
+    transposed_pet = grid.transpose("time", "lon", "lat") * 0.5
     with pytest.raises(InvalidArgumentError, match="NumPy array"):
         suitability.compare_distributions(
             grid.values,
@@ -519,7 +521,7 @@ def test_pet_must_be_an_array_for_numpy_values() -> None:
             calibration_year_initial=START,
             calibration_year_final=END,
             periodicity=MONTHLY,
-            pet_mm=grid.transpose("time", "lon", "lat") * 0.5,
+            pet_mm=transposed_pet,
         )
     with pytest.raises(InvalidArgumentError, match="applies only to index='spei'"):
         suitability.compare_distributions(
@@ -556,8 +558,9 @@ def test_a_non_monotonic_time_coordinate_is_rejected() -> None:
     grid = _grid(masked_cell=False)
     times = grid["time"].values.copy()
     times[[0, 1]] = times[[1, 0]]
+    shuffled = grid.assign_coords(time=times)
     with pytest.raises(CoordinateValidationError, match="not monotonically increasing"):
-        _compare(grid.assign_coords(time=times), 3, index="spi")
+        _compare(shuffled, 3, index="spi")
 
 
 def test_a_time_coord_with_a_timezone_is_rejected() -> None:
