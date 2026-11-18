@@ -739,8 +739,9 @@ def standardized_index(
     A source observation or windowed value outside [0, 1] is rejected rather than
     clipped, whatever ``clip_negatives`` asks for.
 
-    This is a NumPy-array entry point only; xarray and Dask dispatch are not wired
-    for it.
+    This is the NumPy entry point. ``climate_indices.standardized_index()``
+    dispatches ``xarray.DataArray`` and Dask-backed input through the xarray adapter
+    (ADR-0020).
 
     Args:
         values: 1-D array of values, in any units, non-negative unless
@@ -878,8 +879,8 @@ def fit_diagnostics(
     back to gamma under the same policy as ``standardized_index``, and the fall back is
     reported rather than applied silently.
 
-    Only the NumPy path is supported; the xarray and Dask surface is tracked
-    separately. A fitted parameter set returned here can be passed back as
+    This is the NumPy entry point. ``climate_indices.fit_diagnostics()`` handles
+    ``xarray.DataArray`` and Dask-backed input. A fitted parameter set returned here can be passed back as
     ``fitting_params`` to ``standardized_index`` with the same ``aggregation`` to
     reproduce a fit, or to ``spi`` when using the default sum.
 

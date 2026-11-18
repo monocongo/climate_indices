@@ -2065,8 +2065,8 @@ def gamma_parameters(
     )
     log = log.bind(calibration_period=f"{period.start_year}-{period.end_year}")
 
-    # compute the gamma distribution's shape and scale parameters, alpha and beta
-    # using method of moments estimation
+    # compute the gamma distribution's shape and scale parameters, alpha and beta,
+    # using Thom's approximation to the maximum-likelihood estimates
     native_fit = _native_gamma_parameters(calibration_values)
     if native_fit is not None:
         alphas, betas = native_fit
