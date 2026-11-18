@@ -55,7 +55,7 @@
 | Calibration period | `cal_start`, `cal_end` | none in `spi()`/`spei()`; fits the whole record per `fit_window` | `baseline_start`, `baseline_end` (integer years, strings, or Timestamps) |
 | Zero handling | `prob_zero_interpolation` (`upper` default), `plotting_position_zero` (`ecdf` default); SPI zero-inflated, SPEI not; clips at ±8.21 | `prob_zero` (True for `spi`, False for `spei`) | not examined |
 | PET | `potential_evapotranspiration`: `BR65` (default), `HG85`, `TW48`, `MB05`, `FAO_PM98`, `DA02` | none (takes a water-balance series) | none (takes a water-balance series) |
-| Own stated validation | Docstring: results of `climate_indices` "can be reproduced with `method = "APP"` and `fitwkargs = {"floc": 0}`, except for the maximum and minimum values allowed" | JOSS 10(111) 8454; a published notebook compares packages (from the [research notes](research-notes.md); the notebook was not re-read here) | none found in the README or sdist metadata |
+| Own stated validation | Docstring (the spelling `fitwkargs` is upstream in xclim 1.0.0): results of `climate_indices` "can be reproduced with `method = "APP"` and `fitwkargs = {"floc": 0}`, except for the maximum and minimum values allowed" | JOSS 10(111) 8454; a published notebook compares packages (from the [research notes](research-notes.md); the notebook was not re-read here) | none found in the README or sdist metadata |
 | Headless Linux | not run; no platform-specific code expected | not run | not run |
 | Committing outputs | numeric outputs and provenance (Apache-2.0) | numeric outputs and provenance (MIT) | numeric outputs and provenance (Apache-2.0) |
 
@@ -123,7 +123,7 @@ Two exclusions:
 
 ## Smoke evidence
 
-Inputs are the repository's own fixtures, so no new data is acquired: `tests/fixture/precips_mm_monthly.npy` (monthly precipitation, mm, January 1895 to December 2017, last 10 months NaN), `tests/fixture/temp_celsius.npy`, latitude 25.2292 (from `tests/conftest.py`), and the repo's `pet_thornthwaite.npy` as the PET for SPEI. Reported month: **June 2005**. Calibration 1981-2010 where the package has the argument. Monthly totals are passed unchanged; for xclim the amounts carry the unit label `mm/d` so that no per-day rescaling applies (see the first finding below).
+Local comparator inputs are repository fixtures, so those runs acquire no new data: `tests/fixture/precips_mm_monthly.npy` (monthly precipitation, mm, January 1895 to December 2017, last 10 months NaN), `tests/fixture/temp_celsius.npy`, latitude 25.2292 (from `tests/conftest.py`), and the repo's `pet_thornthwaite.npy` as the PET for SPEI. The Earth Engine and Climate Engine rows are separate provider calls, described below. Reported month: **June 2005**. Calibration 1981-2010 where the package has the argument. Monthly totals are passed unchanged; for xclim the amounts carry the unit label `mm/d` so that no per-day rescaling applies (see the first finding below).
 
 | Comparator | Call | June 2005 |
 | --- | --- | --- |
