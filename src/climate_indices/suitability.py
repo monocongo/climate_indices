@@ -61,6 +61,9 @@ IndexRoute = Literal["spi", "spei", "standardized_index"]
 
 _BETA_MESSAGE = "suitability is beta: its interface may change in a minor release (ADR-0028)."
 
+# the user's call site, seen from a warning raised in _compare_numpy (compare_distributions sits between them)
+_CALLER_STACKLEVEL = 3
+
 # candidates per route in canonical Distribution enum order, which is also the tie-break order
 _ROUTE_CANDIDATES: dict[str, tuple[Distribution, ...]] = {
     "spi": (Distribution.pearson, Distribution.gamma),
@@ -546,6 +549,11 @@ def _compare_numpy(
         spatial_time_major=spatial_time_major,
         aggregation=aggregation,
     )
+    if not require_valid and compute.is_all_missing(prepared) and (spatial_time_major or prepared.ndim == 1):
+        # prepare_scaled hands an all-missing series back unreshaped; give it the (years, step, *cells)
+        # layout so a masked cell or chunk scores as "no usable fit" instead of aborting the grid
+        step_count = periodicity.period_length
+        scaled = np.full((-(-prepared.shape[0] // step_count), step_count, *prepared.shape[1:]), np.nan)
     period = resolve_calibration_period(
         data_start_year, scaled.shape[0], calibration_year_initial, calibration_year_final, policy="clamp"
     )
@@ -605,7 +613,7 @@ def _compare_numpy(
         )
         warnings.warn(
             ShortCalibrationWarning(message, actual_years=int(short.min()), required_years=MIN_CALIBRATION_YEARS),
-            stacklevel=2,
+            stacklevel=_CALLER_STACKLEVEL,
         )
     window_limit = 365 if periodicity is compute.Periodicity.daily else 12
     if scale > window_limit:
@@ -614,7 +622,7 @@ def _compare_numpy(
             "calendar step in consecutive years overlap; effective sample sizes shrink and goodness-of-fit "
             "p-values are invalid.",
             ClimateIndicesWarning,
-            stacklevel=2,
+            stacklevel=_CALLER_STACKLEVEL,
         )
 
     inputs: dict[str, Any] = {"values": values}
@@ -671,6 +679,7 @@ def _compare_numpy(
 # ---- xarray / Dask route (SUIT-04, #1585) ---------------------------------------------------------
 
 _CANDIDATE_FIELDS = ("log_likelihood", "aic", "aicc", "bic", "n_parameters", "fit_failed")
+_STEP_FIELDS = ("n", "best", "delta_to_runner_up")
 
 _FIELD_METADATA: dict[str, dict[str, str]] = {
     "log_likelihood": {
@@ -856,6 +865,19 @@ def _compare_xarray(
         if name in compute._PARAMETER_KEYS[distribution.value]
     )
 
+    # an input dimension or coordinate with an output's name would drop that variable or fail deep in the merge
+    reserved = {"candidate", period_dim, *_CANDIDATE_FIELDS, *_STEP_FIELDS, *(name for name, _ in slots)}
+    taken = {time_dim, *input_da.dims, *input_da.coords}
+    if pet_da is not None:
+        taken |= {*pet_da.dims, *pet_da.coords}
+    if clash := sorted(reserved & taken):
+        raise _invalid(
+            f"Input dimensions and coordinates must not be named like an output: {', '.join(clash)}.",
+            "values",
+            ", ".join(clash),
+            "rename them, or drop a scalar coordinate such as the one a .sel() leaves behind",
+        )
+
     first_year, last_year = _effective_calibration_years(
         input_da[time_dim],
         provided["calibration_year_initial"],
@@ -948,7 +970,7 @@ def _compare_xarray(
         parts = arrays[cursor : cursor + len(present)]
         cursor += len(present)
         data_vars[name] = xr.concat(parts, dim=_candidate_axis(present)).reindex(candidate=_candidate_axis(labels))
-    for field in ("n", "best", "delta_to_runner_up"):
+    for field in _STEP_FIELDS:
         data_vars[field] = arrays[cursor]
         cursor += 1
     return xr.Dataset(data_vars)

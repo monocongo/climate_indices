@@ -900,7 +900,8 @@ precipitation = xr.DataArray(
 comparison = suitability.compare_distributions(precipitation, 3, index="spi")
 assert list(comparison["candidate"].values) == ["pearson", "gamma"]
 assert comparison["aicc"].dims == ("candidate", "month", "lat", "lon")
-assert set(np.unique(comparison["best"].values)) <= {"pearson", "gamma", "none"}
+assert (comparison["best"] != "none").all()
+assert set(np.unique(comparison["best"].values)) <= {"pearson", "gamma"}
 assert comparison["best"].attrs["climate_indices_log_likelihood_at"] == "fitted_estimates"
 ```
 
