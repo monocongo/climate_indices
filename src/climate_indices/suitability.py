@@ -509,6 +509,20 @@ def compare_distributions(
     )
 
 
+def _shape_all_missing(
+    scaled: np.ndarray, prepared: np.ndarray, periodicity: compute.Periodicity, spatial_time_major: bool
+) -> np.ndarray:
+    """Give an all-missing 1-D or time-major ``prepared`` the ``(years, step, *cells)`` layout; else return ``scaled``.
+
+    ``prepare_scaled`` hands an all-missing series back unreshaped, so a masked cell or chunk would
+    abort the grid instead of scoring as "no usable fit".
+    """
+    if not (spatial_time_major or prepared.ndim == 1) or not compute.is_all_missing(prepared):
+        return scaled
+    step_count = periodicity.period_length
+    return np.full((-(-prepared.shape[0] // step_count), step_count, *prepared.shape[1:]), np.nan)
+
+
 def _compare_numpy(
     values: np.ndarray,
     scale: int,
@@ -549,11 +563,8 @@ def _compare_numpy(
         spatial_time_major=spatial_time_major,
         aggregation=aggregation,
     )
-    if not require_valid and compute.is_all_missing(prepared) and (spatial_time_major or prepared.ndim == 1):
-        # prepare_scaled hands an all-missing series back unreshaped; give it the (years, step, *cells)
-        # layout so a masked cell or chunk scores as "no usable fit" instead of aborting the grid
-        step_count = periodicity.period_length
-        scaled = np.full((-(-prepared.shape[0] // step_count), step_count, *prepared.shape[1:]), np.nan)
+    if not require_valid:
+        scaled = _shape_all_missing(scaled, prepared, periodicity, spatial_time_major)
     period = resolve_calibration_period(
         data_start_year, scaled.shape[0], calibration_year_initial, calibration_year_final, policy="clamp"
     )
