@@ -25,7 +25,9 @@ pub(crate) const MIN_VALUES: usize = 4;
 ///   caller excludes them and applies its separate zero mass and minimum non-zero count.
 /// - NaN semantics: NaN is missing and excluded.
 /// - Short series / invalid input: fewer than [`MIN_VALUES`] non-missing
-///   values, or a zero second sum (for example a constant sample), gives `None`;
+///   values, a constant sample (checked by its equal endpoints, since a
+///   non-representable constant leaves a rounding residue in the sums), or a
+///   zero second sum, gives `None`;
 ///   Python marks those cells invalid and zeroes their L-moments.
 /// - Numerics: the values are sorted ascending and the weighted sums
 ///   accumulate in rank order, as NumPy does, with the same operation order.
@@ -42,6 +44,10 @@ pub(crate) fn sample_lmoments<'a>(
         return None;
     }
     sorted.sort_by(f64::total_cmp);
+    // a constant sample has no spread: its sums can carry a rounding residue (as the Python estimator guards)
+    if sorted.first() == sorted.last() {
+        return None;
+    }
 
     let mut sums = [0.0_f64; 3];
     for (index, &value) in sorted.iter().enumerate() {
@@ -110,5 +116,11 @@ mod tests {
     #[test]
     fn a_constant_sample_has_none() {
         assert!(sample_lmoments(&[2.0; 6], &mut Vec::new()).is_none());
+    }
+
+    #[test]
+    fn a_constant_sample_with_a_rounding_residue_has_none() {
+        // 990.1 is not exactly representable: the weighted sums leave a positive residue
+        assert!(sample_lmoments(&[990.1; 30], &mut Vec::new()).is_none());
     }
 }
