@@ -738,7 +738,9 @@ def _as_codes(values: Any, name: str) -> np.ndarray:
     codes = values if np.ma.isMaskedArray(values) else np.asarray(values)
     _require_integer_codes(codes.dtype, name)
     if np.ma.isMaskedArray(codes):
-        codes = np.ma.filled(codes.astype(np.int64), -1)
+        # range-check before the int64 cast, which would wrap a large unmasked uint64 into -1 (missing)
+        _require_code_range(codes.compressed(), name)
+        return np.ma.filled(codes.astype(np.int64), -1)
     _require_code_range(codes, name)
     return codes
 

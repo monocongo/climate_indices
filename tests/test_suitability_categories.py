@@ -176,6 +176,16 @@ class TestCompareCategoriesNumpy:
         assert result.n_valid == 2
         assert result.confusion[2, 2] == 0
 
+    def test_unmasked_out_of_range_uint64_is_rejected_like_a_plain_array(self):
+        # the int64 cast would wrap UINT64_MAX to -1 and silently drop it as missing
+        bad = np.array([1, np.iinfo(np.uint64).max], dtype=np.uint64)
+        masked = np.ma.masked_array(bad, mask=[False, False])
+        with pytest.raises(InvalidArgumentError, match="outside"):
+            suitability.compare_categories(masked, np.array([1, 2]))
+        # a bad code under the mask is still ignored
+        hidden = np.ma.masked_array(bad, mask=[False, True])
+        assert suitability.compare_categories(hidden, np.array([1, 2])).n_valid == 1
+
     def test_masked_non_integer_codes_are_rejected(self):
         with pytest.raises(InvalidArgumentError, match="integer"):
             suitability.compare_categories(np.ma.masked_array([1.0, 2.0], mask=[False, True]), np.array([1, 2]))
