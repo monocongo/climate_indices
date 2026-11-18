@@ -500,6 +500,9 @@ class CalendarPlan:
             DataShapeError: if the leading axis length is not ``original_length``.
         """
         source = np.asarray(values)
+        if source.dtype.kind in "biu":
+            # the endpoint sum must not wrap in a narrow integer dtype
+            source = source.astype(float)
         if source.ndim < 1 or source.shape[0] != self.original_length:
             raise DataShapeError(
                 "Calendar transformation requires one complete time-series slice",

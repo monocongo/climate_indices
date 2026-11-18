@@ -536,6 +536,17 @@ def test_daily_february_29_fill_is_the_exact_midpoint():
     assert np.array_equal(plan.to_all_leap(block)[59], (block[58] + block[59]) / 2)
 
 
+@pytest.mark.parametrize("dtype", [np.uint8, np.int8, np.bool_])
+def test_to_all_leap_does_not_wrap_narrow_integer_endpoints(dtype):
+    """The February 29 fill of integer data matches the float series, not a wrapped sum."""
+    plan = utils.CalendarPlan(2001, (365,))
+    source = np.full(365, 100 if dtype is np.int8 else 1, dtype=dtype)
+    if dtype is np.uint8:
+        source[:] = 200
+    assert np.array_equal(plan.to_all_leap(source), plan.to_all_leap(source.astype(float)), equal_nan=True)
+    assert plan.to_all_leap(source)[59] == float(source[58])
+
+
 def test_daily_calendar_plan_populated_length():
     """populated_length counts synthetic February 29 fills but not a partial year's NaN tail."""
     # six complete years fill all 2196 padded positions, four of them synthetic
