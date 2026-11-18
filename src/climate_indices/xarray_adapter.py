@@ -1213,6 +1213,10 @@ def build_output_attrs(
     output_attrs = copy.deepcopy(input_da.attrs)
     for key in provenance.OWN_ATTRS:
         output_attrs.pop(key, None)
+    # the input's NetCDF packing describes its stored bytes, and a CF-decoded read would
+    # re-apply it to the computed result (e.g. add_offset turning a count of 60 into 160)
+    for key in ("add_offset", "scale_factor"):
+        output_attrs.pop(key, None)
 
     # apply CF metadata overrides to DA-level attrs only
     if cf_metadata is not None:

@@ -384,6 +384,19 @@ def test_netcdf_round_trip_keeps_values_and_attributes(tmp_path: Path, lazy: boo
             assert loaded[name].attrs[key] == dataset[name].attrs[key], f"{name}.{key}"
 
 
+def test_input_packing_attributes_are_not_carried_into_the_comparison(tmp_path: Path) -> None:
+    grid = _grid(seed=7)
+    grid.attrs.update(add_offset=100.0, scale_factor=0.5)
+    dataset = _compare(grid, 3, index="spi")
+    for name, variable in dataset.data_vars.items():
+        assert not {"add_offset", "scale_factor"} & set(variable.attrs), name
+    path = tmp_path / "packed.nc"
+    dataset.to_netcdf(path, engine="h5netcdf")
+    with xr.open_dataset(path, engine="h5netcdf") as reopened:
+        loaded = reopened.load()
+    np.testing.assert_array_equal(loaded["n"].values, dataset["n"].values)
+
+
 def test_beta_warning_is_emitted_once_per_call_not_once_per_block() -> None:
     grid = _grid(seed=8).chunk({"time": -1, "lat": 1})
     with warnings.catch_warnings(record=True) as caught:
