@@ -1642,10 +1642,12 @@ retroactively.
 - `pdsi()`: data after `calibration_year_final` never change the fitted
   parameters or the Z-Index of the calibration-window months (later months have
   their own Z-Index values, which of course follow the later data). They can
-  change the PDSI of the months in that one open spell, which form a single block
-  ending at the boundary; PHDI follows the same boundary rule. PMDI is not
-  guaranteed to: the end-of-record flush rewrites it for months retained from
-  earlier spells using the final record month.
+  change the PDSI and PHDI of the months in that one open spell, which form a
+  single block ending at the boundary. They are not guaranteed to change nothing
+  else: the end-of-record flush rewrites PDSI, PHDI, and PMDI for months retained
+  from earlier, already closed spells using the final record month, so a much
+  drier post-calibration stretch can move a calibration-window month that is
+  outside the open spell.
 - `scpdsi()`: the fitted parameters are likewise unaffected. Its three rescaling
   passes take percentiles of the calibration-window PDSI, which includes that open
   spell, so later data can in rare cases move the rescaling anchors and with them
@@ -1653,7 +1655,10 @@ retroactively.
   spell.
 
 `tests/test_scpdsi.py::test_data_after_the_calibration_period_never_changes_the_fitted_parameters`
-pins the parameter and `pdsi()` statements (issue #544).
+pins the parameter and `pdsi()` Z-Index statements for every series it draws, and
+the open-spell block shape of PDSI for one seeded draw that reaches such a spell
+(issue #544). It does not pin PHDI or PMDI, and doubling the later data does not
+trigger the flush rewrites described above.
 
 ### Exact-zero comparisons
 

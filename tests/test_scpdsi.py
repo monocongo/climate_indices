@@ -143,9 +143,12 @@ def test_data_after_the_calibration_period_never_changes_the_fitted_parameters(f
 
     The reporter doubled every value after 2005 and saw earlier PDSI values change. For
     both functions the fitted parameters must be identical. For ``pdsi()`` the Z-index
-    is identical too, and the only earlier change is the spell still open at the last
-    calibration month, which the Palmer recursion backtracks with later data by design:
-    one block of months that ends exactly at the boundary. ``scpdsi()`` is excluded from
+    is identical too, and the earlier change this seeded draw produces is the spell still
+    open at the last calibration month, which the Palmer recursion backtracks with later
+    data by design: one block of months that ends exactly at the boundary. (The
+    end-of-record flush can also rewrite months outside that block when the later data
+    are much drier; doubling does not trigger it, see ``docs/algorithm_refs/palmer.md``.)
+    ``scpdsi()`` is excluded from
     those two checks because its rescaling anchors are percentiles of the
     calibration-window PDSI, which includes that open spell, so later data can rescale
     earlier months (see ``docs/algorithm_refs/palmer.md``).
@@ -186,8 +189,8 @@ def test_data_after_the_calibration_period_never_changes_the_fitted_parameters(f
                 assert np.all(np.diff(changed) == 1)
 
     # the seeded draw reaches the backtracked spell, so the guard above is not vacuous
-    # (the block assertions above cover all three indices, but PMDI is not guaranteed to follow
-    # the boundary rule, see docs/algorithm_refs/palmer.md)
+    # (in this draw only PDSI changes before the boundary, so the block assertions run for PDSI
+    # alone; PHDI and PMDI are not pinned, see docs/algorithm_refs/palmer.md)
     if function is palmer.pdsi:
         assert boundary_changes > 0
 
