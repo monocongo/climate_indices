@@ -1,11 +1,11 @@
-"""Find the shortest Z-Index sequence that reproduces each divergence class (REFIMPL-29, #1631).
+"""Find a minimal Z-Index sequence that reproduces each divergence class (REFIMPL-29, #1631).
 
 For each attribution label in ``palmer-recursion-divergence-results.json`` a window of a real
-division's Z series is shrunk by greedy deletion until no month can be removed without losing
-the class, then its values are rounded for readability. A series *reproduces* a label when the
-pdi.f and Wells recursions disagree on it, and every baseline episode, labelled over its own
-span exactly as the study labels episodes, carries that label with no variant disagreement
-outside the baseline episodes.
+division's Z series is shrunk by greedy deletion until no single month can be removed without
+losing the class (locally minimal, not proven shortest), then its values are rounded for
+readability. A series *reproduces* a label when the pdi.f and Wells recursions disagree on it,
+and every baseline episode, labelled over its own span exactly as the study labels episodes,
+carries that label with no variant disagreement outside the baseline episodes.
 Series are left-padded with zeros to whole years, which both recursions treat as no-ops.
 
 Run: ``uv run python scripts/find_palmer_minimal_sequences.py``; writes

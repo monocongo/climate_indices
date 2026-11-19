@@ -1,4 +1,4 @@
-"""Pin both Palmer recursions on the shortest Z-Index sequences that make them disagree (REFIMPL-29, #1631).
+"""Pin both Palmer recursions on minimal Z-Index sequences that make them disagree (REFIMPL-29, #1631).
 
 Each case is a minimal reproducing sequence for one divergence class, found by
 ``scripts/find_palmer_minimal_sequences.py`` and described in

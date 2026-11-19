@@ -155,7 +155,7 @@ The largest disagreement (8.135 units, division 0501, October 1915) belongs to c
 
 An episode's label is the set of mechanisms that must all be harmonized for it to vanish (D2). No episode needed Tol, so the 1e-5 tolerances in the Wells recursion have no effect on this fixture. All classes below are logic differences; the floating-point class is empty.
 
-| Class | Episodes | Months | Largest \|difference\| (division, month) | Shortest sequence (active months) |
+| Class | Episodes | Months | Largest \|difference\| (division, month) | Minimal sequence (active months) |
 | --- | ---: | ---: | --- | ---: |
 | E | 3,415 | 30,212 | 3.516 (3009, 1899-12) | 5 |
 | E+T | 85 | 1,008 | 1.704 (0304, 1943-05) | 4 |
@@ -171,7 +171,7 @@ An episode's label is the set of mechanisms that must all be harmonized for it t
 | E+T+C | 3 | 99 | 0.673 (1901, 1971-12) | 19 |
 | overdetermined (E+A, E+F, A+F) | 6 | 20 | n/a | not sought |
 
-Months in any class containing a mechanism: E 96.6%, A 3.9%, T 3.4%, C 2.1%, F 0.6% (overdetermined episodes excluded). Alone, E removes 90.5% of all disagreeing months; the other mechanisms matter mostly in combination with it. Every sequence is pinned in `tests/test_palmer_recursion_divergence.py`, one test per class. Sequences for `E+A`, `E+A+C` and `E+T+C` hold unrounded values because rounding them loses the class: they sit on a branch boundary.
+Months in any class containing a mechanism: E 96.6%, A 3.9%, T 3.4%, C 2.1%, F 0.6% (overdetermined episodes excluded). Alone, E removes 90.5% of all disagreeing months; the other mechanisms matter mostly in combination with it. Each sequence is locally minimal under greedy deletion (no single month can be removed without losing the class), not proven shortest. Every sequence is pinned in `tests/test_palmer_recursion_divergence.py`, one test per class. Sequences for `E+A`, `E+A+C` and `E+T+C` hold unrounded values because rounding them loses the class: they sit on a branch boundary.
 
 ### What each mechanism is, and what Palmer (1965) says
 
