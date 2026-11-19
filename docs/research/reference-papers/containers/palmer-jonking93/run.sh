@@ -12,7 +12,7 @@ UPSTREAM_SHA=9a636117577f476a93f206897fb91dc94d4eddc2   # JonKing93/pdsi main, 2
 IMAGE=gnuoctave/octave@sha256:100d394c57b86469748d26ddafcf73a1074338a66dabcababe2e4e05146772b9
 
 mkdir -p "$WORK/data" "$WORK/out"
-test -d "$WORK/upstream/.git" || git clone -q https://github.com/JonKing93/pdsi.git "$WORK/upstream"
+[[ -d "$WORK/upstream/.git" ]] || git clone -q https://github.com/JonKing93/pdsi.git "$WORK/upstream"
 git -C "$WORK/upstream" checkout -q "$UPSTREAM_SHA"
 uv run --project "$REPO" python -I "$HERE/prep.py" "$REPO" "$WORK/data"
 docker run --rm --platform linux/amd64 --network none \

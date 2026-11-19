@@ -5,25 +5,13 @@ Comparison is REFIMPL-31's job; this only reproduces the smoke numbers quoted in
 """
 
 import json
-import os
 import sys
 from pathlib import Path
 
 import numpy as np
 
-
-def _path(value: str) -> Path:
-    """Resolve a command-line path, refusing a relative one that escapes the working directory.
-
-    Same guard as benchmarks/cli_multiprocessing.py (pythonsecurity:S8707); absolute paths are
-    the documented usage and pass through after normalisation.
-    """
-    resolved = os.path.realpath(value)
-    base = os.path.realpath(os.getcwd())
-    if not os.path.isabs(value) and resolved != base and not resolved.startswith(base + os.sep):
-        raise SystemExit(f"{value!r} is outside the working directory")
-    return Path(resolved)
-
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))  # python -I adds neither the script dir nor cwd
+from _safe_path import path_arg as _path  # noqa: E402
 
 repo, out = _path(sys.argv[1]), _path(sys.argv[2])
 divs = json.load(open(repo / "tests/fixture/nclimdiv/divisions.json"))

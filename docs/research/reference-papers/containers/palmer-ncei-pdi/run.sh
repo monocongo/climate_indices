@@ -34,5 +34,5 @@ sed -e 's/nendyr=2000,/nendyr=2022,/' -e 's/nendmo= 9,/nendmo=12,/' -e 's/ioutey
 gfortran -std=legacy -O0 -w -o pdi pdi_patched.f
 ./pdi
 # Outputs, 344 divisions x 1895-2022: fort.21 WPLM (PMDI), fort.22 PDSI, fort.23 Z, fort.24 PHDI.
-for u in 21 22 23 24; do test "$(wc -l < fort.$u)" -eq $((344 * 128)); done
+for u in 21 22 23 24; do [[ "$(wc -l < fort.$u)" -eq $((344 * 128)) ]]; done
 echo "ok: $WORK/run/fort.2[1-4] hold 344 x 128 rows each"
