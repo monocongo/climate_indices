@@ -6,7 +6,7 @@
 #
 # Two stages: Debian's own Mono packages have no Microsoft.VisualBasic runtime (the
 # program is VB.NET), and the Mono Project image has it but no unzip.
-FROM debian:bookworm-slim AS fetch
+FROM debian:bookworm-slim@sha256:734a72b3d6142a71993b4bc580ca01d8ca687f77a2c422d96a961d3376b179bc AS fetch
 RUN apt-get update \
  && apt-get install -y --no-install-recommends unzip ca-certificates \
  && apt-get clean
@@ -15,7 +15,7 @@ ADD --checksum=sha256:ce8f37bc00bf5309cdbedff2e788f698b1f30b2794e17b0e7aaab5c337
     https://drought.unl.edu/archive/Programs/SPI/SPIgenerator.zip /src/SPIgenerator.zip
 RUN mkdir /opt/ndmc && cd /opt/ndmc && unzip -q /src/SPIgenerator.zip
 
-FROM mono:6.12
+FROM mono:6.12@sha256:34d816779b1248b5cfd095770b64ecbaf1798e2aca693a91c11a018dce9c7ad5
 COPY --from=fetch /opt/ndmc /opt/ndmc
 # Run unprivileged (SonarCloud docker:S6471). The program writes `o\NAME.csv` into its
 # working directory, which this user owns; --create-home gives Mono a writable HOME.
