@@ -918,7 +918,8 @@ scales raise). The edges are −0.5, −0.8, −1.3, −1.6 and −2.0, and each
 edge, so −0.5 is D0 and −2.0 is D4. `compare_categories` takes two classifications and returns a
 6×6 confusion matrix (reference class by alternative class), per-class counts, `share_changed`
 and `share_changed_in_drought`, for NumPy arrays and for DataArrays, which reduce over the `dims`
-you name and stay lazy under Dask. Pairs with a missing category are left out. A pair counts as in
+you name and stay lazy under Dask. Both classifications must share their shape, dimensions and coordinates,
+and the result's variable names are reserved. Pairs with a missing category are left out. A pair counts as in
 drought when either classification is D0 to D4, so a change into or out of drought is never hidden.
 
 ```{eval-rst}

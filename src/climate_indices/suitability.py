@@ -1123,6 +1123,19 @@ def _compare_xarray(
 DROUGHT_CATEGORY_LABELS: tuple[str, ...] = ("none", "D0", "D1", "D2", "D3", "D4")
 _N_CATEGORIES = len(DROUGHT_CATEGORY_LABELS)
 
+# the names of the comparison result, which an input dimension or coordinate that stays may not take:
+# a kept dimension would replace the variable with the input's labels, and a kept coordinate fails the merge
+_CATEGORY_COMPARISON_NAMES = (
+    "confusion",
+    "reference_counts",
+    "alternative_counts",
+    "n_valid",
+    "share_changed",
+    "share_changed_in_drought",
+    "reference_category",
+    "alternative_category",
+)
+
 # class boundaries in ascending order; each class includes its upper edge and excludes its lower one
 _USDM_EDGES = (-2.0, -1.6, -1.3, -0.8, -0.5)
 _USDM_SOURCE = (
@@ -1256,7 +1269,15 @@ def _require_code_range(codes: np.ndarray, name: str) -> None:
 
 def _as_codes(values: Any, name: str) -> np.ndarray:
     """Validated integer category codes as an array; a masked code becomes -1 (missing)."""
-    codes = values if np.ma.isMaskedArray(values) else np.asarray(values)
+    try:
+        codes = values if np.ma.isMaskedArray(values) else np.asarray(values)
+    except (TypeError, ValueError) as error:  # a ragged or otherwise unarrayable sequence
+        raise _invalid(
+            f"{name} must hold integer category codes from drought_category.",
+            name,
+            type(values).__name__,
+            "integer codes -1 to 5",
+        ) from error
     _require_integer_codes(codes.dtype, name)
     if np.ma.isMaskedArray(codes):
         # range-check before the int64 cast, which would wrap a large unmasked uint64 into -1 (missing)
@@ -1264,6 +1285,13 @@ def _as_codes(values: Any, name: str) -> np.ndarray:
         return np.ma.filled(codes.astype(np.int64), -1)
     _require_code_range(codes, name)
     return codes
+
+
+def _labels_equal(left: np.ndarray, right: np.ndarray) -> bool:
+    """Exact label equality, where two NaN labels at the same position are equal."""
+    if left.dtype.kind in "fc" and right.dtype.kind in "fc":
+        return np.array_equal(left, right, equal_nan=True)
+    return np.array_equal(left, right)
 
 
 def _share(changed: Any, population: Any) -> Any:
@@ -1357,6 +1385,27 @@ def _compare_categories_xarray(
             "mismatch",
             "equal",
         )
+    if set(reference.coords) != set(alternative.coords):
+        raise _invalid(
+            "reference and alternative must share their coordinates: only one has "
+            f"{sorted(set(reference.coords) ^ set(alternative.coords), key=str)}.",
+            "alternative",
+            "mismatch",
+            "equal",
+        )
+    for coord_name, coordinate in reference.coords.items():  # align compares the indexed coordinates only
+        if coord_name in reference.xindexes:
+            continue
+        other = alternative.coords[coord_name]
+        # a coordinate is a label, so it is read even when the data stays lazy; a differing one would
+        # otherwise pair cells by position and keep one side's labels
+        if coordinate.dims != other.dims or not _labels_equal(coordinate.values, other.values):
+            raise _invalid(
+                f"reference and alternative must share their coordinates: {coord_name!r} differs.",
+                "alternative",
+                "mismatch",
+                "equal",
+            )
     try:
         reference, alternative = xr.align(reference, alternative, join="exact")
     except ValueError as error:
@@ -1364,14 +1413,16 @@ def _compare_categories_xarray(
             f"reference and alternative must share their coordinates: {error}", "alternative", "mismatch", "equal"
         ) from error
     reduce_dims = _reduction_dims(dims, tuple(reference.dims))
+    # a dimensionless input has nothing to reduce over, and .sum(()) would return the boolean identity
+    sum_dims = reduce_dims or None
     kept_names = set(reference.dims) - set(reduce_dims)
-    for array in (reference, alternative):  # a surviving coordinate would collide with the matrix axes too
+    for array in (reference, alternative):  # a surviving coordinate collides with a result variable too
         kept_names |= {name for name, coord in array.coords.items() if not set(coord.dims) & set(reduce_dims)}
-    kept_clash = {"reference_category", "alternative_category"} & kept_names
+    kept_clash = set(_CATEGORY_COMPARISON_NAMES) & kept_names
     if kept_clash:
         raise _invalid(
-            f"{sorted(kept_clash)} are reserved for the confusion matrix and cannot stay as input dimensions or coordinates; "
-            "rename them or reduce over them.",
+            f"{sorted(kept_clash)} are reserved for the comparison result and cannot stay as input dimensions or "
+            "coordinates; rename them or reduce over them.",
             "dims",
             sorted(kept_clash),
             "other dimension names",
@@ -1380,14 +1431,14 @@ def _compare_categories_xarray(
     # a code outside 0 to 5 (possible only for a lazy input, which is not range-checked) is excluded
     # everywhere, so n_valid, the shares and the confusion matrix always count the same pairs
     valid = (reference >= 0) & (reference < _N_CATEGORIES) & (alternative >= 0) & (alternative < _N_CATEGORIES)
-    n_valid = valid.sum(reduce_dims)
-    changed = n_valid - ((reference == alternative) & valid).sum(reduce_dims)
-    n_none = ((reference == 0) & (alternative == 0)).sum(reduce_dims)
+    n_valid = valid.sum(sum_dims)
+    changed = n_valid - ((reference == alternative) & valid).sum(sum_dims)
+    n_none = ((reference == 0) & (alternative == 0)).sum(sum_dims)
     # one reduction per cell of the matrix keeps the transient memory at the size of the input
     confusion = xr.concat(
         [
             xr.concat(
-                [((reference == r) & (alternative == a)).sum(reduce_dims) for a in range(_N_CATEGORIES)],
+                [((reference == r) & (alternative == a)).sum(sum_dims) for a in range(_N_CATEGORIES)],
                 dim="alternative_category",
             )
             for r in range(_N_CATEGORIES)
@@ -1446,10 +1497,10 @@ def compare_categories(
     Raises:
         InvalidArgumentError: The codes are not integers from -1 to 5, the inputs differ in shape,
             dimensions or coordinates, ``dims`` is empty, repeats or names a missing dimension or is given
-            for NumPy input, an input dimension or coordinate that stays is named ``reference_category`` or
-            ``alternative_category``, or only one input is a DataArray. A Dask-backed input is not read
-            to check the range, so a code outside -1 to 5 in it is excluded from every field like a
-            missing one. A masked NumPy code counts as missing.
+            for NumPy input, an input dimension or coordinate that stays is named like one of the result
+            variables, or only one input is a DataArray. A Dask-backed input's data is not read to check
+            the range, so a code outside -1 to 5 in it is excluded from every field like a missing one,
+            though its coordinate labels are still compared. A masked NumPy code counts as missing.
 
     Warns:
         BetaFeatureWarning: Always; the module is Beta.

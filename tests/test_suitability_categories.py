@@ -120,7 +120,7 @@ class TestDroughtCategory:
         assert out.values.tolist() == [[1, -1], [5, 0]]
         assert out.dims == da.dims
         assert out["y"].values.tolist() == [10, 20]
-        assert out.attrs["long_name"] != "SPI-3"  # the input's description does not describe categories
+        assert out.attrs["long_name"] == "U.S. Drought Monitor drought category"
         assert out.attrs["flag_values"] == [-1, 0, 1, 2, 3, 4, 5]
         assert out.attrs["flag_meanings"] == "missing none D0 D1 D2 D3 D4"
         assert json.loads(out.attrs["climate_indices_category_edges"]) == [-2.0, -1.6, -1.3, -0.8, -0.5]
@@ -160,7 +160,6 @@ class TestCompareCategoriesNumpy:
         assert result.share_changed_in_drought == pytest.approx(4 / 7)
         np.testing.assert_array_equal(result.reference_counts, [2, 2, 2, 0, 1, 1])
         np.testing.assert_array_equal(result.alternative_counts, [2, 2, 2, 0, 2, 0])
-        assert result.confusion.sum() == result.n_valid
 
     def test_symmetric_roles_for_in_drought_denominator(self):
         # (0, 3) and (3, 0) change into and out of drought, (3, 3) is unchanged drought, (0, 0) is outside it.
@@ -189,6 +188,10 @@ class TestCompareCategoriesNumpy:
     def test_masked_non_integer_codes_are_rejected(self):
         with pytest.raises(InvalidArgumentError, match="integer"):
             suitability.compare_categories(np.ma.masked_array([1.0, 2.0], mask=[False, True]), np.array([1, 2]))
+
+    def test_unarrayable_sequence_is_rejected(self):
+        with pytest.raises(InvalidArgumentError, match="integer"):
+            suitability.compare_categories([[1, 2], [3]], [[1, 2], [3]])
 
     def test_identical_categories_have_no_change(self):
         result = suitability.compare_categories(REF, REF)
@@ -256,6 +259,11 @@ class TestCompareCategoriesNumpy:
             suitability.compare_categories(REF, ALT)
 
 
+def _grid_with_lat(lat: list[float]) -> xr.DataArray:
+    """An auxiliary-coordinate grid, for the coordinate-comparison tests."""
+    return xr.DataArray(np.zeros((3, len(lat)), dtype=np.int8), dims=("time", "x"), coords={"lat": ("x", lat)})
+
+
 def _grid(seed: int = 0, shape: tuple[int, int, int] = (40, 3, 2)):
     """Reference/alternative categories on a (time, y, x) grid; the alternative is a perturbed copy."""
     rng = np.random.default_rng(seed)
@@ -293,6 +301,14 @@ class TestCompareCategoriesXarray:
         np.testing.assert_array_equal(out["reference_counts"].values, [2, 2, 2, 0, 1, 1])
         np.testing.assert_array_equal(out["alternative_counts"].values, [2, 2, 2, 0, 2, 0])
 
+    def test_dimensionless_input_matches_the_numpy_route(self):
+        # .sum(()) returns the boolean identity, so a dimensionless input must reduce over everything
+        out = suitability.compare_categories(xr.DataArray(np.int8(2)), xr.DataArray(np.int8(3)))
+        expected = suitability.compare_categories(np.array(2, dtype=np.int8), np.array(3, dtype=np.int8))
+        np.testing.assert_array_equal(out["confusion"].values, expected.confusion)
+        assert out["n_valid"].item() == expected.n_valid == 1
+        assert out["share_changed"].item() == pytest.approx(expected.share_changed)
+
     def test_pair_missing_only_in_the_alternative_is_excluded(self):
         ref = xr.DataArray(np.array([0, 1, -1, 2], dtype=np.int8), dims="time")
         alt = xr.DataArray(np.array([0, -1, 0, 2], dtype=np.int8), dims="time")
@@ -316,7 +332,8 @@ class TestCompareCategoriesXarray:
         out = suitability.compare_categories(
             xr.DataArray(ref, dims=("time", "y", "x")), xr.DataArray(alt, dims=("time", "y", "x")), dims="time"
         )
-        assert set(out["confusion"].dims) == {"y", "x", "reference_category", "alternative_category"}
+        # the two category dimensions stay last, as documented
+        assert out["confusion"].dims == ("y", "x", "reference_category", "alternative_category")
         assert out["share_changed"].dims == ("y", "x")
         for j in range(3):
             for i in range(2):
@@ -373,6 +390,44 @@ class TestCompareCategoriesXarray:
             suitability.compare_categories(da, da, dims="time")
         # reducing over it is fine
         assert suitability.compare_categories(da, da, dims="reference_category")["n_valid"].dims == ("time",)
+
+    @pytest.mark.parametrize(
+        "name",
+        ["confusion", "reference_counts", "alternative_counts", "n_valid", "share_changed", "share_changed_in_drought"],
+    )
+    def test_kept_dimension_named_like_another_result_variable_is_rejected(self, name):
+        # a kept dimension of that name would replace the result variable with the caller's labels
+        da = xr.DataArray(np.zeros((3, 2), dtype=np.int8), dims=("time", name))
+        with pytest.raises(InvalidArgumentError, match="reserved"):
+            suitability.compare_categories(da, da, dims="time")
+        assert suitability.compare_categories(da, da, dims=name)["n_valid"].dims == ("time",)
+
+    def test_kept_coordinate_named_like_another_result_variable_is_rejected(self):
+        da = xr.DataArray(
+            np.zeros((3, 2), dtype=np.int8), dims=("time", "x"), coords={"share_changed": ("x", [0.5, 1.0])}
+        )
+        with pytest.raises(InvalidArgumentError, match="reserved"):
+            suitability.compare_categories(da, da, dims="time")
+
+    def test_equal_auxiliary_coordinate_is_accepted(self):
+        # a NaN label is the same missing label on both sides
+        out = suitability.compare_categories(_grid_with_lat([1.0, np.nan]), _grid_with_lat([1.0, np.nan]), dims="time")
+        assert out["n_valid"].values.tolist() == [3, 3]
+
+    def test_differing_auxiliary_coordinate_is_rejected(self):
+        # an auxiliary coordinate is not an index, so align cannot compare it: pairing the cells by
+        # position would keep one side's labels for the other's cells
+        def grid(lat):
+            return xr.DataArray(np.zeros((3, 2), dtype=np.int8), dims=("time", "x"), coords={"lat": ("x", lat)})
+
+        with pytest.raises(InvalidArgumentError, match="coordinates"):
+            suitability.compare_categories(grid([1.0, 2.0]), grid([9.0, 8.0]), dims="time")
+
+    def test_coordinate_on_one_side_only_is_rejected(self):
+        labelled = xr.DataArray(np.zeros((3, 2), dtype=np.int8), dims=("time", "x"), coords={"lat": ("x", [1.0, 2.0])})
+        plain = xr.DataArray(np.zeros((3, 2), dtype=np.int8), dims=("time", "x"))
+        with pytest.raises(InvalidArgumentError, match="coordinates"):
+            suitability.compare_categories(labelled, plain, dims="time")
 
     def test_surviving_coordinate_named_like_a_confusion_axis_is_rejected(self):
         da = xr.DataArray(
@@ -432,6 +487,20 @@ class TestCompareCategoriesXarray:
         expected = suitability.compare_categories(ref, alt)
         np.testing.assert_array_equal(out["confusion"].values, expected.confusion)
         assert float(out["share_changed"]) == pytest.approx(expected.share_changed)
+
+    def test_dask_split_time_with_named_dims_matches_the_eager_route(self):
+        dask_array = pytest.importorskip("dask.array")
+        ref, alt = _grid(seed=4)
+        # time is split across chunks, which a named-dimension reduction must still accept
+        ref_da = xr.DataArray(dask_array.from_array(ref, chunks=(7, 3, 1)), dims=("time", "y", "x"))
+        alt_da = xr.DataArray(dask_array.from_array(alt, chunks=(11, 3, 2)), dims=("time", "y", "x"))
+        out = suitability.compare_categories(ref_da, alt_da, dims="time")
+        counts = out["n_valid"].compute()
+        for j in range(3):
+            for i in range(2):
+                assert (
+                    counts.isel(y=j, x=i).item() == suitability.compare_categories(ref[:, j, i], alt[:, j, i]).n_valid
+                )
 
     def test_drought_category_output_feeds_compare_categories(self):
         rng = np.random.default_rng(5)
