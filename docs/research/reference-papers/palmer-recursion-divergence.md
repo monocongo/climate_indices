@@ -153,7 +153,7 @@ The largest disagreement (8.135 units, division 0501, October 1915) belongs to c
 
 ### Classes
 
-An episode's label is the set of mechanisms that must all be harmonized for it to vanish (D2). No episode needed Tol, so the 1e-5 tolerances in the Wells recursion have no effect on this fixture. All classes below are logic differences; the floating-point class is empty.
+An episode's label is the set of mechanisms that must all be harmonized for it to vanish (D2). No episode needed Tol: leaving only Tol out of the full harmonization leaves 0 disagreeing months, so the 1e-5 tolerances in the Wells recursion are not needed to remove any disagreement above 1e-9. Whether they change output values below that threshold was not tested. All classes below are logic differences; the floating-point class is empty.
 
 | Class | Episodes | Months | Largest \|difference\| (division, month) | Minimal sequence (active months) |
 | --- | ---: | ---: | --- | ---: |
