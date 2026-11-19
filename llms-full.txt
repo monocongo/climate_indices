@@ -1631,6 +1631,35 @@ self-calibrating K-prime factors, fits location-specific duration factors,
 uses the Wells recursion, and performs three cumulative Z-index rescaling
 passes over the requested calibration period.
 
+### The calibration period and later data
+
+`calibration_year_initial` and `calibration_year_final` bound only the fit: the
+CAFEC coefficients and K factors, and for `scpdsi()` the duration factors and
+rescaling. The recursion still runs over the whole record, and a wet or dry spell
+that is still open at the last calibration month is assigned its index
+retroactively.
+
+- `pdsi()`: data after `calibration_year_final` never change the fitted
+  parameters or the Z-Index of the calibration-window months (later months have
+  their own Z-Index values, which of course follow the later data). They can
+  change the PDSI and PHDI of the months in that one open spell, which form a
+  single block ending at the boundary. They are not guaranteed to change nothing
+  else: the end-of-record flush rewrites PDSI, PHDI, and PMDI for months retained
+  from earlier, already closed spells using the final record month, so a much
+  drier post-calibration stretch can move a calibration-window month that is
+  outside the open spell.
+- `scpdsi()`: the fitted parameters are likewise unaffected. Its three rescaling
+  passes take percentiles of the calibration-window PDSI, which includes that open
+  spell, so later data can in rare cases move the rescaling anchors and with them
+  the Z-Index and the PDSI, PHDI, and PMDI of earlier months, not only the open
+  spell.
+
+`tests/test_scpdsi.py::test_data_after_the_calibration_period_never_changes_the_fitted_parameters`
+pins the parameter and `pdsi()` Z-Index statements for every series it draws, and
+the open-spell block shape of PDSI for one seeded draw that reaches such a spell
+(issue #544). It does not pin PHDI or PMDI, and doubling the later data does not
+trigger the flush rewrites described above.
+
 ### Exact-zero comparisons
 
 Both recursions branch on exact comparisons against zero, and every float
@@ -6247,6 +6276,12 @@ Where:
 
 - Automatically adjusts for leap years
 - Negative temperatures are clipped to 0°C (no evaporation below freezing)
+- A record in which every temperature is at or below 0°C (so every monthly mean
+  clips to 0) has a heat index of zero, so the ratio is undefined and every month of
+  that record (or grid cell) is NaN, not 0 mm/month. This holds for plain ndarray
+  input only. A masked array does not follow it: the 0/0 is masked rather than NaN
+  and the result is finite but not a valid PET (the temperature term is lost), so
+  fill masked values with NaN before calling
 - Day length computed from latitude using solar geometry
 - Returns monthly PET values in mm/month
 

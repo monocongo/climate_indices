@@ -137,6 +137,64 @@ def test_infinite_inputs_are_rejected(function, palmer_division_inputs):
         function(precips, pet, awc, 1895, 1931, 1990)
 
 
+@pytest.mark.parametrize("function", [palmer.pdsi, palmer.scpdsi])
+def test_data_after_the_calibration_period_never_changes_the_fitted_parameters(function):
+    """Issue #544: ``calibration_year_final`` bounds the calibration, not the recursion.
+
+    The reporter doubled every value after 2005 and saw earlier PDSI values change. For
+    both functions the fitted parameters must be identical. For ``pdsi()`` the Z-index
+    is identical too, and the earlier change this seeded draw produces is the spell still
+    open at the last calibration month, which the Palmer recursion backtracks with later
+    data by design: one block of months that ends exactly at the boundary. (The
+    end-of-record flush can also rewrite months outside that block when the later data
+    are much drier; doubling does not trigger it, see ``docs/algorithm_refs/palmer.md``.)
+    ``scpdsi()`` is excluded from
+    those two checks because its rescaling anchors are percentiles of the
+    calibration-window PDSI, which includes that open spell, so later data can rescale
+    earlier months (see ``docs/algorithm_refs/palmer.md``).
+    """
+    start, final = 1990, 2005
+    months = (2010 - start + 1) * 12
+    boundary = (final + 1 - start) * 12
+    rng = np.random.default_rng(544)
+    boundary_changes = 0
+
+    # only a few of these series end with a spell still open at the boundary
+    # (series 42 and 43 of this seeded draw), so the count below guards the block check
+    for _ in range(45):
+        precips = rng.random(months)
+        pet = rng.random(months)
+        later_precips, later_pet = precips.copy(), pet.copy()
+        later_precips[boundary:] *= 2
+        later_pet[boundary:] *= 2
+
+        *baseline, baseline_params = function(precips, pet, 50.0, start, start, final)
+        *later, later_params = function(later_precips, later_pet, 50.0, start, start, final)
+
+        assert baseline_params.keys() == later_params.keys()
+        for key in baseline_params:
+            np.testing.assert_array_equal(np.asarray(baseline_params[key]), np.asarray(later_params[key]), err_msg=key)
+
+        if function is not palmer.pdsi:
+            continue
+
+        # the Z-index is the last of the four outputs and has no backtracking
+        np.testing.assert_array_equal(baseline[3][:boundary], later[3][:boundary])
+
+        for before, after in zip(baseline[:3], later[:3], strict=True):
+            changed = np.flatnonzero(before[:boundary] != after[:boundary])
+            if changed.size:
+                boundary_changes += 1
+                assert changed[-1] == boundary - 1
+                assert np.all(np.diff(changed) == 1)
+
+    # the seeded draw reaches the backtracked spell, so the guard above is not vacuous
+    # (in this draw only PDSI changes before the boundary, so the block assertions run for PDSI
+    # alone; PHDI and PMDI are not pinned, see docs/algorithm_refs/palmer.md)
+    if function is palmer.pdsi:
+        assert boundary_changes > 0
+
+
 def test_supplied_cafec_coefficients_are_reused_but_duration_factors_are_recalibrated(palmer_division_inputs):
     _, _, _, _, standard_params = _call(palmer_division_inputs)
     assert standard_params is not None
