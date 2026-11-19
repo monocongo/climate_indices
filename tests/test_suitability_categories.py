@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from typing import Any
 
 import numpy as np
 import pytest
@@ -259,7 +260,7 @@ class TestCompareCategoriesNumpy:
             suitability.compare_categories(REF, ALT)
 
 
-def _grid_with_lat(lat: list[float]) -> xr.DataArray:
+def _grid_with_lat(lat: Any) -> xr.DataArray:
     """An auxiliary-coordinate grid, for the coordinate-comparison tests."""
     return xr.DataArray(np.zeros((3, len(lat)), dtype=np.int8), dims=("time", "x"), coords={"lat": ("x", lat)})
 
@@ -409,10 +410,41 @@ class TestCompareCategoriesXarray:
         with pytest.raises(InvalidArgumentError, match="reserved"):
             suitability.compare_categories(da, da, dims="time")
 
-    def test_equal_auxiliary_coordinate_is_accepted(self):
-        # a NaN label is the same missing label on both sides
-        out = suitability.compare_categories(_grid_with_lat([1.0, np.nan]), _grid_with_lat([1.0, np.nan]), dims="time")
+    @pytest.mark.parametrize(
+        "labels",
+        [
+            [1.0, np.nan],
+            np.array(["a", np.nan], dtype=object),
+            np.array(["2000-01-01", "NaT"], dtype="datetime64[ns]"),
+            ["a", "b"],
+        ],
+        ids=["float-nan", "object-nan", "datetime-nat", "strings"],
+    )
+    def test_equal_auxiliary_coordinate_is_accepted(self, labels):
+        # a missing label, NaN or NaT, is the same label on both sides
+        out = suitability.compare_categories(_grid_with_lat(labels), _grid_with_lat(labels), dims="time")
         assert out["n_valid"].values.tolist() == [3, 3]
+
+    def test_coordinate_dropped_by_the_reduction_is_not_compared(self):
+        # a reduced coordinate leaves the result, so its labels pair no cells and are not read
+        ref = xr.DataArray(np.zeros((3, 2), dtype=np.int8), dims=("time", "x"), coords={"season": ("time", [0, 0, 1])})
+        alt = ref.assign_coords(season=("time", [1, 0, 0]))
+        assert suitability.compare_categories(ref, alt, dims="time")["n_valid"].values.tolist() == [3, 3]
+
+    def test_unreadable_lazy_coordinate_is_rejected(self):
+        dask_array = pytest.importorskip("dask.array")
+
+        def unreadable(offset):
+            def chunk(_block):
+                raise ValueError("simulated unreadable chunk")
+
+            return dask_array.map_blocks(chunk, dask_array.zeros(2, chunks=2, dtype=np.int8) + offset, dtype=np.int8)
+
+        def grid(coord):
+            return xr.DataArray(np.zeros((2, 2), dtype=np.int8), dims=("time", "x"), coords={"lat": ("x", coord)})
+
+        with pytest.raises(InvalidArgumentError, match="compared"):
+            suitability.compare_categories(grid(unreadable(0)), grid(unreadable(1)), dims="time")
 
     def test_differing_auxiliary_coordinate_is_rejected(self):
         # an auxiliary coordinate is not an index, so align cannot compare it: pairing the cells by

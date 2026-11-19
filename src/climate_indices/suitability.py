@@ -1287,13 +1287,6 @@ def _as_codes(values: Any, name: str) -> np.ndarray:
     return codes
 
 
-def _labels_equal(left: np.ndarray, right: np.ndarray) -> bool:
-    """Exact label equality, where two NaN labels at the same position are equal."""
-    if left.dtype.kind in "fc" and right.dtype.kind in "fc":
-        return np.array_equal(left, right, equal_nan=True)
-    return np.array_equal(left, right)
-
-
 def _share(changed: Any, population: Any) -> Any:
     """``changed / population``, NaN where the population is empty."""
     if isinstance(population, xr.DataArray):
@@ -1393,13 +1386,24 @@ def _compare_categories_xarray(
             "mismatch",
             "equal",
         )
+    reduce_dims = _reduction_dims(dims, tuple(reference.dims))
+    # a dimensionless input has nothing to reduce over, and .sum(()) would return the boolean identity
+    sum_dims = reduce_dims or None
     for coord_name, coordinate in reference.coords.items():  # align compares the indexed coordinates only
-        if coord_name in reference.xindexes:
-            continue
-        other = alternative.coords[coord_name]
-        # a coordinate is a label, so it is read even when the data stays lazy; a differing one would
-        # otherwise pair cells by position and keep one side's labels
-        if coordinate.dims != other.dims or not _labels_equal(coordinate.values, other.values):
+        if coord_name in reference.xindexes or set(coordinate.dims) & set(reduce_dims):
+            continue  # a reduced coordinate is dropped from the result, so its labels pair no cells
+        # a coordinate is a label, so comparing it reads it even when the data stays lazy; a differing
+        # one would otherwise pair cells by position and keep one side's labels
+        try:
+            same = coordinate.variable.equals(alternative.coords[coord_name].variable)
+        except ValueError as error:  # an unreadable lazy coordinate, as align can raise for an index
+            raise _invalid(
+                f"reference and alternative coordinates could not be compared: {error}",
+                "alternative",
+                "unreadable",
+                "readable coordinates",
+            ) from error
+        if not same:
             raise _invalid(
                 f"reference and alternative must share their coordinates: {coord_name!r} differs.",
                 "alternative",
@@ -1412,9 +1416,6 @@ def _compare_categories_xarray(
         raise _invalid(
             f"reference and alternative must share their coordinates: {error}", "alternative", "mismatch", "equal"
         ) from error
-    reduce_dims = _reduction_dims(dims, tuple(reference.dims))
-    # a dimensionless input has nothing to reduce over, and .sum(()) would return the boolean identity
-    sum_dims = reduce_dims or None
     kept_names = set(reference.dims) - set(reduce_dims)
     for array in (reference, alternative):  # a surviving coordinate collides with a result variable too
         kept_names |= {name for name, coord in array.coords.items() if not set(coord.dims) & set(reduce_dims)}
@@ -1500,7 +1501,7 @@ def compare_categories(
             for NumPy input, an input dimension or coordinate that stays is named like one of the result
             variables, or only one input is a DataArray. A Dask-backed input's data is not read to check
             the range, so a code outside -1 to 5 in it is excluded from every field like a missing one,
-            though its coordinate labels are still compared. A masked NumPy code counts as missing.
+            though the labels of a coordinate that stays are compared. A masked NumPy code counts as missing.
 
     Warns:
         BetaFeatureWarning: Always; the module is Beta.
