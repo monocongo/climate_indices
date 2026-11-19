@@ -284,7 +284,7 @@ def build_pdi_variant(mechs: tuple[str, ...]) -> types.ModuleType:
     module.__file__ = f"<{name}>"
     sys.modules[name] = module
     try:
-        exec(compile(source, module.__file__, "exec"), module.__dict__)  # noqa: S102
+        exec(compile(source, module.__file__, "exec"), module.__dict__)  # noqa: S102  # nosec B102 - the library's own source, fixed edits
     finally:
         sys.modules.pop(name, None)
     return module
