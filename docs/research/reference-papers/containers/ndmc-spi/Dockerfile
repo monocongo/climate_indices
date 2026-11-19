@@ -17,5 +17,10 @@ RUN mkdir /opt/ndmc && cd /opt/ndmc && unzip -q /src/SPIgenerator.zip
 
 FROM mono:6.12
 COPY --from=fetch /opt/ndmc /opt/ndmc
-WORKDIR /opt/ndmc
+# Run unprivileged (SonarCloud docker:S6471). The program writes `o\NAME.csv` into its
+# working directory, which this user owns; --create-home gives Mono a writable HOME.
+RUN useradd --create-home --shell /bin/bash ndmc \
+ && mkdir -p /work && chown ndmc:ndmc /work
+USER ndmc
+WORKDIR /work
 ENTRYPOINT ["mono", "/opt/ndmc/executable/64bit/SPIGenerator.exe"]

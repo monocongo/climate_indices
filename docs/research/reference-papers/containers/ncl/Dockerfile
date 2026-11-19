@@ -9,4 +9,7 @@ RUN micromamba install -y -n base -c conda-forge ncl=6.6.2=h7a63124_57 \
  && micromamba clean -afy
 ENV NCARG_ROOT=/opt/conda
 WORKDIR /work
+# The base image already runs as the unprivileged `mambauser`; declare it so the container
+# user is explicit (SonarCloud docker:S6471). /work already belongs to that user.
+USER mambauser
 ENTRYPOINT ["/usr/local/bin/_entrypoint.sh", "ncl"]
