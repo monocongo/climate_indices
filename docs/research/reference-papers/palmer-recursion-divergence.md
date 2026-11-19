@@ -160,18 +160,18 @@ An episode's label is the set of mechanisms that must all be harmonized for it t
 | E | 3,415 | 30,212 | 3.516 (3009, 1899-12) | 5 |
 | E+T | 85 | 1,008 | 1.704 (0304, 1943-05) | 4 |
 | E+A | 50 | 410 | 3.534 (2001, 1986-01) | 2 |
-| E+C | 40 | 350 | 3.952 (3204, 1959-09) | 16 |
-| A | 163 | 806 | **8.135** (0501, 1915-10) | 7 |
+| E+C | 40 | 350 | 3.952 (3204, 1959-09) | 18 |
+| A | 163 | 806 | **8.135** (0501, 1915-10) | 5 |
 | C | 21 | 162 | 0.102 (2902, 1968-09) | 15 |
 | F | 38 | 133 | 3.417 (1502, 2022-03) | 6 |
 | E+F | 4 | 75 | 2.498 (1207, 2022-08) | 4 |
-| E+A+C | 4 | 56 | 2.864 (0603, 1982-07) | 31 |
+| E+A+C | 4 | 56 | 2.864 (0603, 1982-07) | 30 |
 | A+C | 1 | 22 | 3.133 (0907, 1989-04) | 20 |
-| E+T+A | 2 | 20 | 1.917 (3310, 1943-06) | 14 |
-| E+T+C | 3 | 99 | 0.673 (1901, 1971-12) | 21 |
+| E+T+A | 2 | 20 | 1.917 (3310, 1943-06) | 10 |
+| E+T+C | 3 | 99 | 0.673 (1901, 1971-12) | 19 |
 | overdetermined (E+A, E+F, A+F) | 6 | 20 | n/a | not sought |
 
-Months in any class containing a mechanism: E 96.6%, A 3.9%, T 3.4%, C 2.1%, F 0.6% (overdetermined episodes excluded). Alone, E removes 90.5% of all disagreeing months; the other mechanisms matter mostly in combination with it. Every sequence is pinned in `tests/test_palmer_recursion_divergence.py`, one test per class. Sequences for `E+A`, `E+A+C` and `E+T+A` hold unrounded values because rounding them loses the class: they sit on a branch boundary.
+Months in any class containing a mechanism: E 96.6%, A 3.9%, T 3.4%, C 2.1%, F 0.6% (overdetermined episodes excluded). Alone, E removes 90.5% of all disagreeing months; the other mechanisms matter mostly in combination with it. Every sequence is pinned in `tests/test_palmer_recursion_divergence.py`, one test per class. Sequences for `E+A`, `E+A+C` and `E+T+C` hold unrounded values because rounding them loses the class: they sit on a branch boundary.
 
 ### What each mechanism is, and what Palmer (1965) says
 

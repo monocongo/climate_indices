@@ -3,8 +3,9 @@
 For each attribution label in ``palmer-recursion-divergence-results.json`` a window of a real
 division's Z series is shrunk by greedy deletion until no month can be removed without losing
 the class, then its values are rounded for readability. A series *reproduces* a label when the
-pdi.f and Wells recursions disagree on it, the full harmonization removes every disagreement,
-and the set of mechanisms whose omission restores a disagreement equals the label's set.
+pdi.f and Wells recursions disagree on it, and every baseline episode, labelled over its own
+span exactly as the study labels episodes, carries that label with no variant disagreement
+outside the baseline episodes.
 Series are left-padded with zeros to whole years, which both recursions treat as no-ops.
 
 Run: ``uv run python scripts/find_palmer_minimal_sequences.py``; writes
@@ -47,22 +48,33 @@ def run_variant(z: np.ndarray, mechs: tuple[str, ...]) -> np.ndarray:
 
 
 def label_of(active: list[float]) -> str | None:
-    """The series' single label, or None if it has no disagreement or mixes labels."""
+    """The series' single label, or None if it has no disagreement.
+
+    Each baseline episode is labelled over its own span, as ``attribute()`` does in the study. A
+    series whose episodes carry different labels, or whose harmonized variants disagree with Wells
+    outside a baseline episode, is ``"mixed"``.
+    """
     z = pad(active)
     _, wells_f = c.default_factors()
     wells = c._palmer_wells.calculate(z, factors=wells_f).pdsi
-    base = np.abs(run_variant(z, ()) - wells) > c.DISAGREE
+
+    def mask(mechs: tuple[str, ...]) -> np.ndarray:
+        return np.abs(run_variant(z, mechs) - wells) > c.DISAGREE
+
+    base = mask(())
     if not base.any():
         return None
-    full = np.abs(run_variant(z, c.MECH_NAMES) - wells) > c.DISAGREE
-    if full.any():
-        return "residual"
-    necessary = [
-        m
-        for m in c.MECH_NAMES
-        if (np.abs(run_variant(z, tuple(x for x in c.MECH_NAMES if x != m)) - wells) > c.DISAGREE).any()
-    ]
-    return "+".join(necessary) if necessary else "overdetermined"
+    spans = c.episodes(base)
+    full = mask(c.MECH_NAMES)
+    loo = {m: mask(tuple(x for x in c.MECH_NAMES if x != m)) for m in c.MECH_NAMES}
+    inside = np.zeros_like(base)
+    for s, e in spans:
+        inside[s:e] = True
+    if (full & ~inside).any() or any((v & ~inside).any() for v in loo.values()):
+        return "mixed"
+    singles = {m: mask((m,)) for m in c.MECH_NAMES}
+    labels = {c.episode_label(full, loo, singles, s, e) for s, e in spans}
+    return labels.pop() if len(labels) == 1 else "mixed"
 
 
 def shrink(active: list[float], target: str) -> list[float]:
@@ -97,11 +109,12 @@ def simplify(active: list[float], target: str) -> list[float]:
 def seed_window(division: str, start: int, stop: int, target: str) -> list[float] | None:
     """The smallest left extension of a real episode that reproduces ``target`` on its own."""
     z = c.load_z(division)
-    end = len(z) if target == "F" else min(stop + 6, len(z))
-    for lead in range(6, start + 1, 6):
-        active = [float(v) for v in z[start - lead : end]]
-        if label_of(active) == target:
-            return active
+    for tail in (6, 12):
+        end = len(z) if target == "F" else min(stop + tail, len(z))
+        for lead in range(6, start + 1, 6):
+            active = [float(v) for v in z[start - lead : end]]
+            if label_of(active) == target:
+                return active
     return None
 
 

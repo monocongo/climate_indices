@@ -302,6 +302,16 @@ def variant_masks(mechs: tuple[str, ...], wells_cache: dict[str, np.ndarray]) ->
     return masks
 
 
+def episode_label(full: np.ndarray, loo: dict[str, np.ndarray], singles: dict[str, np.ndarray], s: int, e: int) -> str:
+    """Label of the base episode ``[s, e)`` from the harmonized-variant disagreement masks (D2)."""
+    if full[s:e].any():
+        return "residual"
+    necessary = [m for m in MECH_NAMES if loo[m][s:e].any()]
+    if necessary:
+        return "+".join(necessary)
+    return "overdetermined:" + "+".join(m for m in MECH_NAMES if not singles[m][s:e].any())
+
+
 def attribute(wells_cache: dict[str, np.ndarray], base: dict[str, np.ndarray]) -> dict:
     """Leave-one-out attribution of every base episode (deviation D2).
 
@@ -323,15 +333,13 @@ def attribute(wells_cache: dict[str, np.ndarray], base: dict[str, np.ndarray]) -
     for division in divisions():
         episode_labels[division] = []
         for s, e in episodes(base[division]):
-            if full[division][s:e].any():
-                label = "residual"
-            else:
-                necessary = [m for m in MECH_NAMES if loo[m][division][s:e].any()]
-                if necessary:
-                    label = "+".join(necessary)
-                else:
-                    alone = [m for m in MECH_NAMES if not singles[m][division][s:e].any()]
-                    label = "overdetermined:" + "+".join(alone)
+            label = episode_label(
+                full[division],
+                {m: loo[m][division] for m in MECH_NAMES},
+                {m: singles[m][division] for m in MECH_NAMES},
+                s,
+                e,
+            )
             episode_labels[division].append((s, e, label))
             labels[label] = labels.get(label, 0) + 1
             months[label] = months.get(label, 0) + (e - s)
