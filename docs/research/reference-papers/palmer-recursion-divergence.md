@@ -113,6 +113,24 @@ Each is neutralized by editing a copy of `_palmer_pdi.py` *in memory* so that it
 
 H2 passes if there are no unclassified episodes; H3, H4 and H5 are unchanged. "Logic difference" now means an episode with a mechanism, interaction or residual attribution that survives P-fp and P-fp2. The synthetic minimal sequences are found per mechanism by greedy deletion on a real episode that the mechanism alone removes.
 
+### D2. Two further mechanisms and a leave-one-out attribution rule (after the four-mechanism factorial)
+
+The 16-subset factorial over {E, T, A, Tol} ran once, before this entry. It left 1,098 disagreeing months in 111 episodes on configuration P after all four were harmonized. Reading the shortest residual episodes by hand found two more code-level differences, each tested for whether harmonizing it clears what is left; the six-mechanism set then leaves 0 months:
+
+| Mechanism | `pdi.f` (`_palmer_pdi.py`) | Wells (`_palmer_wells.py`) | Maps to class |
+| --- | --- | --- | --- |
+| **C** candidate carried at establishment | `_statement_200` recomputes `px2` only where X1 was not promoted (`active & ~branch1`), so `px2` restarts from zero after an X1 promotion | `_candidate_values` recomputes X2 every month, and `_establish_spell` zeroes only the promoted candidate | tie between candidates |
+| **F** end-of-record flush | `_finish_up` rewrites the slots `0..k8max-1` (the longest deferral window ever) from the tentative `x` array | no equivalent step | backtracking |
+
+The 64-subset factorial over six mechanisms would take about 40 minutes, so the attribution rule is changed to *counterfactual necessity*:
+
+- Run: the base, the full harmonization, each mechanism alone (6 runs), and the full harmonization minus each one mechanism (6 runs).
+- An episode's **label** is the set of mechanisms whose omission from the full harmonization leaves the episode's span disagreeing (its *necessary set*), for example `E`, `E+C`, or `F`.
+- If the necessary set is empty (each mechanism is individually dispensable), the label is **overdetermined**, with the mechanisms that remove it alone listed.
+- If the full harmonization leaves the episode, the label is **residual**. The study is complete for configuration P only if no episode is residual.
+
+The four-mechanism factorial is kept in the report as an exploratory result, labelled as such. The pre-registered hypotheses H1 to H5 and their thresholds are unchanged. Configuration F (fitted factors) is characterized by its headline rates only: its attribution needs a further mechanism (Wells' `dryc` cross coefficient) and is not run here.
+
 ### Other change before the first commit
 
 The plan named `suitability.drought_category` for category changes. It was replaced by the Palmer table above because that function classifies SPI/SPEI.
