@@ -1392,6 +1392,33 @@ def _reduction_dims(dims: Any, available: tuple[Any, ...]) -> tuple[Any, ...]:
     return chosen
 
 
+def _require_auxiliary_coordinates_equal(
+    reference: xr.DataArray, alternative: xr.DataArray, reduce_dims: tuple[Any, ...]
+) -> None:
+    """Reject a surviving coordinate that is not an index and differs, which align does not compare."""
+    for coord_name, coordinate in reference.coords.items():  # align compares the indexed coordinates only
+        if coord_name in reference.xindexes or set(coordinate.dims) & set(reduce_dims):
+            continue  # a reduced coordinate is dropped from the result, so its labels pair no cells
+        # a coordinate is a label, so comparing it reads it even when the data stays lazy; a differing
+        # one would otherwise pair cells by position and keep one side's labels
+        try:
+            same = coordinate.variable.equals(alternative.coords[coord_name].variable)
+        except ValueError as error:  # an unreadable lazy coordinate, as align can raise for an index
+            raise _invalid(
+                f"reference and alternative coordinates could not be compared: {error}",
+                "alternative",
+                "unreadable",
+                "readable coordinates",
+            ) from error
+        if not same:
+            raise _invalid(
+                f"reference and alternative must share their coordinates: {coord_name!r} differs.",
+                "alternative",
+                "mismatch",
+                "equal",
+            )
+
+
 def _compare_categories_xarray(
     reference: xr.DataArray, alternative: xr.DataArray, dims: str | Sequence[str] | None
 ) -> xr.Dataset:
@@ -1425,27 +1452,7 @@ def _compare_categories_xarray(
     reduce_dims = _reduction_dims(dims, tuple(reference.dims))
     # a dimensionless input has nothing to reduce over, and .sum(()) would return the boolean identity
     sum_dims = reduce_dims or None
-    for coord_name, coordinate in reference.coords.items():  # align compares the indexed coordinates only
-        if coord_name in reference.xindexes or set(coordinate.dims) & set(reduce_dims):
-            continue  # a reduced coordinate is dropped from the result, so its labels pair no cells
-        # a coordinate is a label, so comparing it reads it even when the data stays lazy; a differing
-        # one would otherwise pair cells by position and keep one side's labels
-        try:
-            same = coordinate.variable.equals(alternative.coords[coord_name].variable)
-        except ValueError as error:  # an unreadable lazy coordinate, as align can raise for an index
-            raise _invalid(
-                f"reference and alternative coordinates could not be compared: {error}",
-                "alternative",
-                "unreadable",
-                "readable coordinates",
-            ) from error
-        if not same:
-            raise _invalid(
-                f"reference and alternative must share their coordinates: {coord_name!r} differs.",
-                "alternative",
-                "mismatch",
-                "equal",
-            )
+    _require_auxiliary_coordinates_equal(reference, alternative, reduce_dims)
     try:
         reference, alternative = xr.align(reference, alternative, join="exact")
     except ValueError as error:
