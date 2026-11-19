@@ -171,7 +171,7 @@ An episode's label is the set of mechanisms that must all be harmonized for it t
 | E+T+C | 3 | 99 | 0.673 (1901, 1971-12) | 19 |
 | overdetermined (E+A, E+F, A+F) | 6 | 20 | n/a | not sought |
 
-Months in any class containing a mechanism: E 96.6%, A 3.9%, T 3.4%, C 2.1%, F 0.6% (overdetermined episodes excluded). Alone, E removes 90.5% of all disagreeing months; the other mechanisms matter mostly in combination with it. Each sequence is locally minimal under greedy deletion (no single month can be removed without losing the class), not proven shortest. Every sequence is pinned in `tests/test_palmer_recursion_divergence.py`, one test per class. Sequences for `E+A`, `E+A+C` and `E+T+C` hold unrounded values because rounding them loses the class: they sit on a branch boundary.
+Months in any class containing a mechanism: E 96.6%, A 3.9%, T 3.4%, C 2.1%, F 0.6% (overdetermined episodes excluded). Class E accounts for 90.5% of all disagreeing months, and harmonizing E alone cuts the 33,373 disagreeing months to 3,012 (30,361 fewer, 91.0%); the other mechanisms matter mostly in combination with it. Each sequence is locally minimal under greedy deletion (no single month can be removed without losing the class), not proven shortest. Every sequence is pinned in `tests/test_palmer_recursion_divergence.py`, one test per class. Sequences for `E+A`, `E+A+C` and `E+T+C` hold unrounded values because rounding them loses the class: they sit on a branch boundary.
 
 ### What each mechanism is, and what Palmer (1965) says
 
