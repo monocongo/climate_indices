@@ -204,6 +204,54 @@ def test_eto_thornthwaite_preserves_input(shape, spatial, read_only):
 
 
 # ------------------------------------------------------------------------------
+@pytest.mark.parametrize("latitude", [45.0, 70.0, -80.0])
+def test_eto_thornthwaite_zero_heat_index_is_missing_not_zero_or_infinite(latitude):
+    """Issue #546: a record that never rises above freezing has no defined PET.
+
+    Every month clips to 0 degrees C, so the heat index is zero and the Thornthwaite
+    ratio is 0/0. The result is NaN for every month, never 0.0 and never infinite.
+    """
+    freezing = np.full(10 * 12, -5.0)
+
+    with np.errstate(invalid="ignore", divide="ignore"):
+        result = eto.eto_thornthwaite(freezing, latitude, 2011)
+
+    assert result.shape == freezing.shape
+    assert np.isnan(result).all()
+
+
+def test_eto_thornthwaite_one_thawed_value_is_enough_for_a_defined_heat_index():
+    """Issue #546: values clip to 0 before the calendar-month mean, so the raw mean does not matter.
+
+    One year at +1 degrees C and three at -5 degrees C leave every raw calendar-month
+    mean at -3.5 degrees C, yet the clipped means are positive and PET is defined.
+    """
+    temps = np.concatenate([np.full(12, 1.0), np.full(36, -5.0)])
+
+    result = eto.eto_thornthwaite(temps, 45.0, 2011)
+
+    assert np.isfinite(result).all()
+    assert (result[:12] > 0).all()
+
+
+def test_eto_thornthwaite_zero_heat_index_leaves_warm_neighbours_untouched():
+    """Issue #546: only the cells that never thaw are missing, not their neighbours."""
+    years = 10
+    freezing = np.full((years * 12, 1), -5.0)
+    warm = np.tile(np.array([2.0, 4.0, 8.0, 12.0, 16.0, 19.0, 21.0, 20.0, 16.0, 11.0, 6.0, 3.0]), years)[:, None]
+    block = np.concatenate([freezing, warm], axis=1)[..., None]  # (time, 2 cells, 1)
+    latitudes = np.array([[70.0], [45.0]])
+
+    with np.errstate(invalid="ignore", divide="ignore"):
+        result = eto.eto_thornthwaite(block, latitudes, 2011, spatial_time_major=True)
+
+    assert np.isnan(result[:, 0, 0]).all()
+    expected_warm = eto.eto_thornthwaite(warm[:, 0], 45.0, 2011)
+    np.testing.assert_allclose(result[:, 1, 0], expected_warm)
+    assert (result[:, 1, 0] > 0).all()
+
+
+# ------------------------------------------------------------------------------
 @pytest.mark.validation
 @pytest.mark.usefixtures(
     "thornthwaite_literature_monthly_temps_celsius",
