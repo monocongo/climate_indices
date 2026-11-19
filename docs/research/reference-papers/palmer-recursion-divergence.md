@@ -90,4 +90,29 @@ Changing either recursion, and deciding which one `pdsi()` or `scpdsi()` should 
 
 ## Deviations
 
-None after this commit. One change was made before it, while drafting: the plan named `suitability.drought_category` for category changes. It was replaced by the Palmer table above because that function classifies SPI/SPEI. No analysis code existed at that point.
+### D1. Classification by harmonization, not by first state divergence (before any attribution run)
+
+The pre-registered rule classified an episode by the first month in which the two machines' state differed. A probe of that rule on configuration P (signature table only; no class counts, hypotheses H1 to H5 untouched) gave 3,832 output episodes but 83,014 maximal runs of state mismatch. The abatement probability differs between the machines in most abatement months without changing PDSI, so "first state difference" is usually not output-relevant. The rule is dropped.
+
+Replacement. Four code-level differences were read from the two modules before any run:
+
+| Mechanism | `pdi.f` (`_palmer_pdi.py`) | Wells (`_palmer_wells.py`) | Maps to class |
+| --- | --- | --- | --- |
+| **E** establishment threshold | promote X1/X2 to X3 at \|X\| >= 1 | at \|X\| >= 0.5 | establishment |
+| **T** termination | a spell with \|X3\| <= 0.5 is treated as ended | a spell persists until the end probability reaches 100 | termination |
+| **A** abatement trigger | fixed 0.15 | half the fitted slope (0.1545 at Palmer's factors) | abatement |
+| **Tol** tolerances | exact comparisons | 1e-5 in the carry term and the 100% test | abatement |
+
+Each is neutralized by editing a copy of `_palmer_pdi.py` *in memory* so that it uses the Wells rule; neither module on disk changes. The 16 subsets of {E, T, A, Tol} are run on configuration P, and each P episode (an output run from the base comparison) is attributed as follows:
+
+- **E / T / A / Tol**: exactly one single-mechanism variant removes every disagreeing month of the episode.
+- **overdetermined**: more than one single-mechanism variant removes it. The set is listed.
+- **interaction**: no single mechanism removes it, but a subset of two or more does. The smallest subset is listed.
+- **residual**: the full harmonization still leaves it. The tie and backtracking classes live here: they are the exact-zero tie-breaks and the deferred-month resolution, which this study does not harmonize. A residual episode is then examined by hand, and anything that cannot be named is **unclassified**.
+- **floating-point**: unchanged from the pre-registration (P-fp, P-fp2).
+
+H2 passes if there are no unclassified episodes; H3, H4 and H5 are unchanged. "Logic difference" now means an episode with a mechanism, interaction or residual attribution that survives P-fp and P-fp2. The synthetic minimal sequences are found per mechanism by greedy deletion on a real episode that the mechanism alone removes.
+
+### Other change before the first commit
+
+The plan named `suitability.drought_category` for category changes. It was replaced by the Palmer table above because that function classifies SPI/SPEI.
