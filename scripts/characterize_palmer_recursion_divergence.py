@@ -406,6 +406,9 @@ def run_all() -> dict:
             "disagreeing_months": int(sum(m.sum() for m in masks.values())),
             "months_changed_vs_base": int(sum((masks[d] ^ base[d]).sum() for d in divs)),
             "base_episodes_removed": int(sum(not masks[d][s:e].any() for d in divs for s, e in episodes(base[d]))),
+            "base_months_removed": int(
+                sum(e - s for d in divs for s, e in episodes(base[d]) if not masks[d][s:e].any())
+            ),
         }
 
     attribution = attribute(wells_pdsi, base)
@@ -463,6 +466,7 @@ def run_all() -> dict:
     decided = closer["pdi"] + closer["wells"]
     n_dis = head_p["disagree_counts"][str(DISAGREE)]
     n_unclassified = attribution["episodes_by_label"].get("residual", 0)
+    h3_share = max(f["base_months_removed"] for f in fp.values()) / max(n_dis, 1)
     hypotheses = {
         "H1": {
             "rate": round(head_p["disagree_rate"], 6),
@@ -471,10 +475,8 @@ def run_all() -> dict:
         },
         "H2": {"residual_episodes": n_unclassified, "pass": n_unclassified == 0},
         "H3": {
-            "floating_point_months_share": round(
-                max(f["base_episodes_removed"] for f in fp.values()) / max(n_dis, 1), 8
-            ),
-            "pass": max(f["base_episodes_removed"] for f in fp.values()) / max(n_dis, 1) < 0.001,
+            "floating_point_months_share": round(h3_share, 8),
+            "pass": h3_share < 0.001,
         },
         "H4": {
             "pdi_closer_share": round(closer["pdi"] / decided, 6),
