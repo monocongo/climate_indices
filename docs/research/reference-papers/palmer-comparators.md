@@ -107,7 +107,7 @@ division-months.
 | NCEI public `pdi.f` | `pdi.f` 2013-04-03, sha256 `e0c58ccb...`; `soilcnst.asc` 1998-01-12, sha256 `40fc3a55...` | None stated; US Government work, "as is" | Fortran 77; gfortran 16.2 `-std=legacy` | Yes, 344 divisions, 1 s | NCEI, by construction | Include as a check on the library's port; same lineage, not independent |
 | `JonKing93/pdsi` | `9a636117577f476a93f206897fb91dc94d4eddc2` | MIT | MATLAB; runs under GNU Octave 9.2.0 | Yes, 344 divisions, 2 min | NCEI-like (K and spell logic read) | **Include**: the independent comparator for REFIMPL-31 |
 | `noaa-nws-cpc/libperl-cpc-palmer` 0.50 | `e694083f101a86e36fa9ba6426dab4d8653e64eb` | CC0 in `LICENSE.md`; `Makefile.PL` says `artistic_2` | Perl 5 | **No**, not as published (three defects below) | NCEI-like K and accountings; PMDI without backtracking | Exclude as published; report defects through REFIMPL-06 |
-| `ktripa/scpdsi-tools` | `c73b22c89218236e766fbf2895f2a16ebd8f366e`, 2026-10-21 | MIT | Python, NumPy and pandas | **Not run** (see "Not run") | Wells-like (K and spell logic read) | Hold: run it once permitted, then decide |
+| `ktripa/scpdsi-tools` | `c73b22c89218236e766fbf2895f2a16ebd8f366e`, 2026-10-21 | MIT | Python, NumPy and pandas | Yes, 344 divisions, 8 s | Wells-like (K and spell logic read) | **Include**: the independent Wells-style comparator, with a large unexplained gap to the Wells oracle |
 | `Sibada/scPDSI` | `10f8c3b20465fca0547f2df60e2759d61d3d66b3` | GPL-3.0 | C++ via R | Already used for the scPDSI oracle | Wells | Not independent of the existing fixtures |
 | `rpkgs/scPDSI2003` | `8cfa1634fa57bf6241ab77abfd7a9f254567c4d0` | MIT | C++ (CMake) | Not run | Wells: README says only an ET module was changed | Exclude: same C++ lineage as `Sibada/scPDSI` |
 | `dficklin/CAGEO-paper` (Ficklin et al.) | `76680f874d7e27e3b866ba46fea0c5587dca9b2c` | None stated (all rights reserved) | MATLAB, `.fig` launcher | Not run | Not determined | Exclude: holds only the amended files, not the Jacobi core |
@@ -208,17 +208,36 @@ accountings with the Palmer constants, and a probability-weighted PMDI with no b
 
 Running it would need a patched copy, which is a different comparator. Excluded as published.
 
+### `ktripa/scpdsi-tools`
+
+Recipe: `containers/palmer-ktripa/run.sh` (clones the pinned commit; needs numpy and pandas,
+which the repository environment supplies). It calls the low-level `scpdsi()` with the
+committed monthly precipitation and PET, per-division AWC, and the 1931-1990 calibration
+window, so inputs match the Wells-oracle fixtures `tests/fixture/palmer/<div>/sc*.npy`.
+
+Lineage, read from source: K has no 17.67 renormalisation (the Wells form), duration factors
+are fitted to the calibration period, and the recursion backtracks (`flush`). It is a Python
+reimplementation, not a port of the C++. It rescales Z by a damped iteration (at most 8
+steps) towards calibration-period 2nd and 98th percentiles of -4 and +4 rather than a fixed
+number of passes, which REFIMPL-33 should compare with the library's three passes. It is
+one month old, single-author, with a synthetic self-check only.
+
+| Check | Result |
+| --- | --- |
+| Runs, 344 divisions | 528,384 of 528,384 months finite for all four outputs |
+| scPDSI vs Wells oracle | median of per-division medians 0.1331; 0.1% within 5e-5; 24.7% within 0.05; 34,988 months > 1 |
+| scZ-Index vs Wells oracle | 0.0549; 0.1% within 5e-5; 48.4% within 0.05; 1,116 months > 1 |
+| scPHDI vs Wells oracle | 0.1673; 19.7% within 0.05; 40,380 months > 1 |
+| scPMDI vs Wells oracle | 0.1795; 17.0% within 0.05; 15,930 months > 1 |
+
+The library matches the same oracle at `atol=5e-5`, so `scpdsi-tools` does not reproduce the
+Wells result on identical inputs. Even its Z-Index, which comes before the spell logic, is
+off by a median 0.055; so the gap starts in the water balance, CAFEC or calibration step,
+not only in the recursion or rescaling. The cause is unexplained here.
+
 ### Not run
 
-- `ktripa/scpdsi-tools`: read from source only. K has no 17.67 renormalisation, duration
-  factors are fitted to the calibration period, and the recursion backtracks (`flush`), so it
-  is Wells-like. It rescales Z by a damped iteration towards 2nd and 98th percentiles of -4
-  and +4 rather than a fixed number of passes, which REFIMPL-33 should compare with the
-  library's three passes. It is one month old with a synthetic self-check. A smoke run on
-  division 0101 was not performed: the auto-mode permission check denied it twice (once for
-  its package-install flags, once for a run in the repository's existing environment), and
-  I did not try another route.
-- `rpkgs/scPDSI2003`, `dficklin/CAGEO-paper`, and the Jacobi and NDMC sources: see the summary.
+`rpkgs/scPDSI2003`, `dficklin/CAGEO-paper`, the Jacobi tool, and the NDMC C++: see the summary.
 
 ## Deviations from the pre-registration
 
@@ -228,8 +247,12 @@ Running it would need a patched copy, which is a different comparator. Excluded 
   holds only amended files.
 - **H7 partly wrong.** `JonKing93/pdsi` and `libperl-cpc-palmer` are neither derived from
   `climate_indices` nor from a comparator in the ticket's table.
-- **Numeric thresholds.** The "NCEI-like" signal was applied to `JonKing93/pdsi` only; the
-  "Wells-like" signal was not applied because no Wells-like comparator ran.
+- **Numeric thresholds.** The "NCEI-like" signal was applied to `JonKing93/pdsi` only. The
+  pre-registered "Wells-like" signal was written for standard-mode PDSI and does not apply
+  to `scpdsi-tools`, which computes scPDSI; it was compared with the Wells-oracle fixtures
+  instead, which was not pre-registered.
+- **Order of runs.** `scpdsi-tools` was run after the first commit of results, once the
+  maintainer approved running it.
 - **Additions not pre-registered:** the `pdi.f` run on all 344 divisions (not only 0101), the
   `soilcnst.asc` row restriction, and latitude taken from `soilcnst.asc`.
 
@@ -241,4 +264,5 @@ Running it would need a patched copy, which is a different comparator. Excluded 
 | `pdi.f` public release vs library fixtures | 1.4% of PDSI months more than 0.05 apart | Unexplained |
 | `soilcnst.asc` id collision | Row `101 0` reads as 1010 and is matched first | Defect in comparator (data file); draft upstream note |
 | `libperl-cpc-palmer` 0.50 | Three defects above | Defect in comparator; draft upstream report |
+| `scpdsi-tools` vs Wells oracle | scPDSI 24.7% within 0.05, 34,988 months > 1; Z-Index median 0.055 off | Unexplained |
 | `pdi.f` sync check | `if(iyr.ne.jyr.and.id.ne.jd) STOP` stops only when both differ, probably `.or.`; read from source, not triggered | Defect in comparator (not reproduced) |
