@@ -22,7 +22,7 @@ The implementation responsibilities and their current state are explicit:
 | `suitability.compare_distributions()` and `DistributionComparison`, NumPy core | [#1584](https://github.com/monocongo/climate_indices/issues/1584) | Implemented for the gamma, Pearson Type III, log-logistic and GEV candidates (GEV joined with [#1583](https://github.com/monocongo/climate_indices/issues/1583)); the goodness-of-fit field and the GoF and seed provenance attributes arrive with [#1586](https://github.com/monocongo/climate_indices/issues/1586). |
 | `suitability.compare_distributions()`, xarray/Dask route | [#1585](https://github.com/monocongo/climate_indices/issues/1585) | Implemented: a `DataArray` input returns a Dataset over `(candidate, month or dayofyear, *cells)`, with the section 6 attributes that apply before goodness of fit. The goodness-of-fit variables and the `climate_indices_gof_bootstrap_samples` and `climate_indices_rng_seed` attributes arrive with [#1586](https://github.com/monocongo/climate_indices/issues/1586). |
 | `GoodnessOfFit`: Anderson–Darling and parametric bootstrap, optional BH adjustment | [#1586](https://github.com/monocongo/climate_indices/issues/1586) | Not implemented. |
-| `suitability.drought_category()` and `suitability.compare_categories()` | [#1587](https://github.com/monocongo/climate_indices/issues/1587) | Not implemented. |
+| `suitability.drought_category()` and `suitability.compare_categories()` | [#1587](https://github.com/monocongo/climate_indices/issues/1587) | Implemented for NumPy and xarray/Dask (both functions are elementwise or count-only, so time need not be a single chunk), with boundary tests against the USDM table and a hand-computed confusion fixture ([VALIDATION.md](https://github.com/monocongo/climate_indices/blob/main/VALIDATION.md)). |
 | `suitability.pit_uniformity()` | [#1588](https://github.com/monocongo/climate_indices/issues/1588) | Not implemented. |
 | `suitability.event_concordance()` and `suitability.category_agreement()` | [#1590](https://github.com/monocongo/climate_indices/issues/1590) | Not implemented. |
 | Workflow reproduction notebook and "choosing a distribution" guide | [#1591](https://github.com/monocongo/climate_indices/issues/1591) | Not implemented. |
@@ -131,7 +131,13 @@ It is returned whenever it is defined, and no significance threshold is applied.
 - The new root module `climate_indices.suitability` is Beta (`BetaFeatureWarning`).
   It has no root re-export: users import it explicitly, as with the compound module.
 - xarray/Dask follows {doc}`0001-dual-numpy-xarray-api` and {doc}`0003-dask-time-dimension-single-chunk`:
-  time is in a single chunk.
+  time is in a single chunk, except for `drought_category` and `compare_categories`, which are
+  elementwise or count-only and accept any time chunking.
+- `compare_categories` needs both classifications on the same shape, dimensions and coordinates; an auxiliary
+  coordinate that stays in the result is compared, because `xr.align` checks the indexed coordinates only.
+  It reserves the result's names: an input dimension or coordinate that stays and takes `confusion`,
+  `reference_counts`, `alternative_counts`, `n_valid`, `share_changed`, `share_changed_in_drought`,
+  `reference_category` or `alternative_category` is rejected.
 - `drought_category` follows the USDM SPI/SPEI table with six classes: None and D0 to D4.
   Exact edges −0.5, −0.8, −1.3, −1.6 and −2.0 belong to D0, D1, D2, D3 and D4 respectively;
   each interval includes its upper edge and excludes its lower edge. Values above −0.5 are None.

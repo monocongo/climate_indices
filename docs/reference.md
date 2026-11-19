@@ -858,7 +858,7 @@ keeps the public-study frequency reproduction separate from event matching and i
 
 **Beta.** Distribution-suitability assessment ({doc}`adr/0028-distribution-suitability-contracts`).
 Import it explicitly: `import climate_indices.suitability as suitability`. It has no root
-re-export, and `compare_distributions` emits `BetaFeatureWarning`.
+re-export, and its functions emit `BetaFeatureWarning`.
 
 `compare_distributions` scores gamma, Pearson Type III and (for SPEI) log-logistic and GEV on one
 shared calibration sample and reports log-likelihood, AIC, AICc, BIC and the best candidate per
@@ -910,6 +910,17 @@ assert (comparison["best"] != "none").all()
 assert set(np.unique(comparison["best"].values)) <= {"pearson", "gamma"}
 assert comparison["best"].attrs["climate_indices_log_likelihood_at"] == "fitted_estimates"
 ```
+
+`drought_category` and `compare_categories` show whether the choice changes what managers see.
+`drought_category` classifies normal-scale SPI/SPEI values into the six U.S. Drought Monitor
+classes (none, D0 to D4; `output_scale="normal"` is required and the probability and bounded
+scales raise). The edges are −0.5, −0.8, −1.3, −1.6 and −2.0, and each class includes its upper
+edge, so −0.5 is D0 and −2.0 is D4. `compare_categories` takes two classifications and returns a
+6×6 confusion matrix (reference class by alternative class), per-class counts, `share_changed`
+and `share_changed_in_drought`, for NumPy arrays and for DataArrays, which reduce over the `dims`
+you name and stay lazy under Dask. Both classifications must share their shape, dimensions and coordinates,
+and the result's variable names are reserved. Pairs with a missing category are left out. A pair counts as in
+drought when either classification is D0 to D4, so a change into or out of drought is never hidden.
 
 ```{eval-rst}
 .. automodule:: climate_indices.suitability
