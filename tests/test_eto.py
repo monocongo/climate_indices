@@ -246,7 +246,8 @@ def test_eto_thornthwaite_zero_heat_index_leaves_warm_neighbours_untouched():
         result = eto.eto_thornthwaite(block, latitudes, 2011, spatial_time_major=True)
 
     assert np.isnan(result[:, 0, 0]).all()
-    assert np.isfinite(result[:, 1, 0]).all()
+    expected_warm = eto.eto_thornthwaite(warm[:, 0], 45.0, 2011)
+    np.testing.assert_allclose(result[:, 1, 0], expected_warm)
     assert (result[:, 1, 0] > 0).all()
 
 
