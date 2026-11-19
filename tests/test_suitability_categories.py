@@ -443,8 +443,9 @@ class TestCompareCategoriesXarray:
         def grid(coord):
             return xr.DataArray(np.zeros((2, 2), dtype=np.int8), dims=("time", "x"), coords={"lat": ("x", coord)})
 
+        reference, alternative = grid(unreadable(0)), grid(unreadable(1))
         with pytest.raises(InvalidArgumentError, match="compared"):
-            suitability.compare_categories(grid(unreadable(0)), grid(unreadable(1)), dims="time")
+            suitability.compare_categories(reference, alternative, dims="time")
 
     def test_differing_auxiliary_coordinate_is_rejected(self):
         # an auxiliary coordinate is not an index, so align cannot compare it: pairing the cells by
@@ -452,8 +453,9 @@ class TestCompareCategoriesXarray:
         def grid(lat):
             return xr.DataArray(np.zeros((3, 2), dtype=np.int8), dims=("time", "x"), coords={"lat": ("x", lat)})
 
+        reference, alternative = grid([1.0, 2.0]), grid([9.0, 8.0])
         with pytest.raises(InvalidArgumentError, match="coordinates"):
-            suitability.compare_categories(grid([1.0, 2.0]), grid([9.0, 8.0]), dims="time")
+            suitability.compare_categories(reference, alternative, dims="time")
 
     def test_coordinate_on_one_side_only_is_rejected(self):
         labelled = xr.DataArray(np.zeros((3, 2), dtype=np.int8), dims=("time", "x"), coords={"lat": ("x", [1.0, 2.0])})
