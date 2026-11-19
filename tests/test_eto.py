@@ -204,6 +204,39 @@ def test_eto_thornthwaite_preserves_input(shape, spatial, read_only):
 
 
 # ------------------------------------------------------------------------------
+@pytest.mark.parametrize("latitude", [45.0, 70.0, -80.0])
+def test_eto_thornthwaite_zero_heat_index_is_missing_not_zero_or_infinite(latitude):
+    """Issue #546: a record that never rises above freezing has no defined PET.
+
+    Every month clips to 0 degrees C, so the heat index is zero and the Thornthwaite
+    ratio is 0/0. The result is NaN for every month, never 0.0 and never infinite.
+    """
+    freezing = np.full(10 * 12, -5.0)
+
+    with np.errstate(invalid="ignore", divide="ignore"):
+        result = eto.eto_thornthwaite(freezing, latitude, 2011)
+
+    assert result.shape == freezing.shape
+    assert np.isnan(result).all()
+
+
+def test_eto_thornthwaite_zero_heat_index_leaves_warm_neighbours_untouched():
+    """Issue #546: only the cells that never thaw are missing, not their neighbours."""
+    years = 10
+    freezing = np.full((years * 12, 1), -5.0)
+    warm = np.tile(np.array([2.0, 4.0, 8.0, 12.0, 16.0, 19.0, 21.0, 20.0, 16.0, 11.0, 6.0, 3.0]), years)[:, None]
+    block = np.concatenate([freezing, warm], axis=1)[..., None]  # (time, 2 cells, 1)
+    latitudes = np.array([[70.0], [45.0]])
+
+    with np.errstate(invalid="ignore", divide="ignore"):
+        result = eto.eto_thornthwaite(block, latitudes, 2011, spatial_time_major=True)
+
+    assert np.isnan(result[:, 0, 0]).all()
+    assert np.isfinite(result[:, 1, 0]).all()
+    assert (result[:, 1, 0] > 0).all()
+
+
+# ------------------------------------------------------------------------------
 @pytest.mark.validation
 @pytest.mark.usefixtures(
     "thornthwaite_literature_monthly_temps_celsius",

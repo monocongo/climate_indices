@@ -137,6 +137,51 @@ def test_infinite_inputs_are_rejected(function, palmer_division_inputs):
         function(precips, pet, awc, 1895, 1931, 1990)
 
 
+@pytest.mark.parametrize("function", [palmer.pdsi, palmer.scpdsi])
+def test_data_after_the_calibration_period_never_changes_the_fit_or_the_month_before_the_open_spell(function):
+    """Issue #544: ``calibration_year_final`` bounds the calibration, not the recursion.
+
+    The reporter doubled every value after 2005 and saw earlier PDSI values change. Only
+    the spell still open at the last calibration month is backtracked with later data,
+    which the Palmer recursion does by design. So the fitted parameters and the
+    Z-index must be identical, and any change to the PDSI family must be one block of
+    months that ends exactly at the boundary.
+    """
+    start, final = 1990, 2005
+    months = (2010 - start + 1) * 12
+    boundary = (final + 1 - start) * 12
+    rng = np.random.default_rng(544)
+    boundary_changes = 0
+
+    # roughly one series in sixteen ends with a spell still open at the boundary
+    for _ in range(45):
+        precips = rng.random(months)
+        pet = rng.random(months)
+        later_precips, later_pet = precips.copy(), pet.copy()
+        later_precips[boundary:] *= 2
+        later_pet[boundary:] *= 2
+
+        *baseline, baseline_params = function(precips, pet, 50.0, start, start, final)
+        *later, later_params = function(later_precips, later_pet, 50.0, start, start, final)
+
+        assert baseline_params.keys() == later_params.keys()
+        for key in baseline_params:
+            np.testing.assert_array_equal(np.asarray(baseline_params[key]), np.asarray(later_params[key]), err_msg=key)
+
+        # the Z-index is the last of the four outputs and has no backtracking
+        np.testing.assert_array_equal(baseline[3][:boundary], later[3][:boundary])
+
+        for before, after in zip(baseline[:3], later[:3], strict=True):
+            changed = np.flatnonzero(before[:boundary] != after[:boundary])
+            if changed.size:
+                boundary_changes += 1
+                assert changed[-1] == boundary - 1
+                assert np.all(np.diff(changed) == 1)
+
+    # the seeded draw reaches the backtracked spell, so the guard above is not vacuous
+    assert boundary_changes > 0
+
+
 def test_supplied_cafec_coefficients_are_reused_but_duration_factors_are_recalibrated(palmer_division_inputs):
     _, _, _, _, standard_params = _call(palmer_division_inputs)
     assert standard_params is not None

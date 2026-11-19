@@ -225,6 +225,9 @@ Where:
 
 - Automatically adjusts for leap years
 - Negative temperatures are clipped to 0°C (no evaporation below freezing)
+- A record whose 12 calendar-month mean temperatures are all at or below 0°C has a
+  heat index of zero, so the ratio is undefined and every month of that record (or
+  grid cell) is NaN, not 0 mm/month
 - Day length computed from latitude using solar geometry
 - Returns monthly PET values in mm/month
 
