@@ -6,8 +6,9 @@ the comparison itself (REFIMPL-31, #1633).
 
 ## Status
 
-**Pre-registration.** This section was committed before any comparator was run. The
-results sections below are empty until a later commit.
+Apart from this paragraph, the sections down to "Rules" are as committed in `2bb81070`, before
+any comparator was run. The results below were added afterwards. Where results departed from the
+pre-registration, "Deviations" says so.
 
 ## Question
 
@@ -90,3 +91,154 @@ is repeated with the nearest equivalent input where one exists.
 - Outputs stay out of the repository. REFIMPL-31 commits any outputs with provenance
   under `tests/fixture/provenance_schema.json`.
 - The include or exclude set is a proposal until the maintainer approves it.
+
+## Results
+
+Observed 2026-11-18 and 2026-11-19. Upstream sources were cloned or downloaded into scratch
+directories outside the repository. "Library" means the committed `tests/fixture/palmer`
+arrays (the library's own output); "nClimDiv" means `tests/fixture/nclimdiv` (NCEI
+operational). Differences are absolute, in index units; "within 0.05" is the share of
+division-months.
+
+### Summary
+
+| Implementation | Source and pin | Licence | Runtime | Runs on divisions? | Lineage (from source) | Proposal |
+| --- | --- | --- | --- | --- | --- | --- |
+| NCEI public `pdi.f` | `pdi.f` 2013-04-03, sha256 `e0c58ccb...`; `soilcnst.asc` 1998-01-12, sha256 `40fc3a55...` | None stated; US Government work, "as is" | Fortran 77; gfortran 16.2 `-std=legacy` | Yes, 344 divisions, 1 s | NCEI, by construction | Include as a check on the library's port; same lineage, not independent |
+| `JonKing93/pdsi` | `9a636117577f476a93f206897fb91dc94d4eddc2` | MIT | MATLAB; runs under GNU Octave 9.2.0 | Yes, 344 divisions, 2 min | NCEI-like (K and spell logic read) | **Include**: the independent comparator for REFIMPL-31 |
+| `noaa-nws-cpc/libperl-cpc-palmer` 0.50 | `e694083f101a86e36fa9ba6426dab4d8653e64eb` | CC0 in `LICENSE.md`; `Makefile.PL` says `artistic_2` | Perl 5 | **No**, not as published (three defects below) | NCEI-like K and accountings; PMDI without backtracking | Exclude as published; report defects through REFIMPL-06 |
+| `ktripa/scpdsi-tools` | `c73b22c89218236e766fbf2895f2a16ebd8f366e`, 2026-10-21 | MIT | Python, NumPy and pandas | **Not run** (see "Not run") | Wells-like (K and spell logic read) | Hold: run it once permitted, then decide |
+| `Sibada/scPDSI` | `10f8c3b20465fca0547f2df60e2759d61d3d66b3` | GPL-3.0 | C++ via R | Already used for the scPDSI oracle | Wells | Not independent of the existing fixtures |
+| `rpkgs/scPDSI2003` | `8cfa1634fa57bf6241ab77abfd7a9f254567c4d0` | MIT | C++ (CMake) | Not run | Wells: README says only an ET module was changed | Exclude: same C++ lineage as `Sibada/scPDSI` |
+| `dficklin/CAGEO-paper` (Ficklin et al.) | `76680f874d7e27e3b866ba46fea0c5587dca9b2c` | None stated (all rights reserved) | MATLAB, `.fig` launcher | Not run | Not determined | Exclude: holds only the amended files, not the Jacobi core |
+| Jacobi et al. (2013) tool | Wiley supporting information of doi:10.1002/wrcr.20342; a 2015 news item says to email the author | Unknown | MATLAB | Not obtained | NCEI-like per the abstract (not read) | Open: needs the author or the Wiley file |
+| Wells, Goddard, Hayes C++ at NDMC | No download page found | Unknown | C++ | Not obtained | Wells | Open: REFIMPL-06 |
+
+Product-only items (`gridMET` pentad PDSI, WestWide Drought Tracker scPDSI, CRU scPDSI, Dai
+PDSI) are external products, not runnable implementations; they are not assessed further
+here. `xclim` has no Palmer function at 1.0.0 per `research-notes.md`; it was not rechecked
+at the version pinned by REFIMPL-03. GitHub repository searches ("palmer drought", "pdsi",
+"scpdsi", and Julia-language queries) found no Julia Palmer repository. Other ports seen but
+not read: `cszang/pdsi` (no licence, wraps the Wells C++), `TreeGuo/Drought_Index` (no
+licence, Python), `joergsteinkamp/PDSI_for_LPJ-GUESS` (GPL-3, C header), `alexdum/scpdsi`,
+`carlosdobler/global_scpdsi_ww`, `BruceCai98/drought-PDSI-county`.
+
+### NCEI public `pdi.f`
+
+NCEI publishes the Fortran program with a drought.gov page
+(`https://drought.gov/data-maps-tools/drought-indices-fortran-spi-pdsi`) that states the code
+"is not an exact copy of what is run on NCEI's internal servers, but represents general use
+version approved for public release" and is furnished "as is". Files:
+`https://www1.ncdc.noaa.gov/pub/data/nidis/software/ncei/palmer/{pdi.f,soilcnst.asc,spi.f}`.
+This contradicts H4. The `www.ncei.noaa.gov/pub/data/cirs/software/palmer/pdi_v2.f90` URL that a
+web search returned gave 404 and was not used.
+
+Recipe: `containers/palmer-ncei-pdi/run.sh`. It verifies both checksums, edits only the
+documented parameter statement (`nendyr=2022`, `nendmo=12`, `iouteyr=2022`) in a scratch
+copy, and reads the committed temperature and precipitation inputs (nClimDiv divisional values in degrees F
+and inches, per the fixture provenance). `pdi.f` computes its own Thornthwaite PE from the constants
+in `soilcnst.asc`, so no PET is supplied.
+
+Input adaptation: rows 1-58 of `soilcnst.asc` belong to another series whose ids collide with
+division ids under Fortran blank-null reads (the row `101 0` reads as 1010), so `pdi.f`, which
+takes the first matching row, would give division 1010 an AWC of 6.0 where the fixture has
+7.0. The recipe uses rows 59 onward (exactly 344 rows) and `prep.py` asserts that every
+division's AWC equals `tests/fixture/palmer_awc.json`.
+
+| Index | vs library fixtures: within 0.05 | vs nClimDiv: within 0.05 | vs nClimDiv: months > 1 of 528,384 |
+| --- | --- | --- | --- |
+| PDSI | 98.59% | 84.81% | 3,863 |
+| Z-Index | 100.0% | 87.26% | 2 |
+| PHDI | 98.62% | 82.47% | 2,837 |
+| PMDI (WPLM) | 98.27% | 76.77% | 522 |
+
+`pdi.f` writes two decimals, so differences of 0.005 are rounding. The 1.4% of PDSI months
+more than 0.05 from the library fixtures is unexplained here; REFIMPL-31 owns the cause.
+
+### `JonKing93/pdsi`
+
+Recipe: `containers/palmer-jonking93/run.sh` (Octave 9.2.0, image pinned by digest, amd64
+under emulation, no network in the container). H1 holds: `pdsi()` and the upstream
+`soilMoisture` and `zPDSI` run under Octave unmodified.
+
+Lineage, read from source: `zPDSI.m` uses the Palmer 1965 constants (0.897, -2.691, 0.5,
+1.5, 0.15) with X1/X2/X3 accountings, `probEnd`, and retroactive assignment of X1/X2 over a
+spell (`useX1(t-nump...)`, backtracking); `pdsi.m` computes K' = 1.5 log10(w/D) + 0.5 and
+K = 17.67 K' / sum(D K'). The README makes no validation claim against NCEI and does not
+state a derivation, so independence from `pdi.f` is not established. One difference to carry
+into REFIMPL-31: it starts the soil-moisture model by running ten years on calibration-period
+monthly means.
+
+Two runs. "Supplied PE" runs the steps of `pdsi.m` in order with the fixture's `pet.npy`
+(the division fixtures store no latitude), on all 344 divisions. "As published" calls
+`pdsi()` with its own Thornthwaite PE for division 0101 at the latitude implied by
+`soilcnst.asc` (-tan(lat) = -0.6899, about 34.6 degrees).
+
+| Check | Result |
+| --- | --- |
+| Runs (supplied PE, 344 divisions) | 528,384 of 528,384 months finite |
+| Runs (as published, 0101) | 1,536 of 1,536 finite; Z differs from the supplied-PE run by a median 0.0178 |
+| Pre-registered NCEI-like signal, 0101, Z vs nClimDiv | median 0.0131 (threshold 0.05): met |
+| Z vs nClimDiv, 344 divisions | median of per-division medians 0.0191; 80.3% within 0.05; 671 months > 1 |
+| PDSI vs nClimDiv, 344 divisions | 0.0248; 70.7% within 0.05; 9,676 months > 1 |
+| PMDI (Xm) vs nClimDiv | 0.0365; 60.9% within 0.05; 1,645 months > 1 |
+| PDSI vs library fixtures | 0.0185; 81.8% within 0.05 |
+
+For comparison, the library's own PDSI is 98.6% within 0.05 of the nClimDiv fixture for
+division 0101, and the earlier validation map records 86.2% across all divisions. The
+disagreement with nClimDiv is larger for this comparator than for the library or for
+`pdi.f`; the cause is unexplained here.
+
+### `noaa-nws-cpc/libperl-cpc-palmer` 0.50: does not run as published
+
+Source reading shows the Palmer 1965 K formula (`Climatology.pm:191,206`), X1/X2/X3
+accountings with the Palmer constants, and a probability-weighted PMDI with no backtracking
+(`get_palmer_pmdi`). Three defects were reproduced with a short probe (Perl 5.34):
+
+1. Neither module declares `Exporter` or `@EXPORT_OK`, so the documented
+   `use CPC::Palmer qw(get_palmer_accountings ...)` leaves the functions undefined. The
+   documentation also names `get_palmer`, which does not exist (`update_palmer` does).
+2. `get_k_coeff` dies on any non-trivial input: `Climatology.pm:190` computes `($$P + $$L)`
+   where `$P` is an array reference, giving `Not a SCALAR reference` (probably `$$P[$i] +
+   $$L[$i]` was meant).
+3. In `get_palmer_accountings` the early `&_return_palmer_accountings(...)` calls have no
+   `return`, so control falls through. With `Z_INDEX=-7`, `X3=3` (a wet spell that should
+   end), the expected result is X2=-2.333, PROB_SPELL_END=1; it returns X2=0,
+   PROB_SPELL_END=0.
+
+Running it would need a patched copy, which is a different comparator. Excluded as published.
+
+### Not run
+
+- `ktripa/scpdsi-tools`: read from source only. K has no 17.67 renormalisation, duration
+  factors are fitted to the calibration period, and the recursion backtracks (`flush`), so it
+  is Wells-like. It rescales Z by a damped iteration towards 2nd and 98th percentiles of -4
+  and +4 rather than a fixed number of passes, which REFIMPL-33 should compare with the
+  library's three passes. It is one month old with a synthetic self-check. A smoke run on
+  division 0101 was not performed: the auto-mode permission check denied it twice (once for
+  its package-install flags, once for a run in the repository's existing environment), and
+  I did not try another route.
+- `rpkgs/scPDSI2003`, `dficklin/CAGEO-paper`, and the Jacobi and NDMC sources: see the summary.
+
+## Deviations from the pre-registration
+
+- **H4 was wrong.** NCEI source is public. The original NDMC C++ and the Jacobi zip were not
+  found, so that part of H4 stands.
+- **H2 and H3 untested.** The Jacobi core was not obtained, and the Ficklin repository
+  holds only amended files.
+- **H7 partly wrong.** `JonKing93/pdsi` and `libperl-cpc-palmer` are neither derived from
+  `climate_indices` nor from a comparator in the ticket's table.
+- **Numeric thresholds.** The "NCEI-like" signal was applied to `JonKing93/pdsi` only; the
+  "Wells-like" signal was not applied because no Wells-like comparator ran.
+- **Additions not pre-registered:** the `pdi.f` run on all 344 divisions (not only 0101), the
+  `soilcnst.asc` row restriction, and latitude taken from `soilcnst.asc`.
+
+## Ledger candidates for REFIMPL-24
+
+| Item | Observation | Proposed class |
+| --- | --- | --- |
+| `JonKing93/pdsi` vs nClimDiv and library | PDSI 70.7% within 0.05, 9,676 months > 1 | Unexplained |
+| `pdi.f` public release vs library fixtures | 1.4% of PDSI months more than 0.05 apart | Unexplained |
+| `soilcnst.asc` id collision | Row `101 0` reads as 1010 and is matched first | Defect in comparator (data file); draft upstream note |
+| `libperl-cpc-palmer` 0.50 | Three defects above | Defect in comparator; draft upstream report |
+| `pdi.f` sync check | `if(iyr.ne.jyr.and.id.ne.jd) STOP` stops only when both differ, probably `.or.`; read from source, not triggered | Defect in comparator (not reproduced) |
