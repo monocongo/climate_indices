@@ -202,7 +202,7 @@ Class F covers 38 episodes alone, plus 9 more combined with E or A (47 in all): 
 
 ### Configuration F (fitted duration factors)
 
-Reported by headline only. With each division's fitted factors the recursions disagree on 259,544 of 528,384 months (49.1%), by up to 13.27 units, and `pdi.f` is closer to nClimDiv on 58.8% of them. The difference from P is expected from the code: A applies half the *fitted* slope in the Wells port against a fixed 0.15, and the Wells port uses a cross coefficient (`dryc`) built from the wet intercept. Attribution for F was not run, so its classes are unknown. Neither recursion is wrong for F: `pdsi()` does not use fitted factors unless asked, and `scpdsi()` is defined by Wells.
+Reported by headline only. With each division's fitted factors the recursions disagree on 259,544 of 528,384 months (49.1%), by up to 13.27 units, and `pdi.f` is closer to nClimDiv on 58.8% of them. The difference from P is expected from the code: A applies half the *fitted* slope in the Wells port against a fixed 0.15, and the Wells port uses a cross coefficient (`dryc`) built from the wet intercept. Attribution for F was not run, so its classes are unknown. Which recursion is right under fitted factors was not established, and neither is ruled out as defective: `pdsi()` does not use fitted factors unless asked, and `scpdsi()` selects the Wells recursion, but that is API selection, not a correctness finding.
 
 ### Figure specifications
 
