@@ -8,6 +8,10 @@
 # sha256 values were computed by downloading each artifact on 2026-11-18, and the
 # four PyPI hashes also match the index metadata. GitHub archive hashes are not
 # stable guarantees; the commit is the pin for those.
+#
+# `decision` is `include` or `exclude`; `provisional: true` marks a conditional
+# include. Paths are relative to the repository root, except `dockerfile:` and the
+# `containers:` entries, which are relative to this file's directory.
 schema_version: 1
 surveyed: 2026-11-18
 platform_tested: macOS arm64 (Darwin 27.2.0)   # Linux headless run only for the containers section below
@@ -82,7 +86,7 @@ r:
     source: cran
     url: https://cran.r-project.org/src/contrib/SPEI_1.8.1.tar.gz
     sha256: 56cfcf6c7b7dc34fd05aa9cca3ee29d3b0628c82bcde80d6dc1519586483c7f6
-    published: 2023-03-02
+    released: 2023-03-02
     license: GPL-2
   - name: SCI
     version: 1.0-3
@@ -90,7 +94,7 @@ r:
     source: cran
     url: https://cran.r-project.org/src/contrib/SCI_1.0-3.tar.gz
     sha256: 1ec42a6c6ee7e238eca0e4e627cef286cd2d46eaca417c86f3cc27fb3aa4011a
-    published: 2025-05-04
+    released: 2025-05-04
     license: GPL (>= 2)
   - name: SEI
     version: 0.2.0
@@ -98,7 +102,7 @@ r:
     source: cran
     url: https://cran.r-project.org/src/contrib/SEI_0.2.0.tar.gz
     sha256: 55ac099c9d0794e61c792c30dc340de655d05875fdd6e15c82b887c097900c93
-    published: 2024-08-27
+    released: 2024-08-27
     license: GPL (>= 2)
   - name: Evapotranspiration
     version: "1.16"
@@ -106,15 +110,16 @@ r:
     source: cran
     url: https://cran.r-project.org/src/contrib/Evapotranspiration_1.16.tar.gz
     sha256: 2550a842196941f1e6c40be5e61ee480aab96d13b8828154980a7207844bbe55
-    published: 2022-01-10
+    released: 2022-01-10
     license: GPL (>= 2)
   - name: climatekit
     version: 0.2.3
-    decision: include-provisional
+    decision: include
+    provisional: true
     source: cran
     url: https://cran.r-project.org/src/contrib/climatekit_0.2.3.tar.gz
     sha256: f3bdc9f8425c35c51174a011606d810083f4b87e81e2df13d7229b6e3e023531
-    published: 2026-11-01
+    released: 2026-11-01
     license: MIT + file LICENSE
   - name: standaRdized
     version: "1.0"

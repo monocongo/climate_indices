@@ -7,9 +7,9 @@
 ## How to read this
 
 - This is a survey, not a comparison. Every number below is a **smoke value**: it shows that a comparator installed and produced one index value. No evidence class in `VALIDATION.md` fits a one-month smoke value (there, even `characterization` means measured ceilings), it is not evidence for any claim, and no study ticket may cite it. Each study pre-registers its hypotheses, thresholds, and sample before it runs (see the map's Notes).
-- Smoke values are at **L0, as shipped**, with the arguments each package offers. Where a package has no calibration-period argument, the difference from the others is expected, not a discrepancy.
+- Smoke values are at **L0 (the lowest evidence level), as shipped**: the comparator's own defaults, with the arguments each package offers. Where a package has no calibration-period argument, the difference from the others is expected, not a discrepancy.
 - Agreement between two packages is evidence only if they are independent. [REFIMPL-04](https://github.com/monocongo/climate_indices/issues/1606) has not resolved lineage, so every cross-package agreement here is "same lineage not excluded".
-- "Headless on Linux" was run only for NCL and the NDMC SPI Generator, which ran in Linux containers (see "Programs run in containers"). Everything else ran on macOS arm64. The pure-Python and CRAN packages have no platform-specific code that I found, but [REFIMPL-08](https://github.com/monocongo/climate_indices/issues/1610) must confirm on Linux.
+- "Headless on Linux" was run only for NCL and the NDMC SPI Generator, which ran in Linux containers (see "Programs run in containers"). Everything else ran on macOS arm64. Several CRAN dependencies compile Fortran and C++ (see the environment notes), so [REFIMPL-08](https://github.com/monocongo/climate_indices/issues/1610) must confirm Linux for them.
 - "Committing outputs" rows state the project rule (numeric outputs and provenance only, never comparator code). They are not a legal opinion on output licensing.
 - Include/exclude entries are proposals for the maintainer to approve.
 
@@ -32,9 +32,9 @@
 | SPEI (product) | SPEIbase v2.11 | existing fixture, 2026-09-17 | **Include** (already a fixture) |
 | SPEI (product) | SPEI Global Drought Monitor | n/a | **Exclude** (web map viewer; no download or API documentation located; Thornthwaite PET) |
 | SPI (program) | NDMC SPI Generator 1.7.6.0 | zip sha256 `ce8f37bc`, run under Mono | **Include** (Windows .NET 4.0 program run in a Linux container under Mono; output rounded to two decimals) |
-| SPI (product) | nClimGrid SPI | n/a | **Exclude** (same lineage as the NCEI climdiv fixture, per the ticket) |
+| SPI (product) | nClimGrid SPI | n/a | **Exclude** (circular: this repository's author maintains the gridded nClimGrid SPI tooling) |
 | PET (Python) | `pyet` | 1.5.0 | **Include** (no Thornthwaite) |
-| PET (Python) | `PyETo` | git `79ddd88d` (no release) | **Include**, with lineage caveat: `climate_indices.eto` derives from it |
+| PET (Python) | `PyETo` | git `79ddd88d` (no release) | **Include**, with claimed lineage: `climate_indices.eto` is said to derive from it, unverified ([REFIMPL-04](https://github.com/monocongo/climate_indices/issues/1606)) |
 | PET (R) | `Evapotranspiration` | 1.16 | **Include** (no Thornthwaite) |
 | Other | NCL `dim_spi_n` | conda-forge 6.6.2, linux-64 build `h7a63124_57` | **Include** (linux-64 build in a container under amd64 emulation; NCL is in maintenance) |
 | Other | MATLAB SDAT | n/a | **Exclude** (needs MATLAB; original toolbox not obtained) |
@@ -81,7 +81,7 @@
 
 ### `standaRdized`: excluded
 
-It installs and runs (it needs `FAdist` 2.4 and `glogis` 1.0.3, both from CRAN), so this is a judgment, not a failure. Reasons: it is not on CRAN, its last commit is 2019-04-17, it is built around daily series (`agg.length` in days), and `standardized.index` rounds its output to two decimals by default (`digits = 2`). None of that fits a monthly protocol with a pre-registered 1e-6 "equivalent" class. The maintainer can reverse this; the smoke value below shows it is runnable.
+It installs and runs (it needs `FAdist` 2.4 and `glogis` 1.0.3, both from CRAN), so this is a judgment, not a failure. Reasons: it is not on CRAN, its last commit is 2019-04-17, it is built around daily series (`agg.length` in days), and `standardized.index` rounds its output to two decimals by default (`digits = 2`). None of that fits a monthly protocol with the pre-registered 1e-6 "equivalent" class (the study tickets register it; see the map's Notes). The maintainer can reverse this; the smoke value below shows it is runnable.
 
 ## PET
 
@@ -106,7 +106,7 @@ The ticket's claim that `climate_indices.eto` derives from `PyETo` is not re-ver
 | --- | --- | --- | --- | --- |
 | Kind | live service, `timeseries/standard_index/coordinates` | live catalog collection | static files | static files |
 | Version or snapshot | none; accessed 2026-11-18 | none; accessed 2026-11-18 | fixture downloaded 2026-09-12 | fixture downloaded 2026-09-17; built from CRU TS 4.09 with `SPEI` 1.8.1 |
-| Distribution | non-parametric requested; log-logistic and gamma also offered (per the research notes) | non-parametric, 1981-2016, windows 14 days to 5 years (per the catalog entry in the research notes) | compared against `climate_indices` Pearson III in the earlier map; NCEI's own estimator was not re-verified here | log-logistic (per the SPEI site), PET from FAO-56 Penman-Monteith |
+| Distribution | non-parametric requested; log-logistic and gamma also offered (per the research notes) | non-parametric, 1981-2016, windows 14 days to 5 years (per the catalog entry in the research notes) | compared against `climate_indices` Pearson III in the earlier map; NCEI's own estimator was not re-verified here, and its independence from this codebase is plausible but not airtight (per the fixture's provenance) | log-logistic (per the SPEI site), PET from FAO-56 Penman-Monteith |
 | Credentials | `CE_API_KEY` from the environment | OAuth (`earthengine authenticate`) plus `EE_PROJECT` | none | none |
 | Terms for committing outputs | not verified; the pilot's rule stands: no raw response committed | not verified; the pilot's rule stands: derived values only, no raw response committed (one sample value below) | U.S. Government work, public domain (per the fixture's provenance) | the fixture records CC-BY 4.0 (Earth Engine catalog) **and** ODbL 1.0 (spei.csic.es, share-alike); the SPEI site states ODbL for data and AGPL for its code, where CRAN lists `SPEI` as GPL-2. The committed subset is an adapted database, so confirm the governing terms for it and before refreshing |
 | Existing artifacts | `docs/research/earthengine-climate-engine-pilot.md` | same | `tests/fixture/ncei_spi/provenance.json` | `tests/fixture/speibase/provenance.json` |
@@ -117,7 +117,7 @@ One exclusion:
 
 ## Programs run in containers
 
-Two comparators do not run natively on the survey machine (macOS arm64), so each has a Dockerfile and a smoke script under [`containers/`](containers/). They are evidence of how the comparators were run, not harness code: [REFIMPL-08](https://github.com/monocongo/climate_indices/issues/1610) decides where the harness environments live and may relocate or replace them. Docker Desktop 29.9.3 (linux/arm64) was used. Windows containers are not available on macOS, so neither container is a Windows environment.
+Two comparators do not run natively on the survey machine (macOS arm64), so each has a Dockerfile under [`containers/`](containers/); the NDMC one also has a runner, `smoke.sh`, and the NCL one has a smoke program, `spi_smoke.ncl`, whose input is described below. They are evidence of how the comparators were run, not harness code: [REFIMPL-08](https://github.com/monocongo/climate_indices/issues/1610) decides where the harness environments live and may relocate or replace them. Docker Desktop 29.9.3 (linux/arm64) was used. Windows containers are not available on macOS, so neither container is a Windows environment.
 
 ### NDMC SPI Generator
 
@@ -131,7 +131,7 @@ Two comparators do not run natively on the survey machine (macOS arm64), so each
 ### NCL `dim_spi_n`
 
 - **What it is.** `dim_spi_n(x, nrt, opt, dim)` computes gamma (default) or Pearson III (`opt@spi_type = 3`) SPI per NCL's documentation. NCL's site carries a "Pivot to Python" banner (its date was not checked). The conda-forge package licence is "Apache-2.0 and LicenseRef-Proprietary-Triangle".
-- **How it ran.** [`containers/ncl/Dockerfile`](containers/ncl/Dockerfile) installs `ncl=6.6.2=h7a63124_57` (the latest linux-64 build, uploaded 2025-06-03, sha256 `276f9f148e72904e6154ceec17927f97924d9ecf9c7fd45ba84a92224e94578a`) from conda-forge with micromamba. conda-forge ships NCL only for linux-64, osx-64, and osx-arm64, so on Apple silicon the image runs as `linux/amd64` under emulation. The osx-arm64 build (`h5d9bed2_44`, 3,218 files) installed but contains no `ncl` interpreter, so it is not usable.
+- **How it ran.** [`containers/ncl/Dockerfile`](containers/ncl/Dockerfile) installs `ncl=6.6.2=h7a63124_57` (the latest linux-64 build, uploaded 2025-06-03, sha256 `276f9f148e72904e6154ceec17927f97924d9ecf9c7fd45ba84a92224e94578a`) from conda-forge with micromamba. conda-forge ships NCL only for linux-64, osx-64, and osx-arm64, so on Apple silicon the image runs as `linux/amd64` under emulation. The osx-arm64 build (`h5d9bed2_44`, 3,218 files) installed but contains no `ncl` interpreter, so it is not usable. `spi_smoke.ncl` reads `/work/p.txt`, a flattened text copy of the fixture with `-999` for the ten missing months; no committed script writes that file.
 - **Method.** The prototype has no calibration-period argument, so I expect the whole record to be used; I did not confirm that from NCL's source. The smoke script set `_FillValue` on the ten missing months.
 - **Not done.** No Pearson III or gamma accuracy check against another implementation beyond the smoke value.
 
@@ -173,7 +173,7 @@ Local comparator inputs are repository fixtures, so those runs acquire no new da
 | Earth Engine `GRIDMET/DROUGHT` | one image (`20200628`), band `spi90d`, point (-84.9, 30.7) | 0.17 |
 | Climate Engine API | `standard_index`, `GRIDMET` `pr`, accumulation 90, non-parametric, calibration 1981-2016, point (-84.9, 30.7), last date 2020-07-30 | 0.3886 |
 
-Provider call budget, stated before the run: **one** Earth Engine point sample and **one** Climate Engine request (one coordinate, one variable, one accumulation; 91 seconds). Credentials came from the environment and were never printed. No raw Climate Engine response is committed. The two provider values are at different dates and carry no comparison meaning. The `climate_indices`, R `Evapotranspiration`, R `standaRdized`, Earth Engine, and Climate Engine rows came from one-off commands whose scripts or outputs were not saved, so they are not reproducible from saved artifacts; rerunning the two provider rows spends the same call budget again.
+Provider call budget, stated before the run: **one** Earth Engine point sample and **one** Climate Engine request (one coordinate, one variable, one accumulation; 91 seconds). Credentials came from the environment and were never printed. No raw Climate Engine response is committed. The two provider values are at different dates and carry no comparison meaning. Only the `climate_indices` rows and the NDMC bundled-sample comparison above are reproducible from committed artifacts. The Python and R rows came from one-off commands whose scripts were not saved; the NDMC fixture row needs an input CSV that is not committed; the NCL rows need `/work/p.txt`, which no committed script writes. Rerunning the two provider rows spends the same call budget again.
 
 NCL and the NDMC program ran in the containers described above, on the same fixture series (the NDMC input is a station-name line followed by `m/1/yyyy,value` rows with `-99` for the ten missing months). `standaRdized` used its own bundled data because it is daily-basis.
 
