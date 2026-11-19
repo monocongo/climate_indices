@@ -44,9 +44,12 @@ that is still open at the last calibration month is assigned its index
 retroactively.
 
 - `pdsi()`: data after `calibration_year_final` never change the fitted
-  parameters or the Z-Index. They can change the PDSI of the months in that one
-  open spell, which form a single block ending at the boundary; PHDI and PMDI
-  are held to the same boundary rule.
+  parameters or the Z-Index of the calibration-window months (later months have
+  their own Z-Index values, which of course follow the later data). They can
+  change the PDSI of the months in that one open spell, which form a single block
+  ending at the boundary; PHDI follows the same boundary rule. PMDI is not
+  guaranteed to: the end-of-record flush rewrites it for months retained from
+  earlier spells using the final record month.
 - `scpdsi()`: the fitted parameters are likewise unaffected. Its three rescaling
   passes take percentiles of the calibration-window PDSI, which includes that open
   spell, so later data can in rare cases move the rescaling anchors and with them

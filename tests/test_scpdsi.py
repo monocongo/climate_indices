@@ -186,7 +186,8 @@ def test_data_after_the_calibration_period_never_changes_the_fitted_parameters(f
                 assert np.all(np.diff(changed) == 1)
 
     # the seeded draw reaches the backtracked spell, so the guard above is not vacuous
-    # (only PDSI changes in this draw; PHDI and PMDI are held to the same boundary rule)
+    # (the block assertions above cover all three indices, but PMDI is not guaranteed to follow
+    # the boundary rule, see docs/algorithm_refs/palmer.md)
     if function is palmer.pdsi:
         assert boundary_changes > 0
 
