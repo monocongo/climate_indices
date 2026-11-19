@@ -171,7 +171,7 @@ products:
     reason: JavaScript map viewer; no download or API documentation located; Thornthwaite PET. Shared SPEI code with SPEIbase is an inference, not stated by the site.
   - name: nClimGrid SPI
     decision: exclude
-    reason: same lineage as the NCEI climdiv fixture (per the ticket).
+    reason: circular — this repository's author maintains the gridded nClimGrid SPI/SPEI/PET tooling (tests/fixture/ncei_spi/provenance.json).
 
 other:
   - name: MATLAB SDAT
