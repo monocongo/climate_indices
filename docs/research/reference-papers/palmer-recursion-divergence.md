@@ -2,7 +2,7 @@
 
 **Ticket:** REFIMPL-29, [#1631](https://github.com/monocongo/climate_indices/issues/1631). **Map:** [#1602](https://github.com/monocongo/climate_indices/issues/1602).
 **Pinned version:** `46481c48c79e878eb50ce3398ba062fd3a1ff38c` (`origin/main`, 2026-11-18).
-**Status:** pre-registration. No analysis code has been run against the fixture. Results, minimal sequences, and the textual analysis are added in later commits; this section is not edited afterwards except to record a deviation under "Deviations".
+**Status:** complete. Everything down to "Deviations" was committed before any analysis; the deviations were committed before the runs they affect; "Results" was written afterwards. Reproduce with `uv run python scripts/characterize_palmer_recursion_divergence.py` (about 15 minutes) and `uv run python scripts/find_palmer_minimal_sequences.py` (about 2 minutes); the committed JSON files are their outputs.
 
 ## Question
 
@@ -134,3 +134,91 @@ The four-mechanism factorial is kept in the report as an exploratory result, lab
 ### Other change before the first commit
 
 The plan named `suitability.drought_category` for category changes. It was replaced by the Palmer table above because that function classifies SPI/SPEI.
+
+## Results
+
+Everything below is for configuration **P** (Palmer's national factors) unless stated. Counts come from `palmer-recursion-divergence-results.json`.
+
+### Hypotheses
+
+| ID | Pass? | Observed |
+| --- | --- | --- |
+| H1 reproduces the provenance figures | **pass** | 33,373 of 528,384 months disagree (6.316%), maximum \|difference\| 8.135 PDSI units. The provenance figures were measured with the Wells C++; the Python port reproduces them |
+| H2 every episode in a named class | **pass** | 3,832 episodes, 0 residual after harmonizing E, T, A, C, F, Tol (D2) |
+| H3 floating point negligible | **pass** | 0 episodes disappear under P-fp or P-fp2. The two weighting-fraction forms differ by 1 ulp (`0.8970000000000001` against `0.897`) and move PDSI by up to 5e-15, but flip no branch on any division |
+| H4 `pdi.f` closer to nClimDiv | **pass** | closer on 29,249 of 33,373 disagreeing months (87.6%), no ties. The provenance file says 88% for the C++ |
+| H5 agreement inside established spells | **fail** | 9,990 of 248,033 months (4.03%) disagree even after three months of the same established spell with \|X3\| > 1.5 in both machines, against a threshold of 0.5%. Disagreement is not confined to spell boundaries. Which classes produce it was not attributed |
+
+The largest disagreement (8.135 units, division 0501, October 1915) belongs to class A, the smallest-looking difference of all: a threshold of 0.15 against 0.1545.
+
+### Classes
+
+An episode's label is the set of mechanisms that must all be harmonized for it to vanish (D2). No episode needed Tol, so the 1e-5 tolerances in the Wells recursion have no effect on this fixture. All classes below are logic differences; the floating-point class is empty.
+
+| Class | Episodes | Months | Largest \|difference\| (division, month) | Shortest sequence (active months) |
+| --- | ---: | ---: | --- | ---: |
+| E | 3,415 | 30,212 | 3.516 (3009, 1899-12) | 5 |
+| E+T | 85 | 1,008 | 1.704 (0304, 1943-05) | 4 |
+| E+A | 50 | 410 | 3.534 (2001, 1986-01) | 2 |
+| E+C | 40 | 350 | 3.952 (3204, 1959-09) | 16 |
+| A | 163 | 806 | **8.135** (0501, 1915-10) | 7 |
+| C | 21 | 162 | 0.102 (2902, 1968-09) | 15 |
+| F | 38 | 133 | 3.417 (1502, 2022-03) | 6 |
+| E+F | 4 | 75 | 2.498 (1207, 2022-08) | 4 |
+| E+A+C | 4 | 56 | 2.864 (0603, 1982-07) | 31 |
+| A+C | 1 | 22 | 3.133 (0907, 1989-04) | 20 |
+| E+T+A | 2 | 20 | 1.917 (3310, 1943-06) | 14 |
+| E+T+C | 3 | 99 | 0.673 (1901, 1971-12) | 21 |
+| overdetermined (E+A, E+F, A+F) | 6 | 20 | n/a | not sought |
+
+Months in any class containing a mechanism: E 96.6%, A 3.9%, T 3.4%, C 2.1%, F 0.6% (overdetermined episodes excluded). Alone, E removes 90.5% of all disagreeing months; the other mechanisms matter mostly in combination with it. Every sequence is pinned in `tests/test_palmer_recursion_divergence.py`, one test per class. Sequences for `E+A`, `E+A+C` and `E+T+A` hold unrounded values because rounding them loses the class: they sit on a branch boundary.
+
+### What each mechanism is, and what Palmer (1965) says
+
+Line numbers are for `src/climate_indices/drought/` at the pinned commit. Palmer quotations are from an OCR of the scanned report. Page numbers are the page of the PDF file; the printed numbers were not checked.
+
+| Mechanism | `pdi.f` port | Wells port | Palmer (1965) | Determined by the text? |
+| --- | --- | --- | --- | --- |
+| **E** establishment threshold | promote at \|X\| >= 1 (`_palmer_pdi.py:375,386`) | at \|X\| >= 0.5 (`_palmer_wells.py:217,227`) | X3 is "reserved for indicating the severity of any wet spell or any drought which has become definitely established; i.e., X3 > 1.00 or X3 < -1.00" (PDF p. 38) | **Yes, for `pdi.f`.** The text supports 1.0. Whether Wells intends 0.5 could not be checked |
+| **T** termination | a spell with \|X3\| <= 0.5 has ended (`_palmer_pdi.py:512`) | persists until the end probability reaches 100 (`:149-164`) | "as soon as the severity index reaches the 'near normal' category, which lies between -0.50 and +0.50, no drought exists" (p. 35) | **Yes, for `pdi.f`**, on that passage. The text does not say what to do when the probability and the \|X3\| <= 0.5 rule disagree |
+| **A** abatement trigger | fixed 0.15 (`_palmer_pdi.py:450,471,518`) | half the fitted slope, 0.1545 at national factors (`_palmer_wells.py:187`) | Setting X = 0.50 and ΔX = 0 in the index recurrence "one finds that Z = -0.15" and "Ue = Z + 0.15" (p. 35) | **No.** The printed 0.15 is the rounding of 0.309 × 0.5 = 0.1545. Both ports are consistent with the text; it does not say which to use. The 0.0045 gap produces the largest disagreement in the fixture |
+| **C** candidate carried | `px2` restarts from zero after an X1 promotion (`_palmer_pdi.py:384`) | X2 recomputed every month (`_palmer_wells.py:74-77`) | X1 and X2 "must be computed at every opportunity" while a spell runs; the worked example computes the opposite-sign index in the month a spell is established (p. 38) | **Open.** Weakly favours Wells: the text does not say what happens to X2 in the establishing month itself |
+| **F** end-of-record flush | `_finish_up` rewrites `0..k8max-1` stale slots (`_palmer_pdi.py:557-569`) | no such step | no passage on undecided months at the end of the record was found in pp. 36-41; the zero-candidate rule for deciding earlier months is on p. 39 ("we assign X = X2 in February and also for the preceding January and December") | **No.** Possible defect in `climate_indices` (see below) |
+| **Tol** tolerances | exact comparisons | 1e-5 | not stated | **Not needed.** No episode depends on it |
+
+Palmer's Table 11 (p. 34) prints the class boundaries with gaps (for example "-.49 to .49 near normal" and "-.50 to -.99 incipient drought"), so inclusivity at the boundaries is not stated. The study used left-closed magnitudes (0.50 to 0.99, 1.00 to 1.99, ...), as pre-registered.
+
+**What could not be checked.** Wells, Goddard, and Hayes (2004) was not read: the AMS host refused the fetch (HTTP 403). Nothing in this report states what Wells says; every Wells statement above is about the Python port or the provenance record. The NCEI `pdi.f` source and the Wells C++ were not consulted either, so "follows `pdi.f`" means "follows the module docstring". A copy of the Wells paper would let the E, A and C rows be settled.
+
+### The end-of-record flush (class F)
+
+Class F covers 38 episodes alone, plus 9 more combined with E or A (47 in all): on these the `pdi.f` port overwrites months that backtracking had already resolved. `_finish_up` iterates over `k8max`, the longest deferral window anywhere in the record, but only the current window `k8` can still be open. The slots beyond `k8` hold months from an earlier window, and the loop rewrites them with their tentative value. The 48 episodes that remain when only F is left unharmonized all start between months 1515 and 1535 of the 1,536-month record (the last 21 months). Whether the Fortran does the same is not known, and whether it affects the nClimDiv comparison was not tested. This is logged in the ledger as a possible defect for the maintainer to decide; this study changes nothing.
+
+### Persistence and category
+
+- Episodes last 1 month (270), 2 (477), 3 (499), 4 to 6 (1,040), 7 to 12 (832), 13 to 24 (458), and over 24 (256).
+- 10,010 disagreeing months (30.0%) fall in a different Palmer class under the two recursions.
+- Division rates range from 0.52% (3207) to 16.0% (3906), median 6.1%; no division is free of disagreement. By decade the rate runs from 4.9% (1990s) to 8.7% (1890s); by calendar month it is flat (2,720 to 2,844 disagreeing months per month).
+
+### Configuration F (fitted duration factors)
+
+Reported by headline only. With each division's fitted factors the recursions disagree on 259,544 of 528,384 months (49.1%), by up to 13.27 units, and `pdi.f` is closer to nClimDiv on 58.8% of them. The difference from P is expected from the code: A applies half the *fitted* slope in the Wells port against a fixed 0.15, and the Wells port uses a cross coefficient (`dryc`) built from the wet intercept. Attribution for F was not run, so its classes are unknown. Neither recursion is wrong for F: `pdsi()` does not use fitted factors unless asked, and `scpdsi()` is defined by Wells.
+
+### Figure specifications
+
+Not rendered.
+
+1. **Disagreement rate by division.** One value per division, `per_division_rate_P` in the results file (range 0.5% to 16%). Ranked horizontal bars with the median (6.1%) marked; a choropleth over nClimDiv boundaries would need a geometry source that is not in the repository. Colour by the dominant class only if the figure is kept to one panel.
+2. **Annotated example series.** Division 0101, months 288 to 309 (1919-01 to 1920-10): Z-Index as bars, `pdi.f` and Wells PDSI as two lines, the establishment month (`x3 = 0.704` in the Wells port, below `pdi.f`'s threshold of 1) marked with the label E, and the later month where the two series rejoin marked. Source values are reproducible from the fixture with the commands above.
+
+## Limitations
+
+- Wells et al. (2004) text unread; `pdi.f` and Wells C++ sources not consulted.
+- Palmer page references come from OCR of a scan; printed page numbers unchecked.
+- Configuration F not attributed. H5's failure not attributed.
+- One fixture (344 divisions, 1895 to 2022) and one parameter set for the hypotheses.
+- The harmonizing edits are string replacements on a copy of `_palmer_pdi.py`; `build_pdi_variant` fails loudly if the source changes, but a refactor would need the replacements updated.
+
+## Opportunity
+
+Palmer's Table 12 (a 40-month western Kansas example with every intermediate column) is a candidate stage-by-stage literature fixture for REFIMPL-28 (#1630) and REFIMPL-26 (#1628). It is a scan, so it would need the transcription route used for earlier fixtures.
