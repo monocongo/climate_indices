@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import dataclasses
 import functools
+import inspect
 import json
 import warnings
 from collections.abc import Mapping, Sequence
@@ -48,6 +49,7 @@ from climate_indices.vocabulary import Aggregation, Distribution
 from climate_indices.xarray_adapter import (
     _align_inputs,
     _effective_calibration_years,
+    _fitted_parameter_output,
     _infer_data_start_year,
     _infer_temporal_parameters,
     _OutputProvenance,
@@ -65,8 +67,24 @@ IndexRoute = Literal["spi", "spei", "standardized_index"]
 
 _BETA_MESSAGE = "suitability is beta: its interface may change in a minor release (ADR-0028)."
 
-# the user's call site, seen from a warning raised in _compare_numpy (compare_distributions sits between them)
+# the caller's frame for a warning raised outside the public function's own call chain
 _CALLER_STACKLEVEL = 3
+
+
+def _caller_stacklevel() -> int:
+    """Frames from the calling warning site to the user's call site, across either route.
+
+    The xarray route reaches the core through ``xr.apply_ufunc``, so a fixed level cannot
+    name the caller: find ``compare_distributions`` and take the frame above it.
+    """
+    frame = inspect.currentframe()
+    frame = frame.f_back if frame is not None else None
+    level = 1
+    while frame is not None and frame.f_code.co_name != "compare_distributions":
+        level += 1
+        frame = frame.f_back
+    return level + 1 if frame is not None else _CALLER_STACKLEVEL
+
 
 # candidates per route in canonical Distribution enum order, which is also the tie-break order
 _ROUTE_CANDIDATES: dict[str, tuple[Distribution, ...]] = {
@@ -477,7 +495,7 @@ def compare_distributions(
             ``data_start_year`` that disagrees with the time coordinate, or an input dimension or
             a coordinate that does not span the time dimension named like an output variable. A
             coordinate that spans the time dimension is allowed, since the reduction over time
-            drops it.
+            drops it. A Dask input reports an invalid value when it is computed.
         ValueError: If a NumPy ``values`` holds no valid value.
         InsufficientDataError: If the record, or a calendar-adapted daily record, is shorter
             than ``scale``.
@@ -569,7 +587,7 @@ def _warn_overlapping_windows(scale: int, periodicity: compute.Periodicity) -> N
             "calendar step in consecutive years overlap; effective sample sizes shrink and goodness-of-fit "
             "p-values are invalid.",
             ClimateIndicesWarning,
-            stacklevel=_CALLER_STACKLEVEL + 1,  # one frame deeper than _compare_numpy's own warnings
+            stacklevel=_caller_stacklevel(),
         )
 
 
@@ -684,7 +702,7 @@ def _compare_numpy(
         )
         warnings.warn(
             ShortCalibrationWarning(message, actual_years=int(short.min()), required_years=MIN_CALIBRATION_YEARS),
-            stacklevel=_CALLER_STACKLEVEL,
+            stacklevel=_caller_stacklevel(),
         )
     _warn_overlapping_windows(scale, periodicity)
 
@@ -809,10 +827,10 @@ _PARAMETER_METADATA: dict[str, str] = {
     "shape": "Shape parameter",
 }
 
-# fitted in the sample's own units, so they inherit the input's units (or none) instead of a dimensionless "1"
-_DIMENSIONAL_PARAMETERS = frozenset({"beta", "loc", "scale"})
 _NO_BEST = "none"
 _UNITLESS_FIELDS = frozenset({"fit_failed", "best"})
+# an input's valid range describes its own values, not a comparison of them
+_RANGE_ATTRS = ("valid_min", "valid_max", "valid_range", "actual_range")
 
 
 def _comparison_block(
@@ -1031,27 +1049,41 @@ def _compare_xarray(
         "climate_indices_criterion": criterion,
         "climate_indices_log_likelihood_at": "fitted_estimates",
     }
+    # native types, so a query over the record matches the same values as the NumPy route
     provenance_parameters = {
-        **{key: value for key, value in calculation_metadata.items() if not key.startswith("climate_indices_")},
+        "index": index,
+        "scale": scale,
+        "data_start_year": provided["data_start_year"],
+        "periodicity": resolved_periodicity.name,
+        "aggregation": aggregation,
         "clip_negatives": effective_clip,
+        "criterion": criterion,
         "candidates": labels,
         "fitting_methods": {d.value: _FITTING_METHODS[d] for d in chosen},
+        "calibration_year_initial": first_year,
+        "calibration_year_final": last_year,
         "log_likelihood_at": "fitted_estimates",
     }
 
-    def declare(field: str, *, long_name: str | None = None, transform: Any = None) -> Any:
-        metadata = dict(_FIELD_METADATA.get(field, {}))
-        if long_name is not None:
-            metadata = {"long_name": long_name, "description": f"{long_name}, per calendar step and cell."}
-            if field not in _DIMENSIONAL_PARAMETERS:
-                metadata["units"] = "1"
+    def declare(field: str, *, transform: Any = None) -> _SpatialOutput:
         return _SpatialOutput(
             period_dim,
-            metadata,
+            dict(_FIELD_METADATA[field]),
             "Distribution comparison",
             coordinate=steps,
             transform=transform,
             drop_attrs=("units",) if field in _UNITLESS_FIELDS else (),
+        )
+
+    def declare_parameter(name: str) -> _SpatialOutput:
+        long_name = _PARAMETER_METADATA[name]
+        return _fitted_parameter_output(
+            name,
+            {"long_name": long_name, "description": f"{long_name}, per calendar step and cell."},
+            inputs,
+            core_dim=period_dim,
+            index_name="Distribution comparison",
+            coordinate=steps,
         )
 
     def integer(array: xr.DataArray) -> xr.DataArray:
@@ -1060,15 +1092,16 @@ def _compare_xarray(
     def boolean(array: xr.DataArray) -> xr.DataArray:
         return array.astype(bool)
 
+    inputs = (input_da,) if pet_da is None else (input_da, pet_da)
     transforms = {"n_parameters": integer, "fit_failed": boolean}
     outputs = (
         *(declare(field, transform=transforms.get(field)) for field in _CANDIDATE_FIELDS for _ in chosen),
-        *(declare(name, long_name=_PARAMETER_METADATA[name]) for name, _ in slots),
+        # one output per kernel array, including a name two families share ("shape")
+        *(declare_parameter(name) for name, _ in slots),
         declare("n", transform=integer),
         declare("best", transform=_label_best(labels)),
         declare("delta_to_runner_up"),
     )
-    inputs = (input_da,) if pet_da is None else (input_da, pet_da)
     arrays = _spatial_kernel_call(
         functools.partial(_comparison_block, chosen=chosen, slots=slots),
         inputs,
@@ -1101,4 +1134,7 @@ def _compare_xarray(
     for field in _STEP_FIELDS:
         data_vars[field] = arrays[cursor]
         cursor += 1
+    for variable in data_vars.values():
+        for key in _RANGE_ATTRS:
+            variable.attrs.pop(key, None)
     return xr.Dataset(data_vars)
