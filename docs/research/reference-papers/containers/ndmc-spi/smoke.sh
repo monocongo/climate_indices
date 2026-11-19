@@ -19,8 +19,11 @@ if [ $# -ge 2 ]; then
 else
   input=/opt/ndmc/sampleinput/commadelimited_monthly.csv; scales=1,2
 fi
-docker run --rm --network none -v "$out":/out -e INPUT="$input" -e SCALES="$scales" \
-  --entrypoint sh ndmc-spi:mono -c '
+# Run as the caller so the bind mount is writable on native Linux; /work is a tmpfs because the
+# image's /work belongs to the image user, and HOME points at a writable path for Mono.
+docker run --rm --network none --user "$(id -u):$(id -g)" --tmpfs /work:mode=1777 -e HOME=/tmp \
+  -v "$out":/out -e INPUT="$input" -e SCALES="$scales" \
+  --entrypoint sh ndmc-spi:mono -ec '
   mkdir -p /work/o && cd /work
   mono /opt/ndmc/executable/64bit/SPIGenerator.exe -i "$INPUT" -o /work/o \
     -s "$SCALES" -t monthly -f -p -l comma
