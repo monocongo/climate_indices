@@ -348,10 +348,12 @@ class TestCompareCategoriesXarray:
 
     def test_mismatched_dims_or_coordinates_are_rejected(self):
         a = xr.DataArray(np.zeros(3, dtype=np.int8), dims="time", coords={"time": [1, 2, 3]})
+        renamed = a.rename(time="t")
         with pytest.raises(InvalidArgumentError):
-            suitability.compare_categories(a, a.rename(time="t"))
+            suitability.compare_categories(a, renamed)
+        reassigned = a.assign_coords(time=[1, 2, 4])
         with pytest.raises(InvalidArgumentError):
-            suitability.compare_categories(a, a.assign_coords(time=[1, 2, 4]))
+            suitability.compare_categories(a, reassigned)
         # an indexed input paired with an unindexed one would be compared positionally
         unindexed = xr.DataArray(np.zeros(3, dtype=np.int8), dims="time")
         with pytest.raises(InvalidArgumentError, match="coordinates"):
