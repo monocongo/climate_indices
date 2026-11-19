@@ -6,7 +6,7 @@
 # usage: run.sh <repo-root> <work-dir>      needs: curl, gfortran, uv (or python3 with numpy)
 set -euo pipefail
 REPO=$(cd "$1" && pwd)
-WORK=$2
+WORK=$(mkdir -p "$2" && cd "$2" && pwd)
 HERE=$(cd "$(dirname "$0")" && pwd)
 BASE=https://www1.ncdc.noaa.gov/pub/data/nidis/software/ncei/palmer
 PDI_SHA256=e0c58ccbdc5fe694e9218e317065cf14cb6095de329e1dd43087fab67f20cb9e   # pdi.f, 2013-04-03, 33877 bytes
@@ -14,8 +14,8 @@ SOIL_SHA256=40fc3a55a0c91aa1f83ce753b45950b2dbebad7c2fb7d23c9e829416cae588c2  # 
 
 mkdir -p "$WORK/upstream" "$WORK/run"
 cd "$WORK/upstream"
-curl -sSfL -o pdi.f "$BASE/pdi.f"
-curl -sSfL -o soilcnst.asc "$BASE/soilcnst.asc"
+curl --proto '=https' --tlsv1.2 -sSfL -o pdi.f "$BASE/pdi.f"
+curl --proto '=https' --tlsv1.2 -sSfL -o soilcnst.asc "$BASE/soilcnst.asc"
 echo "$PDI_SHA256  pdi.f" | shasum -a 256 -c -
 echo "$SOIL_SHA256  soilcnst.asc" | shasum -a 256 -c -
 
@@ -26,7 +26,7 @@ tail -n +59 soilcnst.asc > soilcnst_div.asc
 
 cd "$WORK/run"
 cp ../upstream/soilcnst_div.asc fort.14
-uv run --project "$REPO" python -I "$HERE/prep.py" "$REPO" ../upstream/soilcnst_div.asc .
+uv run --project "$REPO" python -I "$HERE/prep.py" "$REPO" "$WORK/upstream/soilcnst_div.asc" "$WORK/run"
 
 # The program documents that analysis years are set by editing its parameter statement.
 sed -e 's/nendyr=2000,/nendyr=2022,/' -e 's/nendmo= 9,/nendmo=12,/' -e 's/iouteyr=2000)/iouteyr=2022)/' \

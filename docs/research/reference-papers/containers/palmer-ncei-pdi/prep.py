@@ -6,12 +6,27 @@ usage: pdi_prep.py <repo> <soilcnst.asc> <outdir>
 """
 
 import json
+import os
 import sys
 from pathlib import Path
 
 import numpy as np
 
-repo, soil, out = Path(sys.argv[1]), Path(sys.argv[2]), Path(sys.argv[3])
+
+def _path(value: str) -> Path:
+    """Resolve a command-line path, refusing a relative one that escapes the working directory.
+
+    Same guard as benchmarks/cli_multiprocessing.py (pythonsecurity:S8707); absolute paths are
+    the documented usage and pass through after normalisation.
+    """
+    resolved = os.path.realpath(value)
+    base = os.path.realpath(os.getcwd())
+    if not os.path.isabs(value) and resolved != base and not resolved.startswith(base + os.sep):
+        raise SystemExit(f"{value!r} is outside the working directory")
+    return Path(resolved)
+
+
+repo, soil, out = _path(sys.argv[1]), _path(sys.argv[2]), _path(sys.argv[3])
 out.mkdir(parents=True, exist_ok=True)
 divs = json.load(open(repo / "tests/fixture/nclimdiv/divisions.json"))
 awc = json.load(open(repo / "tests/fixture/palmer_awc.json"))

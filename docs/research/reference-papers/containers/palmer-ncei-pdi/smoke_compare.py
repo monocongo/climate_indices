@@ -4,12 +4,27 @@ usage: pdi_compare.py <repo> <rundir>
 """
 
 import json
+import os
 import sys
 from pathlib import Path
 
 import numpy as np
 
-repo, run = Path(sys.argv[1]), Path(sys.argv[2])
+
+def _path(value: str) -> Path:
+    """Resolve a command-line path, refusing a relative one that escapes the working directory.
+
+    Same guard as benchmarks/cli_multiprocessing.py (pythonsecurity:S8707); absolute paths are
+    the documented usage and pass through after normalisation.
+    """
+    resolved = os.path.realpath(value)
+    base = os.path.realpath(os.getcwd())
+    if not os.path.isabs(value) and resolved != base and not resolved.startswith(base + os.sep):
+        raise SystemExit(f"{value!r} is outside the working directory")
+    return Path(resolved)
+
+
+repo, run = _path(sys.argv[1]), _path(sys.argv[2])
 divs = json.load(open(repo / "tests/fixture/nclimdiv/divisions.json"))
 NAMES = {
     "pdsi": ("fort.22", "pdsi"),

@@ -5,7 +5,7 @@
 # usage: run.sh <repo-root> <work-dir>      needs: git, docker, uv (or python3 with numpy)
 set -euo pipefail
 REPO=$(cd "$1" && pwd)
-WORK=$2
+WORK=$(mkdir -p "$2" && cd "$2" && pwd)
 HERE=$(cd "$(dirname "$0")" && pwd)
 UPSTREAM_SHA=9a636117577f476a93f206897fb91dc94d4eddc2   # JonKing93/pdsi main, 2021-03-11
 # gnuoctave/octave 9.2.0 publishes amd64 only, so Apple silicon runs it under emulation.

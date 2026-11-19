@@ -5,7 +5,7 @@
 # usage: run.sh <repo-root> <work-dir>      needs: git, uv; the repo environment supplies numpy and pandas
 set -euo pipefail
 REPO=$(cd "$1" && pwd)
-WORK=$2
+WORK=$(mkdir -p "$2" && cd "$2" && pwd)
 HERE=$(cd "$(dirname "$0")" && pwd)
 UPSTREAM_SHA=c73b22c89218236e766fbf2895f2a16ebd8f366e   # ktripa/scpdsi-tools main, 2026-10-21
 
