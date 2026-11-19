@@ -460,11 +460,13 @@
  "floating_point": {
   "fp": {
    "base_episodes_removed": 0,
+   "base_months_removed": 0,
    "disagreeing_months": 33373,
    "months_changed_vs_base": 0
   },
   "fp2": {
    "base_episodes_removed": 0,
+   "base_months_removed": 0,
    "disagreeing_months": 33373,
    "months_changed_vs_base": 0
   }
