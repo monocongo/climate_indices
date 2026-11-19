@@ -64,7 +64,7 @@ These appear in the tickets as items to check, not as findings.
 - Whether other small packages derive from `climate_indices`. REFIMPL-04. `precip-index` is resolved: its README says it is built on `climate_indices` ([comparators.md](comparators.md), REFIMPL-03).
 - Whether `climate_indices.eto` derives from `PyETo`, and the provenance of the repository's Thornthwaite PET fixture. REFIMPL-04.
 - Whether the Climate Engine API and Earth Engine `GRIDMET/DROUGHT` terms permit committing derived outputs. REFIMPL-06.
-- Headless operation on Linux for every included comparator, and the linux-64 NCL build. REFIMPL-08.
+- Headless operation on Linux for every included comparator except NCL and the NDMC program, which ran in Linux containers (REFIMPL-03). REFIMPL-08.
 - Current AMS and *GMD* policy wording on AI-assisted work. REFIMPL-07.
 - That no prior systematic cross-package comparison exists. The closest found are the `spei` comparison notebook and Jacobi et al. (2013). REFIMPL-05 tests the novelty claim.
 

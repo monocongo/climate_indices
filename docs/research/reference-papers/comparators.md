@@ -9,7 +9,7 @@
 - This is a survey, not a comparison. Every number below is a **smoke value**: it shows that a comparator installed and produced one index value. No evidence class in `VALIDATION.md` fits a one-month smoke value (there, even `characterization` means measured ceilings), it is not evidence for any claim, and no study ticket may cite it. Each study pre-registers its hypotheses, thresholds, and sample before it runs (see the map's Notes).
 - Smoke values are at **L0, as shipped**, with the arguments each package offers. Where a package has no calibration-period argument, the difference from the others is expected, not a discrepancy.
 - Agreement between two packages is evidence only if they are independent. [REFIMPL-04](https://github.com/monocongo/climate_indices/issues/1606) has not resolved lineage, so every cross-package agreement here is "same lineage not excluded".
-- "Headless on Linux" was **not run**. Everything below ran on macOS arm64. The pure-Python and CRAN packages have no platform-specific code that I found, but [REFIMPL-08](https://github.com/monocongo/climate_indices/issues/1610) must confirm on Linux. NCL is the one case where that matters for the decision (see below).
+- "Headless on Linux" was run only for NCL and the NDMC SPI Generator, which ran in Linux containers (see "Programs run in containers"). Everything else ran on macOS arm64. The pure-Python and CRAN packages have no platform-specific code that I found, but [REFIMPL-08](https://github.com/monocongo/climate_indices/issues/1610) must confirm on Linux.
 - "Committing outputs" rows state the project rule (numeric outputs and provenance only, never comparator code). They are not a legal opinion on output licensing.
 - Include/exclude entries are proposals for the maintainer to approve.
 
@@ -31,12 +31,12 @@
 | SPI (product) | NCEI climdiv SPI | existing fixture, 2026-09-12 | **Include** (already a fixture) |
 | SPEI (product) | SPEIbase v2.11 | existing fixture, 2026-09-17 | **Include** (already a fixture) |
 | SPEI (product) | SPEI Global Drought Monitor | n/a | **Exclude** (web map viewer; no download or API documentation located; Thornthwaite PET) |
-| SPI (product) | NDMC SPI Generator | n/a | **Exclude** (Windows-only .NET 4.0 console application; not downloaded or run here) |
+| SPI (program) | NDMC SPI Generator 1.7.6.0 | zip sha256 `ce8f37bc`, run under Mono | **Include** (Windows .NET 4.0 program run in a Linux container under Mono; output rounded to two decimals) |
 | SPI (product) | nClimGrid SPI | n/a | **Exclude** (same lineage as the NCEI climdiv fixture, per the ticket) |
 | PET (Python) | `pyet` | 1.5.0 | **Include** (no Thornthwaite) |
 | PET (Python) | `PyETo` | git `79ddd88d` (no release) | **Include**, with lineage caveat: `climate_indices.eto` derives from it |
 | PET (R) | `Evapotranspiration` | 1.16 | **Include** (no Thornthwaite) |
-| Other | NCL `dim_spi_n` | conda-forge 6.6.2 | **Exclude for now** (no runnable `ncl` in the osx-arm64 build; unverified on Linux) |
+| Other | NCL `dim_spi_n` | conda-forge 6.6.2, linux-64 build `h7a63124_57` | **Include** (linux-64 build in a container under amd64 emulation; NCL is in maintenance) |
 | Other | MATLAB SDAT | n/a | **Exclude** (needs MATLAB; original toolbox not obtained) |
 
 "Include" means installed in a throwaway environment and produced one value, as the ticket requires; the two product rows are existing fixtures and were not re-run. Every exclusion has its reason in the family sections below.
@@ -111,14 +111,32 @@ The ticket's claim that `climate_indices.eto` derives from `PyETo` is not re-ver
 | Terms for committing outputs | not verified; the pilot's rule stands: no raw response committed | not verified; the pilot's rule stands: commit metrics only | U.S. Government work, public domain (per the fixture's provenance) | the fixture records CC-BY 4.0 (Earth Engine catalog) **and** ODbL 1.0 (spei.csic.es, share-alike); the SPEI site states ODbL for data and AGPL for its code, where CRAN lists `SPEI` as GPL-2. The committed subset is an adapted database, so confirm the governing terms for it and before refreshing |
 | Existing artifacts | `docs/research/earthengine-climate-engine-pilot.md` | same | `tests/fixture/ncei_spi/provenance.json` | `tests/fixture/speibase/provenance.json` |
 
-Two exclusions:
+One exclusion:
 
 - **SPEI Global Drought Monitor.** The SPEI site describes a real-time system that "provides global SPEI maps and data" at 1 degree, and says it uses Thornthwaite PET where SPEIbase uses Penman-Monteith. <https://spei.csic.es/map/> is a JavaScript viewer, and I located no download or API documentation, so there is nothing pinned to run. That it shares the `SPEI` package with SPEIbase is an inference from the same authors, not something the site states. Excluded for now; reopen if the maintainer has a documented data route.
-- **NDMC SPI Generator.** NDMC publishes a current program page at <https://drought.unl.edu/Monitoring/SPI/SPIProgram.aspx> ("released as of 12/7/2018") and a download zip (`/archive/Programs/SPI/SPIgenerator.zip`, 5.07 MB, last modified 2021-11-11). It is `SPIGenerator.exe`, a Windows console application, plus `StandardPrecipitationIndex.dll`, both needing .NET 4.0. I did not download or run it, so whether it runs headless on Linux is unverified. Excluded for now on the Windows-only ground; Mono or Wine might change that.
+
+## Programs run in containers
+
+Two comparators do not run natively on the survey machine (macOS arm64), so each has a Dockerfile and a smoke script under [`containers/`](containers/). They are evidence of how the comparators were run, not harness code: [REFIMPL-08](https://github.com/monocongo/climate_indices/issues/1610) decides where the harness environments live and may relocate or replace them. Docker Desktop 29.9.3 (linux/arm64) was used. Windows containers are not available on macOS, so neither container is a Windows environment.
+
+### NDMC SPI Generator
+
+- **What it is.** NDMC's program page (<https://drought.unl.edu/Monitoring/SPI/SPIProgram.aspx>, "released as of 12/7/2018") links `SPIgenerator.zip` (5,071,776 bytes, last modified 2021-11-11, sha256 `ce8f37bc00bf5309cdbedff2e788f698b1f30b2794e17b0e7aaab5c337efb4bf`). It holds a VB.NET console program `SPIGenerator.exe` (reported as version 1.7.6.0 in its exception log), a C# `StandardPrecipitationIndex.dll`, the source of both, sample input, and sample output. Its documentation is `documentation.docx` in the zip.
+- **How it ran.** [`containers/ndmc-spi/Dockerfile`](containers/ndmc-spi/Dockerfile): a Debian stage fetches the zip with a pinned checksum, and the `mono:6.12` image (Mono 6.12.0.182, aarch64) runs the shipped 64-bit executable. Debian's own Mono packages lack the `Microsoft.VisualBasic` runtime, which the `mono:6.12` image carries in its GAC. The container runs with `--network none`.
+- **Quirks.** The program joins paths with a Windows backslash, so under Mono each output file is created with a name like `o\NAME.csv`; [`smoke.sh`](containers/ndmc-spi/smoke.sh) strips that prefix. The output directory must already exist, or the program writes `exceptions.txt` and exits 0. Output values are rounded to two decimals.
+- **Method, from its C# source.** The gamma fit is Thom's closed-form approximation (`gamm = (1 + sqrt(1 + 4A/3)) / (4A)`, `A = ln(mean) - mean(ln x)`) over the positive values, with the zero probability as a mixture; there is no calibration-period argument (the whole record is used), and the incomplete gamma code cites *Numerical Recipes*. This is the same approximation `climate_indices` documents, which is a lineage question for [REFIMPL-04](https://github.com/monocongo/climate_indices/issues/1606), not independence evidence.
+- **Check against the zip's own sample.** On the bundled monthly sample (station 250365, scales 1 and 2), 12 of 17 output files match the shipped 2014 sample output exactly. The other 5 differ in the last printed digit(s): in the SPI file, 39 of 1,776 value cells differ, all in the 2-month column, with a maximum difference of 0.02 and the 1-month column identical. The shipped output predates this program build (the DLL source is dated 2018), so version change and Mono-versus-Windows behaviour are not separable here.
+- **Not done.** No Windows run; Wine was not tried.
+
+### NCL `dim_spi_n`
+
+- **What it is.** `dim_spi_n(x, nrt, opt, dim)` computes gamma (default) or Pearson III (`opt@spi_type = 3`) SPI per NCL's documentation. NCL's site carries a "Pivot to Python" banner (its date was not checked). The conda-forge package licence is "Apache-2.0 and LicenseRef-Proprietary-Triangle".
+- **How it ran.** [`containers/ncl/Dockerfile`](containers/ncl/Dockerfile) installs `ncl=6.6.2=h7a63124_57` (the latest linux-64 build, uploaded 2025-06-03, sha256 `276f9f148e72904e6154ceec17927f97924d9ecf9c7fd45ba84a92224e94578a`) from conda-forge with micromamba. conda-forge ships NCL only for linux-64, osx-64, and osx-arm64, so on Apple silicon the image runs as `linux/amd64` under emulation. The osx-arm64 build (`h5d9bed2_44`, 3,218 files) installed but contains no `ncl` interpreter, so it is not usable.
+- **Method.** The prototype has no calibration-period argument, so I expect the whole record to be used; I did not confirm that from NCL's source. The smoke script set `_FillValue` on the ten missing months.
+- **Not done.** No Pearson III or gamma accuracy check against another implementation beyond the smoke value.
 
 ## Other
 
-- **NCL `dim_spi_n`**: computes gamma (default) or Pearson III SPI per its documentation. conda-forge has `ncl` 6.6.2 for osx-arm64, osx-64, and linux-64, licence "Apache-2.0 and LicenseRef-Proprietary-Triangle". The osx-arm64 build (`h5d9bed2_44`, 3,218 files) installed through `pixi` but contains no `ncl` interpreter executable, so no value could be produced. NCL's site carries a "Pivot to Python" banner (its date was not checked). Excluded for now on both counts. The linux-64 build was not tried; this is the one exclusion that Linux testing could change.
 - **MATLAB SDAT** (Farahmand and AghaKouchak 2015): needs a MATLAB licence and the original toolbox was not obtained. The GitHub repo [hydrocodeir/Standardized-Drought-Analysis-Toolbox](https://github.com/hydrocodeir/Standardized-Drought-Analysis-Toolbox) (GPL-3.0) is a browser and Pyodide dashboard that says it "mirrors the original MATLAB SDAT calculation logic". It is a re-implementation, not the original. Excluded; the maintainer may want to reconsider a non-parametric reference for [REFIMPL-20](https://github.com/monocongo/climate_indices/issues/1622).
 
 ## Smoke evidence
@@ -144,6 +162,9 @@ Local comparator inputs are repository fixtures, so those runs acquire no new da
 | R `SCI` 1.0-3 | `fitSCI(time.scale=3, "gamma", p0=TRUE)` on 1981-2010, `transformSCI` on the full series | 0.348829 |
 | R `SEI` 0.2.0 | `std_index(gamma, "mle", lower=0, cens="none")` on 3-month sums, reference 1981-2010 | 0.343431 |
 | R `climatekit` 0.2.3 | `ck_spi(scale=3, "gamma")`, no calibration argument | 0.194254 |
+| NDMC SPI Generator 1.7.6.0 (Mono) | `SPIGenerator.exe -i fixture_monthly_wdates.csv -s 1,3 -t monthly`, whole-record fit, two-decimal output | 0.19 (SPI-3), 1.14 (SPI-1) |
+| NCL 6.6.2 (linux-64, amd64 emulation) | `dim_spi_n(p, 3, False, 0)`, gamma, no calibration argument | 0.185046 |
+| NCL | same, `opt@spi_type = 3` (Pearson III) | 0.121683 |
 | `pyet` 1.5.0 | `hamon(tmean, lat)` (the fixture has no Tmin, Tmax, RH, or wind, so Hargreaves and Penman-Monteith could not run), mm/day | 6.985984 (209.58 mm/month) |
 | `PyETo` `79ddd88` | `thornthwaite(monthly_t, monthly_mean_dlh, year)`, mm/month | 169.9446 |
 | `climate_indices` PET fixture | `pet_thornthwaite.npy` | 169.2625 |
@@ -154,7 +175,7 @@ Local comparator inputs are repository fixtures, so those runs acquire no new da
 
 Provider call budget, stated before the run: **one** Earth Engine point sample and **one** Climate Engine request (one coordinate, one variable, one accumulation; 91 seconds). Credentials came from the environment and were never printed. No raw Climate Engine response is committed. The two provider values are at different dates and carry no comparison meaning. The `climate_indices`, R `Evapotranspiration`, R `standaRdized`, Earth Engine, and Climate Engine rows came from one-off commands whose scripts or outputs were not saved, so they are not reproducible from saved artifacts; rerunning the two provider rows spends the same call budget again.
 
-NCL did not produce a value (see above), and `standaRdized` used its own bundled data because it is daily-basis.
+NCL and the NDMC program ran in the containers described above, on the same fixture series (the NDMC input is a station-name line followed by `m/1/yyyy,value` rows with `-99` for the ten missing months). `standaRdized` used its own bundled data because it is daily-basis.
 
 ## Findings that change the "known so far" leads
 
@@ -164,6 +185,8 @@ NCL did not produce a value (see above), and `standaRdized` used its own bundled
 4. **`precip-index` states that it is built upon `climate_indices`** (lineage evidence for [REFIMPL-04](https://github.com/monocongo/climate_indices/issues/1606)).
 5. **SPEIbase v2.11 was built with R `SPEI` 1.8.1**, the version pinned here, so the repository's existing SPEIbase fixture and this comparator share a code version.
 6. **R `SPEI` (`ub-pwm`) and `standard_precip` (`lmom`) coincide to six decimals (0.342608) on gamma SPI-3**, and `SEI` MLE (0.343431), `standard_precip` MLE (0.343472), and `climate_indices` (0.343475) lie within about 5e-5. The first pair is consistent with one estimator under two names; whether that reflects shared code is a lineage question for REFIMPL-04, not independence evidence.
+7. **The NDMC SPI Generator runs on Linux under Mono**, uses the same Thom closed-form gamma approximation that `climate_indices` documents, and prints two decimals. For June 2005 on the fixture (whole-record fit, no calibration argument) it gives 0.19 and NCL gamma gives 0.185046, which round to the same value; that is consistent with one estimator in two programs, and says nothing about independence.
+8. **conda-forge's osx-arm64 `ncl` build has no interpreter, but the linux-64 build works**, so the NCL comparator needs `linux/amd64` (emulated on Apple silicon).
 
 ## Candidate ledger entries for [REFIMPL-24](https://github.com/monocongo/climate_indices/issues/1626)
 
@@ -174,11 +197,13 @@ Proposed, not yet logged on that ticket, because the ledger's format belongs to 
 | 1 | R `SPEI` 1.8.1 `spi(fit="max-lik")` and `fit="pp-pwm"` for the gamma distribution return NA coefficients and an all-NA series on a NaN-free 1,466-month series (`ub-pwm` works). Cause not diagnosed; it may be dependency drift on R 4.6.2 (`lmomco` 2.5.8, `lmom` 3.3, `TLMoments` 0.7.5.3), not a package defect | open |
 | 2 | Thornthwaite PET for June 2005 differs across packages: 169.2625 (`climate_indices` fixture), 169.4665 (R `SPEI`), 169.7647 (`xclim`), 169.9446 (`PyETo`) mm/month, a single-month spread of 0.68 mm (0.4%). Not aligned for daylength or declination conventions. Feeds [REFIMPL-21](https://github.com/monocongo/climate_indices/issues/1623) | open |
 | 3 | `standaRdized` rounds its output to two decimals by default | noted; package excluded |
+| 4 | NDMC SPI Generator 1.7.6.0 under Mono reproduces the zip's 2014 sample output except 39 of 1,776 SPI cells (all the 2-month column, maximum difference 0.02). Version change versus Mono-versus-Windows not separable. The program also prints only two decimals, which a 1e-6 "equivalent" class cannot resolve; the C# DLL returns doubles and its source ships in the zip | open |
 
 ## Environment notes
 
 - The throwaway environments lived outside the repository. Python: one `uv venv --python 3.12` per package. R: a private library with `R_LIBS_USER`.
 - **Local R toolchain fault.** On this machine R's `Makeconf` points `FLIBS` at `.../gcc/current/gcc/aarch64-apple-darwin27/16`, but Homebrew's gcc ships `aarch64-apple-darwin25`. Source builds of packages with Fortran (`lmom`, `deSolve`, `RcppArmadillo`) fail at link time with `ld: library 'emutls_w' not found`. A scratch `R_MAKEVARS_USER` file that overrides `FLIBS` fixed it without changing any global R configuration. A Linux CI image will not have this fault, but anyone reproducing on this class of Mac will.
+- Container files live under `docs/research/reference-papers/containers/`. Both Dockerfiles were built and run on this machine; the NDMC one runs with `--network none` because the zip is third-party and untrusted.
 - `comparators.lock.yaml` records direct pins and the key resolved dependencies. It is not a full lockfile: [REFIMPL-08](https://github.com/monocongo/climate_indices/issues/1610) owns the harness environments and their locking.
 - GitHub archive tarball hashes are recorded for the two git-pinned packages but are not stable guarantees (GitHub can regenerate archives). The commit SHA is the pin.
 
@@ -190,6 +215,6 @@ Proposed, not yet logged on that ticket, because the ledger's format belongs to 
 | Palmer comparators | [REFIMPL-30](https://github.com/monocongo/climate_indices/issues/1632) |
 | Implementation lineage and independence | [REFIMPL-04](https://github.com/monocongo/climate_indices/issues/1606) |
 | Contacting comparator maintainers and data producers | [REFIMPL-06](https://github.com/monocongo/climate_indices/issues/1608) |
-| Linux headless confirmation, harness environments, locking | [REFIMPL-08](https://github.com/monocongo/climate_indices/issues/1610) |
+| Linux headless confirmation for the Python and R comparators (NCL and NDMC were run on Linux in containers), harness environments, locking, and where the `containers/` files end up | [REFIMPL-08](https://github.com/monocongo/climate_indices/issues/1610) |
 | Provider terms for committing Climate Engine and Earth Engine outputs | [REFIMPL-06](https://github.com/monocongo/climate_indices/issues/1608); its contact table names the Climate Engine team, not Google, so Earth Engine terms need adding |
-| Adapters for R `Evapotranspiration` and `climatekit`, which REFIMPL-12 to REFIMPL-15 do not name | maintainer decision, or extend [REFIMPL-13](https://github.com/monocongo/climate_indices/issues/1615) |
+| Adapters for R `Evapotranspiration`, `climatekit`, NCL, and the NDMC program, which REFIMPL-12 to REFIMPL-15 do not name | maintainer decision, or extend [REFIMPL-13](https://github.com/monocongo/climate_indices/issues/1615) |

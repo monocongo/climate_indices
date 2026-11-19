@@ -10,7 +10,7 @@
 # stable guarantees; the commit is the pin for those.
 schema_version: 1
 surveyed: 2026-11-18
-platform_tested: macOS arm64 (Darwin 27.2.0)   # Linux headless not run
+platform_tested: macOS arm64 (Darwin 27.2.0)   # Linux headless run only for the containers section below
 runtimes:
   python: 3.12.13        # one `uv venv` per package, uv 0.13.9
   r: 4.6.2
@@ -164,18 +164,41 @@ products:
   - name: SPEI Global Drought Monitor
     decision: exclude
     reason: JavaScript map viewer; no download or API documentation located; Thornthwaite PET. Shared SPEI code with SPEIbase is an inference, not stated by the site.
-  - name: NDMC SPI Generator
-    decision: exclude
-    reason: Windows-only .NET 4.0 console application and DLL (zip at drought.unl.edu/archive/Programs/SPI/SPIgenerator.zip, 2018 release); not downloaded or run; Linux operation unverified.
   - name: nClimGrid SPI
     decision: exclude
     reason: same lineage as the NCEI climdiv fixture (per the ticket).
 
 other:
-  - name: NCL dim_spi_n
-    decision: exclude
-    package: conda-forge ncl 6.6.2 (osx-arm64 build h5d9bed2_44)
-    reason: build contains no ncl interpreter; NCL is in maintenance ("Pivot to Python"); licence includes a proprietary component. linux-64 build not tried.
   - name: MATLAB SDAT
     decision: exclude
     reason: requires MATLAB; original toolbox not obtained. hydrocodeir/Standardized-Drought-Analysis-Toolbox (GPL-3.0) is a re-implementation, not the original.
+
+containers:
+  # Programs that do not run natively on the survey machine. Files are in containers/.
+  # Docker Desktop 29.9.3 (linux/arm64). Windows containers are not available on macOS.
+  - name: NDMC SPI Generator
+    decision: include
+    version: 1.7.6.0        # from the program's exception log
+    page: https://drought.unl.edu/Monitoring/SPI/SPIProgram.aspx   # "released as of 12/7/2018"
+    zip_url: https://drought.unl.edu/archive/Programs/SPI/SPIgenerator.zip
+    zip_sha256: ce8f37bc00bf5309cdbedff2e788f698b1f30b2794e17b0e7aaab5c337efb4bf
+    zip_bytes: 5071776
+    zip_last_modified: 2021-11-11
+    dockerfile: containers/ndmc-spi/Dockerfile
+    runtime: mono 6.12.0.182 (aarch64), run with --network none
+    base_images:
+      fetch: debian@sha256:734a72b3d6142a71993b4bc580ca01d8ca687f77a2c422d96a961d3376b179bc   # debian:bookworm-slim
+      run: mono@sha256:34d816779b1248b5cfd095770b64ecbaf1798e2aca693a91c11a018dce9c7ad5       # mono:6.12
+    output_precision: two decimals
+    calibration_argument: none
+  - name: NCL dim_spi_n
+    decision: include
+    version: 6.6.2
+    source: conda-forge
+    build: h7a63124_57         # linux-64, uploaded 2025-06-03
+    package_sha256: 276f9f148e72904e6154ceec17927f97924d9ecf9c7fd45ba84a92224e94578a
+    license: Apache-2.0 and LicenseRef-Proprietary-Triangle
+    dockerfile: containers/ncl/Dockerfile
+    platform: linux/amd64 (emulated on Apple silicon)
+    base_image: mambaorg/micromamba:2.0.5-debian12-slim   # tag only; digest not recorded
+    note: the osx-arm64 build (h5d9bed2_44) contains no ncl interpreter
