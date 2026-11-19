@@ -125,6 +125,10 @@ open (issue #780).
 
 ## References
 
+For a step-by-step trace from each published equation or reference-code
+statement to the Python and Rust functions, see {doc}`palmer-provenance`.
+
+
 - Palmer, W. C. (1965). Meteorological Drought. U.S. Weather Bureau Research
   Paper No. 45.
   https://www.droughtmanagement.info/literature/USWB_Meteorological_Drought_1965.pdf
