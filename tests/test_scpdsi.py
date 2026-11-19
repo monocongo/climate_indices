@@ -138,14 +138,17 @@ def test_infinite_inputs_are_rejected(function, palmer_division_inputs):
 
 
 @pytest.mark.parametrize("function", [palmer.pdsi, palmer.scpdsi])
-def test_data_after_the_calibration_period_never_changes_the_fit_or_the_month_before_the_open_spell(function):
+def test_data_after_the_calibration_period_never_changes_the_fitted_parameters(function):
     """Issue #544: ``calibration_year_final`` bounds the calibration, not the recursion.
 
-    The reporter doubled every value after 2005 and saw earlier PDSI values change. Only
-    the spell still open at the last calibration month is backtracked with later data,
-    which the Palmer recursion does by design. So the fitted parameters and the
-    Z-index must be identical, and any change to the PDSI family must be one block of
-    months that ends exactly at the boundary.
+    The reporter doubled every value after 2005 and saw earlier PDSI values change. For
+    both functions the fitted parameters must be identical. For ``pdsi()`` the Z-index
+    is identical too, and the only earlier change is the spell still open at the last
+    calibration month, which the Palmer recursion backtracks with later data by design:
+    one block of months that ends exactly at the boundary. ``scpdsi()`` is excluded from
+    those two checks because its rescaling anchors are percentiles of the
+    calibration-window PDSI, which includes that open spell, so later data can rescale
+    earlier months (see ``docs/algorithm_refs/palmer.md``).
     """
     start, final = 1990, 2005
     months = (2010 - start + 1) * 12
@@ -153,7 +156,8 @@ def test_data_after_the_calibration_period_never_changes_the_fit_or_the_month_be
     rng = np.random.default_rng(544)
     boundary_changes = 0
 
-    # roughly one series in sixteen ends with a spell still open at the boundary
+    # only a few of these series end with a spell still open at the boundary
+    # (series 42 and 43 of this seeded draw), so the count below guards the block check
     for _ in range(45):
         precips = rng.random(months)
         pet = rng.random(months)
@@ -168,6 +172,9 @@ def test_data_after_the_calibration_period_never_changes_the_fit_or_the_month_be
         for key in baseline_params:
             np.testing.assert_array_equal(np.asarray(baseline_params[key]), np.asarray(later_params[key]), err_msg=key)
 
+        if function is not palmer.pdsi:
+            continue
+
         # the Z-index is the last of the four outputs and has no backtracking
         np.testing.assert_array_equal(baseline[3][:boundary], later[3][:boundary])
 
@@ -179,7 +186,9 @@ def test_data_after_the_calibration_period_never_changes_the_fit_or_the_month_be
                 assert np.all(np.diff(changed) == 1)
 
     # the seeded draw reaches the backtracked spell, so the guard above is not vacuous
-    assert boundary_changes > 0
+    # (only PDSI changes in this draw; PHDI and PMDI are held to the same boundary rule)
+    if function is palmer.pdsi:
+        assert boundary_changes > 0
 
 
 def test_supplied_cafec_coefficients_are_reused_but_duration_factors_are_recalibrated(palmer_division_inputs):

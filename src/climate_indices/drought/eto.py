@@ -459,8 +459,8 @@ def eto_thornthwaite(
         time-major spatial block, i.e. with the time steps first and the cells in
         the trailing dimensions, so the calculation runs once per cell set
     :return: estimated potential evapotranspiration, in millimeters/month. A
-        series (or cell) whose 12 calendar-month mean temperatures are all at or
-        below 0 degrees C has a heat index of zero and is NaN throughout, not 0.
+        plain-ndarray series (or cell) in which every temperature is at or below
+        0 degrees C has a heat index of zero and is NaN throughout, not 0.
     :rtype: 1-D numpy.ndarray of floats with shape: (total # of months), or a
         time-major block of shape (time, ``*cells``)
     """

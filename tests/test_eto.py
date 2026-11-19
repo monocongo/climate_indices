@@ -220,6 +220,20 @@ def test_eto_thornthwaite_zero_heat_index_is_missing_not_zero_or_infinite(latitu
     assert np.isnan(result).all()
 
 
+def test_eto_thornthwaite_one_thawed_value_is_enough_for_a_defined_heat_index():
+    """Issue #546: values clip to 0 before the calendar-month mean, so the raw mean does not matter.
+
+    One year at +1 degrees C and three at -5 degrees C leave every raw calendar-month
+    mean at -3.5 degrees C, yet the clipped means are positive and PET is defined.
+    """
+    temps = np.concatenate([np.full(12, 1.0), np.full(36, -5.0)])
+
+    result = eto.eto_thornthwaite(temps, 45.0, 2011)
+
+    assert np.isfinite(result).all()
+    assert (result[:12] > 0).all()
+
+
 def test_eto_thornthwaite_zero_heat_index_leaves_warm_neighbours_untouched():
     """Issue #546: only the cells that never thaw are missing, not their neighbours."""
     years = 10

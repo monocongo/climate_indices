@@ -41,11 +41,20 @@ passes over the requested calibration period.
 CAFEC coefficients and K factors, and for `scpdsi()` the duration factors and
 rescaling. The recursion still runs over the whole record, and a wet or dry spell
 that is still open at the last calibration month is assigned its index
-retroactively. Data after `calibration_year_final` therefore never change the
-fitted parameters or the Z-Index, but can change the PDSI, PHDI, or PMDI of the
-months in that one open spell, which form a single block ending at the boundary.
-`tests/test_scpdsi.py::test_data_after_the_calibration_period_never_changes_the_fit_or_the_month_before_the_open_spell`
-pins this (issue #544).
+retroactively.
+
+- `pdsi()`: data after `calibration_year_final` never change the fitted
+  parameters or the Z-Index. They can change the PDSI of the months in that one
+  open spell, which form a single block ending at the boundary; PHDI and PMDI
+  are held to the same boundary rule.
+- `scpdsi()`: the fitted parameters are likewise unaffected. Its three rescaling
+  passes take percentiles of the calibration-window PDSI, which includes that open
+  spell, so later data can in rare cases move the rescaling anchors and with them
+  the Z-Index and the PDSI, PHDI, and PMDI of earlier months, not only the open
+  spell.
+
+`tests/test_scpdsi.py::test_data_after_the_calibration_period_never_changes_the_fitted_parameters`
+pins the parameter and `pdsi()` statements (issue #544).
 
 ### Exact-zero comparisons
 
