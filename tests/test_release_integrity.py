@@ -19,6 +19,7 @@ Two tiers of tests:
     - pyproject.toml version is valid semver
     - CHANGELOG.md has no [Unreleased] block
     - CHANGELOG.md top entry matches pyproject.toml version
+    - CITATION.cff version matches pyproject.toml version
     - Installed package version matches pyproject.toml
 """
 
@@ -255,6 +256,15 @@ def _read_pyproject_version() -> str:
     match = re.search(r'^version\s*=\s*["\']([^"\']+)["\']', content, re.MULTILINE)
     if not match:
         raise RuntimeError("Could not find 'version = ...' in pyproject.toml")
+    return match.group(1)
+
+
+def _read_citation_version() -> str:
+    """Extract the top-level version from CITATION.cff without a YAML parser."""
+    content = (ROOT / "CITATION.cff").read_text(encoding="utf-8")
+    match = re.search(r"^version:\s*['\"]?([^'\"\s]+)['\"]?\s*$", content, re.MULTILINE)
+    if not match:
+        raise RuntimeError("Could not find 'version:' in CITATION.cff")
     return match.group(1)
 
 
@@ -1962,6 +1972,20 @@ def test_changelog_top_entry_matches_pyproject_version() -> None:
                 f"{release_notes.relative_to(ROOT)} must state the release date {release_date.isoformat()} "
                 "in its opening paragraph"
             )
+
+
+@pytest.mark.release
+def test_citation_version_matches_pyproject_version() -> None:
+    """CITATION.cff must name the same version as pyproject.toml, or a citation is wrong.
+
+    Addresses the stale 3.1.0 value that survived the 3.1.1 and 3.2.0 releases.
+    """
+    pyproject_version = _read_pyproject_version()
+    citation_version = _read_citation_version()
+    assert citation_version == pyproject_version, (
+        f"CITATION.cff version [{citation_version}] does not match pyproject.toml "
+        f"version [{pyproject_version}] — update the citation metadata with the release"
+    )
 
 
 @pytest.mark.release

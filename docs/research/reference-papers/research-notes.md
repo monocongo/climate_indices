@@ -23,7 +23,7 @@ Each statement was read in the file named.
 | WestWide Drought Tracker scPDSI assessed and not adopted | `docs/research/dri-wrcc-scpdsi-assessment.md` |
 | The committed AWC grid fixture is a 3 by 3 sample from POLARIS, CC BY-NC 4.0 | `tests/fixture/nclimgrid_awc/provenance.json` |
 | nClimGrid period-of-record files are mutable; modified derivatives may be redistributed with attribution | `docs/research/nclimgrid-acquisition-and-redistribution.md` |
-| `CITATION.cff` is at 3.1.0 with a Zenodo DOI pending; the package is at 3.2.0 | `CITATION.cff`, `pyproject.toml` |
+| `CITATION.cff` and `pyproject.toml` carry the same version (3.2.0); a release-time test compares them, and a Zenodo DOI is still pending | `CITATION.cff`, `pyproject.toml`, `tests/test_release_integrity.py` |
 | Issue and label conventions, wayfinder map and child tickets | `docs/agent/issue-tracker.md` |
 | Project policy prohibits attribution of work to an AI model or tool in commits, PRs, and issue text | `AGENTS.md` |
 
