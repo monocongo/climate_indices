@@ -105,14 +105,14 @@ division-months.
 | Implementation | Source and pin | Licence | Runtime | Runs on divisions? | Lineage (from source) | Proposal |
 | --- | --- | --- | --- | --- | --- | --- |
 | NCEI public `pdi.f` | `pdi.f` 2013-04-03, sha256 `e0c58ccb...`; `soilcnst.asc` 1998-01-12, sha256 `40fc3a55...` | None stated; US Government work, "as is" | Fortran 77; gfortran 16.2 `-std=legacy` | Yes, 344 divisions, 1 s | NCEI, by construction | Include as a check on the library's port; same lineage, not independent |
-| `JonKing93/pdsi` | `9a636117577f476a93f206897fb91dc94d4eddc2` | MIT | MATLAB; runs under GNU Octave 9.2.0 | Yes, 344 divisions, 2 min | NCEI-like (K and spell logic read) | **Include**: the independent comparator for REFIMPL-31 |
+| `JonKing93/pdsi` | `9a636117577f476a93f206897fb91dc94d4eddc2` | MIT | MATLAB; runs under GNU Octave 9.2.0 | Yes, 344 divisions, 2 min | NCEI-like (K and spell logic read) | **Include**: the NCEI-like comparator for REFIMPL-31; independence from `pdi.f` not established |
 | `noaa-nws-cpc/libperl-cpc-palmer` 0.50 | `e694083f101a86e36fa9ba6426dab4d8653e64eb` | CC0 in `LICENSE.md`; `Makefile.PL` says `artistic_2` | Perl 5 | **No**, not as published (three defects below) | NCEI-like K and accountings; PMDI without backtracking | Exclude as published; report defects through REFIMPL-06 |
 | `ktripa/scpdsi-tools` | `c73b22c89218236e766fbf2895f2a16ebd8f366e`, 2026-10-21 | MIT | Python, NumPy and pandas | Yes, 344 divisions, 8 s | Wells-like (K and spell logic read) | **Include**: the independent Wells-style comparator, with a large unexplained gap to the Wells oracle |
 | `Sibada/scPDSI` | `10f8c3b20465fca0547f2df60e2759d61d3d66b3` | GPL-3.0 | C++ via R | Already used for the scPDSI oracle | Wells | Not independent of the existing fixtures |
 | `rpkgs/scPDSI2003` | `8cfa1634fa57bf6241ab77abfd7a9f254567c4d0` | MIT | C++ (CMake) | Not run | Wells: README says only an ET module was changed | Exclude: same C++ lineage as `Sibada/scPDSI` |
 | `dficklin/CAGEO-paper` (Ficklin et al.) | `76680f874d7e27e3b866ba46fea0c5587dca9b2c` | None stated (all rights reserved) | MATLAB, `.fig` launcher | Not run | Not determined | Exclude: holds only the amended files, not the Jacobi core |
-| Jacobi et al. (2013) tool | Wiley supporting information of doi:10.1002/wrcr.20342; a 2015 news item says to email the author | Unknown | MATLAB | Not obtained | NCEI-like per the abstract (not read) | Open: needs the author or the Wiley file |
-| Wells, Goddard, Hayes C++ at NDMC | No download page found | Unknown | C++ | Not obtained | Wells | Open: REFIMPL-06 |
+| Jacobi et al. (2013) tool | Wiley supporting information of doi:10.1002/wrcr.20342; a 2015 news item says to email the author | Unknown | MATLAB | Not obtained | Undetermined (abstract suggests NCEI-like; source not read) | Open: needs the author or the Wiley file |
+| Wells, Goddard, Hayes C++ at NDMC | No download page found | Unknown | C++ | Not obtained | Undetermined (source not obtained) | Open: REFIMPL-06 |
 
 Product-only items (`gridMET` pentad PDSI, WestWide Drought Tracker scPDSI, CRU scPDSI, Dai
 PDSI) are external products, not runnable implementations; they are not assessed further
@@ -177,12 +177,12 @@ Two runs. "Supplied PE" runs the steps of `pdsi.m` in order with the fixture's `
 | Check | Result |
 | --- | --- |
 | Runs (supplied PE, 344 divisions) | 528,384 of 528,384 months finite |
-| Runs (as published, 0101) | 1,536 of 1,536 finite; Z differs from the supplied-PE run by a median 0.0178 |
-| Pre-registered NCEI-like signal, 0101, Z vs nClimDiv | median 0.0131 (threshold 0.05): met |
-| Z vs nClimDiv, 344 divisions | median of per-division medians 0.0191; 80.3% within 0.05; 671 months > 1 |
-| PDSI vs nClimDiv, 344 divisions | 0.0248; 70.7% within 0.05; 9,676 months > 1 |
-| PMDI (Xm) vs nClimDiv | 0.0365; 60.9% within 0.05; 1,645 months > 1 |
-| PDSI vs library fixtures | 0.0185; 81.8% within 0.05 |
+| Runs (as published, 0101) | 1,536 of 1,536 finite; Z differs from the supplied-PE run by a median 0.0118 |
+| Pre-registered NCEI-like signal, 0101, Z vs nClimDiv | median 0.0199 (threshold 0.05): met |
+| Z vs nClimDiv, 344 divisions | median of per-division medians 0.0278; 68.7% within 0.05; 803 months > 1 |
+| PDSI vs nClimDiv, 344 divisions | 0.0327; 63.6% within 0.05; 10,421 months > 1 |
+| PMDI (Xm) vs nClimDiv | 0.0463; 53.1% within 0.05; 1,658 months > 1 |
+| PDSI vs library fixtures | 0.0286; 69.9% within 0.05 |
 
 For comparison, the library's own PDSI is 98.6% within 0.05 of the nClimDiv fixture for
 division 0101, and the earlier validation map records 86.2% across all divisions. The
@@ -231,9 +231,11 @@ one month old, single-author, with a synthetic self-check only.
 | scPMDI vs Wells oracle | 0.1795; 17.0% within 0.05; 15,930 months > 1 |
 
 The library matches the same oracle at `atol=5e-5`, so `scpdsi-tools` does not reproduce the
-Wells result on identical inputs. Even its Z-Index, which comes before the spell logic, is
-off by a median 0.055; so the gap starts in the water balance, CAFEC or calibration step,
-not only in the recursion or rescaling. The cause is unexplained here.
+Wells result on identical inputs. Its scZ-Index is off by a median 0.055, but the compared
+value is the final self-calibrated Z, rescaled from percentiles of the recursive PDSI, so
+this offset does not place the gap before the recursion or rescaling. Locating it would need
+the intermediate departures and the unscaled Z compared separately. The cause is unexplained
+here.
 
 ### Not run
 
@@ -260,7 +262,7 @@ not only in the recursion or rescaling. The cause is unexplained here.
 
 | Item | Observation | Proposed class |
 | --- | --- | --- |
-| `JonKing93/pdsi` vs nClimDiv and library | PDSI 70.7% within 0.05, 9,676 months > 1 | Unexplained |
+| `JonKing93/pdsi` vs nClimDiv and library | PDSI 63.6% within 0.05, 10,421 months > 1 | Unexplained |
 | `pdi.f` public release vs library fixtures | 1.4% of PDSI months more than 0.05 apart | Unexplained |
 | `soilcnst.asc` id collision | Row `101 0` reads as 1010 and is matched first | Defect in comparator (data file); draft upstream note |
 | `libperl-cpc-palmer` 0.50 | Three defects above | Defect in comparator; draft upstream report |

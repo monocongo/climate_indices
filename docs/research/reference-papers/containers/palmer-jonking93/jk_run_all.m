@@ -32,7 +32,7 @@ for k = 1:nDiv
   prf = reshape(s.pr, [12, nYears]); prof = reshape(s.pro, [12, nYears]); plossf = reshape(s.ploss, [12, nYears]);
   Pcafec = alpha .* PE + beta .* prf + gamma .* prof - delta .* plossf;
   D = P - Pcafec; Dmean = mean(abs(D(:, calib)), 2);
-  w = (PEmean + r + ro) ./ (Pmean + loss) + 2.8;
+  w = (PEmean + r + ro)' / (Pmean + loss)' + 2.8;   % as upstream pdsi.m: matrix right-division, one scalar per site
   Kprime = 1.5 * log10(w ./ Dmean) + 0.5;
   K = (17.67 / sum(Dmean .* Kprime)) .* Kprime;
   Z = K .* D;
