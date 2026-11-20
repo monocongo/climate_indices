@@ -2,7 +2,7 @@
 
 **Ticket:** REFIMPL-29, [#1631](https://github.com/monocongo/climate_indices/issues/1631). **Map:** [#1602](https://github.com/monocongo/climate_indices/issues/1602).
 **Pinned version:** `46481c48c79e878eb50ce3398ba062fd3a1ff38c` (`origin/main`, 2026-11-18).
-**Status:** complete. Everything down to "Deviations" was committed before any analysis; the deviations were committed before the runs they affect, except D3, which records a post-run correction found in review; "Results" was written afterwards. Reproduce with `uv run python scripts/characterize_palmer_recursion_divergence.py` (about 10 minutes) and `uv run python scripts/find_palmer_minimal_sequences.py` (about 4 minutes); the committed JSON files are their outputs. Re-running both scripts reproduced the committed files byte for byte.
+**Status:** complete. Everything down to "Deviations" was committed before any analysis; the deviations were committed before the runs they affect, except D3 and D4, which record post-run corrections found in review; "Results" was written afterwards. Reproduce with `uv run python scripts/characterize_palmer_recursion_divergence.py` (about 10 minutes) and `uv run python scripts/find_palmer_minimal_sequences.py` (about 4 minutes); the committed JSON files are their outputs. Re-running both scripts reproduced the committed files byte for byte.
 
 ## Question
 
@@ -135,6 +135,12 @@ The four-mechanism factorial is kept in the report as an exploratory result, lab
 
 The pre-registered H3 statistic divided the number of episodes that disappear under P-fp or P-fp2 by the number of disagreeing months, so the units did not match. The script now sums the removed episodes' lengths and divides by the disagreeing months. Both definitions give 0 on this fixture, so the H2 to H5 outcomes and every reported number are unchanged; only the process record changes. This entry was written after the first run, when the mismatch was found in review, and it is recorded here to keep the pre-registration trail complete.
 
+A later review found another aggregation error: H3 used the larger per-variant total instead of the union of episodes removed by either variant. The script now counts each removed base episode once across P-fp and P-fp2. Both variants remove zero episodes on this fixture, so this correction leaves the recorded result unchanged.
+
+### D4. H5 measures a three-month lookback, not the measured month's spell (recorded after review)
+
+The H5 implementation checks only the previous three months. It does not require the measured month to retain the same spell or exceed |X3| = 1.5. The lookback test and its 0.5% threshold remain unchanged. The results now describe agreement after three established months, rather than agreement inside an established spell. The test cannot establish whether disagreement occurs away from spell boundaries. The original pre-registration above remains unchanged for the process record.
+
 ### Other change before the first commit
 
 The plan named `suitability.drought_category` for category changes. It was replaced by the Palmer table above because that function classifies SPI/SPEI.
@@ -151,7 +157,7 @@ Everything below is for configuration **P** (Palmer's national factors) unless s
 | H2 every episode in a named class | **pass** | 3,832 episodes, 0 residual after harmonizing E, T, A, C, F, Tol (D2) |
 | H3 floating point negligible | **pass** | 0 episodes disappear under P-fp or P-fp2. The two weighting-fraction forms differ by 1 ulp (`0.8970000000000001` against `0.897`) and move PDSI by up to 5e-15, but flip no branch on any division. Both figures were observed during the run; the results JSON does not carry them |
 | H4 `pdi.f` closer to nClimDiv | **pass** | closer on 29,249 of 33,373 disagreeing months (87.6%), no ties. The provenance file says 88% for the C++ |
-| H5 agreement inside established spells | **fail** | 9,990 of 248,033 months (4.03%) disagree even after three months of the same established spell with \|X3\| > 1.5 in both machines, against a threshold of 0.5%. Disagreement is not confined to spell boundaries. Which classes produce it was not attributed |
+| H5 agreement after three established months (D4) | **fail** | 9,990 of 248,033 months (4.03%) disagree after three same-sign established months with \|X3\| > 1.5 in both machines. The threshold is 0.5%. The measured month can end or change the spell; this test does not locate disagreement relative to spell boundaries. Which classes produce it was not attributed |
 
 The largest disagreement (8.135 units, division 0501, October 1915) belongs to class A, the smallest-looking difference of all: a threshold of 0.15 against 0.1545.
 

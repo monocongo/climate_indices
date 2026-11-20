@@ -280,6 +280,120 @@ def test_generator_accepts_the_study_pin(monkeypatch: pytest.MonkeyPatch, tmp_pa
     assert json.loads(output.read_text()) == {}
 
 
+def test_source_pin_includes_common_helpers(monkeypatch: pytest.MonkeyPatch) -> None:
+    study = _load_finder().c
+    common = "src/climate_indices/drought/_palmer_common.py"
+
+    def compare(args: list[str], **kwargs: object) -> Mock:
+        return Mock(returncode=int(args[-1] == common))
+
+    monkeypatch.setattr(study.subprocess, "run", compare)
+    with pytest.raises(SystemExit, match="_palmer_common.py differs from the pinned commit"):
+        study.verify_pinned_sources()
+
+
+@pytest.mark.parametrize("name", ["_palmer_pdi", "_palmer_wells", "_palmer_duration", "_palmer_common"])
+def test_source_pin_rejects_imports_outside_the_checkout(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, name: str
+) -> None:
+    study = _load_finder().c
+    module = importlib.import_module(f"climate_indices.drought.{name}")
+    monkeypatch.setattr(module, "__file__", str(tmp_path / f"{name}.py"))
+    monkeypatch.setattr(study.subprocess, "run", Mock(return_value=Mock(returncode=0)))
+    with pytest.raises(SystemExit, match="does not resolve to the checked source"):
+        study.verify_pinned_sources()
+
+
+def test_source_pin_accepts_checkout_imports(monkeypatch: pytest.MonkeyPatch) -> None:
+    study = _load_finder().c
+    compare = Mock(return_value=Mock(returncode=0))
+    monkeypatch.setattr(study.subprocess, "run", compare)
+    study.verify_pinned_sources()
+    assert compare.call_count == len(study.STUDIED_SOURCES)
+
+
+@pytest.mark.parametrize("peaks, expected_index", [([1.0000006, 1.0000008], 2), ([1.0000004, 1.0000002], 0)])
+def test_class_maximum_uses_unrounded_values(peaks: list[float], expected_index: int) -> None:
+    study = _load_finder().c
+    summary = study._descriptive(
+        ("test",),
+        {"test": np.array([True, False, True])},
+        {"test": np.array([peaks[0], 0.0, peaks[1]])},
+        {"test": np.zeros(3)},
+        {"test": [(0, 1, "E"), (2, 3, "E")]},
+        3,
+    )
+    assert summary["largest"]["E"]["month_index"] == expected_index
+    assert summary["largest"]["E"]["abs_diff"] == round(max(peaks), 6)
+
+
+def test_h3_counts_the_union_of_removed_episode_months(monkeypatch: pytest.MonkeyPatch) -> None:
+    study = _load_finder().c
+    base = np.array([True] * 6 + [False] + [True] * 6 + [False] + [True] * 6)
+    fp, fp2 = base.copy(), base.copy()
+    fp[:6] = False
+    fp[14:] = False
+    fp2[7:13] = False
+    fp2[14:] = False
+    masks = {"fp": {"test": fp}, "fp2": {"test": fp2}}
+    monkeypatch.setattr(study, "disagree_masks", masks.__getitem__)
+
+    summary, removed_months = study._floating_point_summary(("test",), {"test": base})
+    assert summary["fp"]["base_months_removed"] == summary["fp2"]["base_months_removed"] == 12
+    assert removed_months == 18
+    head = {
+        "closer_to_nclimdiv": {"pdi": 10000, "wells": 0, "tie": 0},
+        "disagree_counts": {str(study.DISAGREE): 10000},
+        "disagree_rate": 0.063,
+        "max_abs_diff": 8.0,
+    }
+    h3 = study._hypotheses(head, removed_months, {"episodes_by_label": {}}, 0, 0)["H3"]
+    assert h3 == {"floating_point_months_share": 0.0018, "pass": False}
+
+
+def test_h5_measures_the_lookback_not_the_current_spell() -> None:
+    study = _load_finder().c
+    counts = study._h5_counts(
+        ("test",),
+        {"test": np.array([False, False, False, True])},
+        {"test": (np.array([2.0, 2.0, 2.0, -2.0]), np.array([2.0, 2.0, 2.0, 0.0]))},
+        4,
+    )
+    assert counts == (1, 1)
+
+
+@pytest.mark.parametrize("link_parent", [True, False])
+def test_results_reject_symlink_escapes(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, link_parent: bool) -> None:
+    study = _load_finder().c
+    root = tmp_path / "repo"
+    root.mkdir()
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    target = outside / "results.json"
+    target.write_text("unchanged")
+    if link_parent:
+        (root / "output").symlink_to(outside, target_is_directory=True)
+        out = root / "output" / "results.json"
+    else:
+        out = root / "results.json"
+        out.symlink_to(target)
+    monkeypatch.setattr(study, "ROOT", root)
+
+    with pytest.raises(SystemExit, match="outside the checkout|through a symlink"):
+        study.write_results(out, {})
+    assert target.read_text() == "unchanged"
+
+
+def test_results_accept_a_parent_symlink_inside_the_checkout(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    study = _load_finder().c
+    (tmp_path / "output").mkdir()
+    (tmp_path / "link").symlink_to(tmp_path / "output", target_is_directory=True)
+    monkeypatch.setattr(study, "ROOT", tmp_path)
+
+    study.write_results(tmp_path / "link" / "results.json", {"ok": True})
+    assert json.loads((tmp_path / "output" / "results.json").read_text()) == {"ok": True}
+
+
 def test_sequences_match_the_committed_json() -> None:
     """The hand-copied literals must equal the generator's committed output."""
     document = json.loads(SEQUENCES.read_text())

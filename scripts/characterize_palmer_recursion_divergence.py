@@ -44,6 +44,7 @@ STUDIED_SOURCES = (
     "src/climate_indices/drought/_palmer_pdi.py",
     "src/climate_indices/drought/_palmer_wells.py",
     "src/climate_indices/drought/_palmer_duration.py",
+    "src/climate_indices/drought/_palmer_common.py",
 )
 
 
@@ -73,6 +74,10 @@ def verify_pinned_sources() -> None:
     if git is None:
         raise SystemExit("git is unavailable; cannot verify the studied sources against the pin")
     for path in STUDIED_SOURCES:
+        module = sys.modules[f"climate_indices.drought.{Path(path).stem}"]
+        origin = getattr(module, "__file__", None)
+        if origin is None or Path(origin).resolve() != (ROOT / path).resolve():
+            raise SystemExit(f"{module.__name__} does not resolve to the checked source {ROOT / path}")
         proc = subprocess.run(  # nosec B603 # The resolved Git path and fixed arguments are trusted local inputs.
             [git, "diff", "--quiet", PINNED_COMMIT, "--", path], cwd=ROOT
         )
@@ -520,20 +525,23 @@ def _base_masks(
     return pdi_pdsi, wells_pdsi, base, x3_pairs
 
 
-def _floating_point_summary(divs: tuple[str, ...], base: dict[str, np.ndarray]) -> dict[str, dict[str, int]]:
-    """Disagreeing months and removed episodes under each floating-point variant."""
+def _floating_point_summary(
+    divs: tuple[str, ...], base: dict[str, np.ndarray]
+) -> tuple[dict[str, dict[str, int]], int]:
+    """Per-variant counts and the months in base episodes removed by either variant."""
     fp: dict[str, dict[str, int]] = {}
+    removed_episodes: set[tuple[str, int, int]] = set()
     for variant in ("fp", "fp2"):
         masks = disagree_masks(variant)
+        removed = {(d, s, e) for d in divs for s, e in episodes(base[d]) if not masks[d][s:e].any()}
+        removed_episodes.update(removed)
         fp[variant] = {
             "disagreeing_months": int(sum(m.sum() for m in masks.values())),
             "months_changed_vs_base": int(sum((masks[d] ^ base[d]).sum() for d in divs)),
-            "base_episodes_removed": int(sum(not masks[d][s:e].any() for d in divs for s, e in episodes(base[d]))),
-            "base_months_removed": int(
-                sum(e - s for d in divs for s, e in episodes(base[d]) if not masks[d][s:e].any())
-            ),
+            "base_episodes_removed": len(removed),
+            "base_months_removed": sum(e - s for _, s, e in removed),
         }
-    return fp
+    return fp, sum(e - s for _, s, e in removed_episodes)
 
 
 def _descriptive(
@@ -566,12 +574,14 @@ def _descriptive(
             k = int(diff.argmax())
             if label not in largest or diff[k] > largest[label]["abs_diff"]:
                 largest[label] = {
-                    "abs_diff": round(float(diff[k]), 6),
+                    "abs_diff": float(diff[k]),
                     "division": d,
                     "month_index": s + k,
                     "year": START_YEAR + (s + k) // 12,
                     "month": (s + k) % 12 + 1,
                 }
+    for peak in largest.values():
+        peak["abs_diff"] = round(peak["abs_diff"], 6)
     decade_totals: dict[str, int] = {}
     for month in range(n_series):
         key = str((START_YEAR + month // 12) // 10 * 10)
@@ -592,7 +602,7 @@ def _h5_counts(
     x3_pairs: dict[str, tuple[np.ndarray, np.ndarray]],
     n_series: int,
 ) -> tuple[int, int]:
-    """Months inside a same-sign established spell in both machines, and how many disagree."""
+    """Months after three same-sign established months in both machines, and how many disagree."""
     h5_n = h5_bad = 0
     for d in divs:
         x3_p, x3_w = x3_pairs[d]
@@ -609,7 +619,7 @@ def _h5_counts(
 
 def _hypotheses(
     head_p: dict[str, Any],
-    fp: dict[str, dict[str, int]],
+    floating_point_months: int,
     attribution: dict[str, Any],
     h5_n: int,
     h5_bad: int,
@@ -619,7 +629,7 @@ def _hypotheses(
     decided = closer["pdi"] + closer["wells"]
     n_dis = head_p["disagree_counts"][str(DISAGREE)]
     n_unclassified = attribution["episodes_by_label"].get("residual", 0)
-    h3_share = max(f["base_months_removed"] for f in fp.values()) / max(n_dis, 1)
+    h3_share = floating_point_months / max(n_dis, 1)
     return {
         "H1": {
             "rate": round(head_p["disagree_rate"], 6),
@@ -656,7 +666,7 @@ def run_all() -> dict[str, Any]:
     per_division_p = head_p.pop("per_division_rate")
     head_f.pop("per_division_rate")
 
-    fp = _floating_point_summary(divs, base)
+    fp, floating_point_months = _floating_point_summary(divs, base)
     attribution = attribute(wells_pdsi, base)
     episode_labels = attribution.pop("_episode_labels")
     lengths = [e - s for d in divs for s, e in episodes(base[d])]
@@ -680,7 +690,7 @@ def run_all() -> dict[str, Any]:
         "disagreement_rate_by_decade": descriptive["decade_rate"],
         "disagreeing_months_by_calendar_month": {str(i + 1): int(v) for i, v in enumerate(descriptive["by_season"])},
         "per_division_rate_P": {k: round(v, 6) for k, v in per_division_p.items()},
-        "hypotheses": _hypotheses(head_p, fp, attribution, h5_n, h5_bad),
+        "hypotheses": _hypotheses(head_p, floating_point_months, attribution, h5_n, h5_bad),
     }
 
 
@@ -726,6 +736,17 @@ def disagree_masks(variant: str) -> dict[str, np.ndarray]:
         _palmer_pdi._weighting_fraction = original
 
 
+def write_results(out: Path, results: dict[str, Any]) -> None:
+    """Write the artifact only through a resolved directory inside the checkout."""
+    parent = out.parent.resolve()
+    if not parent.is_relative_to(ROOT.resolve()):
+        raise SystemExit(f"output directory {parent} is outside the checkout")
+    out = parent / out.name
+    if out.is_symlink():
+        raise SystemExit(f"refusing to write through a symlink: {out}")
+    out.write_text(json.dumps(results, indent=1, sort_keys=True) + "\n")
+
+
 if __name__ == "__main__":
     arguments = sys.argv[1:]
     if arguments == ["probe"]:
@@ -740,7 +761,7 @@ if __name__ == "__main__":
         if out.is_symlink():
             raise SystemExit(f"refusing to write through a symlink: {out}")
         results = run_all()
-        out.write_text(json.dumps(results, indent=1, sort_keys=True) + "\n")
+        write_results(out, results)
         print(f"wrote {out}")
         failed = [name for name, hypothesis in results["hypotheses"].items() if not hypothesis["pass"]]
         if failed:
