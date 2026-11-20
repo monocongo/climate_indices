@@ -222,7 +222,6 @@
       "kind": "ancestor",
       "descendants": [
         "climate_indices",
-        "ncei_climdiv_spi (public spi.f)",
         "ncl",
         "r_sei",
         "r_spei",
@@ -258,13 +257,6 @@
           "file": "ni/src/lib/nfpfort/spi3.f",
           "line": "42, 69-74",
           "quote": "NCDC code ... This program used the program of John Kleist, Colorado State Univ. ... The subroutines and functions in upper case came from Jon Hosking, IBM. Ned Guttman"
-        },
-        {
-          "source": "ncei_climdiv_spi",
-          "ref": "NCEI public spi.f sha256 bd7bb8ab",
-          "file": "spi.f",
-          "line": "64, 284-288",
-          "quote": "written by Ned Guttman in January 1998 ... The subroutines and functions in upper case came from Jon Hosking, IBM."
         }
       ]
     },
@@ -272,7 +264,7 @@
       "name": "NCDC Palmer Fortran",
       "kind": "ancestor",
       "descendants": [
-        "climate_indices (pdsi)",
+        "climate_indices",
         "ncei_pdi_f",
         "wells_cpp",
         "sibada_scpdsi"
@@ -307,6 +299,78 @@
           "quote": "The function to calculate PDSI is based on the C++ source codes developed by Nathan Wells, Steve Goddard and Michael J. Hayes"
         }
       ]
+    }
+  },
+  "citations": {
+    "thom_ci": {
+      "source": "climate_indices",
+      "ref": "monocongo/climate_indices@a7235bf7",
+      "file": "src/climate_indices/compute.py",
+      "line": "2083",
+      "quote": "alphas = (1 + np.sqrt(1 + 4 * a / 3)) / (4 * a)"
+    },
+    "thom_xclim": {
+      "source": "xclim",
+      "ref": "xclim 1.0.0 sdist",
+      "file": "src/xclim/compute/stats.py",
+      "line": "657",
+      "quote": "a0 = (1 + np.sqrt(1 + 4 * A / 3)) / (4 * A)"
+    },
+    "thom_climatekit": {
+      "source": "r_climatekit",
+      "ref": "climatekit 0.2.3 CRAN tarball",
+      "file": "R/drought.R",
+      "line": "466",
+      "quote": "alpha <- (1 + sqrt(1 + 4 * A / 3)) / (4 * A)"
+    },
+    "climatekit_news": {
+      "source": "r_climatekit",
+      "ref": "climatekit 0.2.3 CRAN tarball",
+      "file": "NEWS.md",
+      "line": "12-13",
+      "quote": "uses the generalised logistic form, which covers any L-skewness between -1 and 1, as the SPEI package does."
+    },
+    "precip_index": {
+      "source": "precip-index",
+      "ref": "bennyistanto/precip-index@1c2ef1c3",
+      "file": "README.md",
+      "line": "42",
+      "quote": "Built upon the foundation of climate-indices by James Adams"
+    },
+    "pm_eto_commit": {
+      "source": "climate_indices",
+      "ref": "monocongo/climate_indices@e7b1f461 (2026-04-05)",
+      "file": "commit message",
+      "line": null,
+      "quote": "feat(pm-et): add Penman-Monteith FAO56 implementation and tests"
+    },
+    "pm_eto_header": {
+      "source": "climate_indices",
+      "ref": "monocongo/climate_indices@a7235bf7",
+      "file": "src/climate_indices/drought/pm_eto.py",
+      "line": "1-4",
+      "quote": "Penman-Monteith reference evapotranspiration (FAO-56) helper functions. This module implements the component equations from FAO Irrigation and Drainage Paper 56 (Allen et al., 1998)"
+    },
+    "parity_registry": {
+      "source": "climate_indices",
+      "ref": "monocongo/climate_indices@a7235bf7",
+      "file": "tests/parity_registry.py",
+      "line": "1",
+      "quote": "One parity registry and harness shared by every ported Rust kernel."
+    },
+    "eddi_authors": {
+      "source": "climate_indices",
+      "ref": "monocongo/climate_indices@a7235bf7",
+      "file": "src/climate_indices/cf_metadata_registry.py",
+      "line": "327",
+      "quote": "Hobbins, M. T., Wood, A., McEvoy, D. J., Huntington, J. L., Morton, C., "
+    },
+    "pet_fixture_trace": {
+      "source": "climate_indices",
+      "ref": "monocongo/climate_indices@5e87424c (2018-12-11)",
+      "file": "commit message",
+      "line": null,
+      "quote": "wrote numpy arrays used for testing into *.npy files, now reading these files for fixture arrays"
     }
   },
   "indices": {
@@ -1877,21 +1941,21 @@
               "class": "shared numerical routine",
               "from": null,
               "to": null,
-              "configuration": "gamma path: identical comments in the gamma fit routine, including the misspelling \"paarameters\"",
+              "configuration": "gamma path: the gamma fit routines have the same comments (apart from capitalisation), including the misspelling \"paarameters\", and the same estimator lines",
               "evidence": [
                 {
                   "source": "ncl",
                   "ref": "NCAR/ncl tag 6.6.2 (ni/src/lib/nfpfort/spid.f, spi3.f)",
                   "file": "ni/src/lib/nfpfort/spid.f",
-                  "line": "163, 197, 205, 213",
-                  "quote": "gamma - gamma paarameters ... Bogus data array but do something reasonable ... They were all zeroes. ... Use MLE"
+                  "line": "163, 197, 205, 213, 218-219",
+                  "quote": "gamma - gamma paarameters ... Bogus data array but do something reasonable ... They were all zeroes. ... Use MLE ... alpha = log(av) - sumlog / nact ... gamm  = (1.0d0 + sqrt(1.0d0 + 4.0d0*alpha/ 3.0d0)) /(4.0d0*alpha)"
                 },
                 {
                   "source": "ndmc_spi",
                   "ref": "SPIgenerator.zip sha256 ce8f37bc (1.7.6.0)",
                   "file": "code/spi_dll/gammadistributionestimatedprobabilities.cs",
-                  "line": "85, 124, 132, 140",
-                  "quote": "gamma - gamma paarameters ... Bogus Data array but do something reasonable ... They were all zeroes. ... Use MLE"
+                  "line": "85, 124, 132, 140-142",
+                  "quote": "gamma - gamma paarameters ... Bogus Data array but do something reasonable ... They were all zeroes. ... Use MLE ... alpha = Math.Log( mn ) - sumlog / nact; gamm = (1.0 + Math.Sqrt( 1.0 + 4.0 * alpha / 3.0 )) / (4.0 * alpha);"
                 }
               ],
               "routine": "unnamed common source of the gamma fit"
@@ -3851,7 +3915,7 @@
               "class": "shared numerical routine",
               "from": null,
               "to": null,
-              "configuration": "both carry NCDC Palmer Fortran: the library translated NCDC's pdinew.f, and pdi.f is a modified NCDC program",
+              "configuration": "same NCDC Palmer program family by both sources' own statements, identity unconfirmed (question 4)",
               "evidence": [
                 {
                   "source": "climate_indices",
@@ -3936,7 +4000,7 @@
               "class": "shared numerical routine",
               "from": null,
               "to": null,
-              "configuration": "both carry NCDC Palmer Fortran: the library translated NCDC's pdinew.f, and the Wells C++ is based mostly on NCDC's pdsi.f",
+              "configuration": "same NCDC Palmer program family by both sources' own statements, identity unconfirmed (question 4)",
               "evidence": [
                 {
                   "source": "climate_indices",
@@ -3985,7 +4049,7 @@
               "class": "shared numerical routine",
               "from": null,
               "to": null,
-              "configuration": "through the Wells C++, which is based mostly on NCDC's pdsi.f",
+              "configuration": "same NCDC Palmer program family by both sources' own statements, identity unconfirmed (question 4)",
               "evidence": [
                 {
                   "source": "climate_indices",
@@ -4060,7 +4124,7 @@
               "class": "shared numerical routine",
               "from": null,
               "to": null,
-              "configuration": "both are modified versions of NCDC Palmer Fortran",
+              "configuration": "same NCDC Palmer program family by both sources' own statements, identity unconfirmed (question 4)",
               "evidence": [
                 {
                   "source": "ncei_pdi_f",
@@ -4091,7 +4155,7 @@
               "class": "shared numerical routine",
               "from": null,
               "to": null,
-              "configuration": "through the Wells C++",
+              "configuration": "same NCDC Palmer program family by both sources' own statements, identity unconfirmed (question 4)",
               "evidence": [
                 {
                   "source": "ncei_pdi_f",
@@ -4219,7 +4283,7 @@
                   "ref": "monocongo/climate_indices@d0a3a401 (2026-08-08; file removed from main by 2ee0f18b)",
                   "file": "docs/superpowers/specs/2026-08-07-scpdsi-epic-design.md",
                   "line": "12",
-                  "quote": "Traced directly from the Wells, Goddard & Hayes reference C++ implementation (Sibada/scPDSI on GitHub, GPLv3 — used here for algorithm reference only"
+                  "quote": "Traced directly from the Wells, Goddard & Hayes reference C++ implementation (Sibada/scPDSI on GitHub, GPLv3 — used here for algorithm reference only; see \"Licensing\" below for why no GPL source enters this repository), specifically Rext_PDSI_mon(sc=true) and the functions it calls"
                 },
                 {
                   "source": "climate_indices",
@@ -4259,7 +4323,7 @@
                   "ref": "monocongo/climate_indices@d0a3a401 (2026-08-08; file removed from main by 2ee0f18b)",
                   "file": "docs/superpowers/specs/2026-08-07-scpdsi-epic-design.md",
                   "line": "12",
-                  "quote": "Traced directly from the Wells, Goddard & Hayes reference C++ implementation (Sibada/scPDSI on GitHub, GPLv3 — used here for algorithm reference only"
+                  "quote": "Traced directly from the Wells, Goddard & Hayes reference C++ implementation (Sibada/scPDSI on GitHub, GPLv3 — used here for algorithm reference only; see \"Licensing\" below for why no GPL source enters this repository), specifically Rext_PDSI_mon(sc=true) and the functions it calls"
                 },
                 {
                   "source": "climate_indices",

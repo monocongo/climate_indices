@@ -52,14 +52,19 @@ Pairs are every combination of the implementations listed for an index. PET is s
 
 `precip-index` is excluded from the studies (REFIMPL-03) and is recorded only as lineage evidence for the question of which packages derive from `climate_indices`.
 
-### Amendments after the method commit
+## Changes to the method
 
-Each change below was made after comparator sources had been read, and is listed here so that it can be judged as such.
+The Method section above is as committed in `13467e5a`, except for the table rows that amendments 1 and 2 add. Everything below was decided after comparator sources had been read, and is listed so that it can be judged as such.
+
+### Amendments
 
 1. **R `SPEI` added to the three PET rows.** REFIMPL-21 ([#1623](https://github.com/monocongo/climate_indices/issues/1623)) lists its `thornthwaite`, `hargreaves`, and `penman` functions.
 2. **The Wells C++ and `Sibada/scPDSI` added to the standard Palmer row.** Both compute standard PDSI as well as scPDSI. Without them, the row cannot hold the shared NCDC ancestry in finding 2, which REFIMPL-31 ([#1633](https://github.com/monocongo/climate_indices/issues/1633)) needs for its comparison across lineages.
 3. **"A common port" is read as "ports of one code base".** Two implementations that each translate the same upstream code, such as Hosking's L-moment Fortran, share a numerical routine even if neither calls the other's translation. Every such relation says whether the pair uses the *same dependency* or *separate ports of the same Fortran*, so a reader can apply the narrower reading instead.
 4. **Notes.** A statement about another implementation that fits no class, such as "loosely based on", is recorded as a note on the pair and does not change its class.
+5. **Program families.** The library's `pdsi`, `pdi.f`, and the Wells C++ each say they carry code from NCDC's Palmer Fortran, under three file names (`pdinew.f`, "the program in use at" NCDC, `pdsi.f`). Their pairs are classed *shared numerical routine*, and each such relation is labelled "same NCDC Palmer program family ..., identity unconfirmed (question 4)". The alternative was to call them *independent* against both sources' own statements.
+6. **Strongest class over configurations.** The method gave a pair "the class in the configurations that the study tickets use". It is applied as the strongest class over all configurations, which here gives the same result because the studies use those configurations (see "Configurations" below).
+7. **Comparisons with unread products.** The product rule decides what can be said about code that was not read. A comparison that this repository made against a product or service is about the repository's own tests and documents, so the pair is *validated against* even though the product's code was not read.
 
 ### How the method was applied
 
@@ -87,9 +92,9 @@ There are 177 pairs over eight indices. Every *unknown* pair involves a provider
 ### Findings
 
 1. **One L-moment code base sits under most parameter fits.** J. R. M. Hosking's Fortran L-moment routines (IBM Research Report RC20525) reach the comparison by four routes. R `lmom`, Hosking's own package, is called by R `SPEI` for its default PWM fits and by R `SEI` for `method = "lmoment"`. Python `lmoments3`, a translation of `lmoments.f`, is used by `standard_precip` (`fit_type = "lmom"`) and by `xclim` (`method = "PWM"`). `climate_indices.lmoments` is the library's own translation of `SAMLMR`, the Pearson III routine, and `PELGLO`. NCL's Pearson III path embeds the routines in Fortran. Pairs that share a dependency, such as R `SPEI` and R `SEI`, run the same code. Other pairs run separate ports of the same Fortran, and their agreement is expected rather than independent. The six-decimal match between R `SPEI` `ub-pwm` and `standard_precip` `lmom` in `comparators.md` is consistent with this.
-2. **The Palmer recursions share an NCDC ancestor.** The library's standard `pdsi` was translated from NCDC's `pdinew.f` ("new translation of pdinew.f", commit `0b15ec8c`). `pdi.f` is "a modified version of the program in use at the National Climatic Data Center" (`pdi.f`:13-16). The Wells, Goddard and Hayes C++ is "based mostly on the source code of pdsi.f", a Fortran program from NCDC (`scPDSI/src/scpdsi.cpp`:39-41). The `pdi.f` and Wells lineages that REFIMPL-29 compared are therefore branches of NCDC's Fortran, not independent implementations. Their 6.3% disagreement measures how far the two branches diverged. The sources do not say whether `pdinew.f`, `pdi.f`, and Wells's `pdsi.f` are the same program (question 4). The library's `scpdsi` is *derived*: its design says it was "traced directly from the Wells, Goddard & Hayes reference C++ implementation (`Sibada/scPDSI` ...)". Whether that tracing was a clean-room reimplementation is a licensing question for REFIMPL-27 ([#1629](https://github.com/monocongo/climate_indices/issues/1629)). `JonKing93/pdsi` ("based on a script written by Dave Meko", `README.md`:75) and `ktripa/scpdsi-tools` (follows Palmer 1965 and Wells et al. 2004, `scpdsi_tools.py`:14-15) state no code ancestry. They are the only *independent* Palmer comparators.
+2. **The Palmer recursions share an NCDC ancestor.** The library's standard `pdsi` was translated from NCDC's `pdinew.f` ("new translation of pdinew.f", commit `0b15ec8c`). `pdi.f` is "a modified version of the program in use at the National Climatic Data Center" (`pdi.f`:13-16). The Wells, Goddard and Hayes C++ is "based mostly on the source code of pdsi.f", a Fortran program from NCDC (`scPDSI/src/scpdsi.cpp`:39-41). The `pdi.f` and Wells lineages are therefore branches of one NCDC program family, not independent implementations. The sources do not say whether `pdinew.f`, `pdi.f`, and Wells's `pdsi.f` are the same program (question 4). [REFIMPL-29](https://github.com/monocongo/climate_indices/issues/1631) traced the two recursions' disagreement on identical Z-Index and duration factors (6.3% of months) to six code-level differences between them. By this finding, those are differences between branches, not between independent implementations. The library's `scpdsi` is *derived*: its design says it was "traced directly from the Wells, Goddard & Hayes reference C++ implementation (`Sibada/scPDSI` ...)". Whether that tracing was a clean-room reimplementation is a licensing question for REFIMPL-27 ([#1629](https://github.com/monocongo/climate_indices/issues/1629)). `JonKing93/pdsi` ("based on a script written by Dave Meko", `README.md`:75) and `ktripa/scpdsi-tools` (follows Palmer 1965 and Wells et al. 2004, `scpdsi_tools.py`:14-15) state no code ancestry. They are the only *independent* Palmer comparators.
 3. **NCEI climdiv SPI: its operational code is not public, but its public Fortran is not independent.** The library is *validated against* the product. NCEI's public `spi.f` (Ned Guttman, 1998) carries Hosking's routines in upper case, as the library's `lmoments.py` translates them, and NCL's Pearson III path embeds the same NCDC code under the same header. A 2018 commit also says the library's earlier Pearson code was "originally translated from NCDC global SPI". Whether that program is `spi.f` is not stated (question 7), and whether the operational product runs `spi.f` is question 4. Until those are answered, every pair with the product is *unknown* or *validated against*. The "plausible but not airtight" independence recorded in `tests/fixture/ncei_spi/provenance.json` still stands, with this shared ancestry as a reason to doubt it.
-4. **Thom's approximation is shared as a formula, and once as code.** `climate_indices`, `xclim` (`APP`), `climatekit`, the NDMC SPI Generator, and NCL's gamma path all compute Thom's (1958) closed form. None cites another's code, so for most pairs this is not lineage. The NDMC and NCL gamma fit routines are the exception: their comments match line for line, including the misspelling "gamma paarameters" and "Bogus data array but do something reasonable". So their parameter estimator comes from one source, which neither names (question 6). `climatekit` calls its Thom fit "consistent with the SPEI R package" (`R/drought.R`:444-446). R `SPEI` fits gamma with `lmom::pelgam`, so that statement is recorded as a note, not lineage.
+4. **Thom's approximation is shared as a formula, and once as code.** `climate_indices`, `xclim` (`APP`), `climatekit`, the NDMC SPI Generator, and NCL's gamma path all compute Thom's (1958) closed form. None cites another's code, so for most pairs this is not lineage. The NDMC and NCL gamma fit routines are the exception. Their comments match apart from capitalisation, including the misspelling "gamma paarameters" and "Bogus data array but do something reasonable", and their estimator lines are the same. So their parameter estimator comes from one source, which neither names (question 6). `climatekit` calls its Thom fit "consistent with the SPEI R package" (`R/drought.R`:444-446). R `SPEI` fits gamma with `lmom::pelgam`, so that statement is recorded as a note, not lineage.
 5. **`xclim` was tuned to `climate_indices`.** Its tests take gamma `APP` reference values from the library. Its SPI docstring says the library's results can be reproduced. Its changelog records that the SPEI offset was changed "to better reproduce results in the reference library". Its log-logistic SPEI reference values come from R `SPEI`.
 6. **PET.** The library's `eto` module (Thornthwaite and Hargreaves) is *derived* from `PyETo`. The module credits PyETo (`eto.py`:5-6), the initial 2017 commit carried the same credit, and the PET literature fixture names PyETo as the project `eto` "derives its implementation from". `pm_eto` (added 2026) carries no such credit. `pyet` tests its Hargreaves and FAO-56 values against R `Evapotranspiration`. No other PET pair has a stated relation.
 7. **This repository's own comparisons.** The library's tests or research documents compare its output with R `SPEI`, SPEIbase, R `SEI`, R `SCI`, NCEI climdiv SPI, NOAA PSL EDDI, nClimDiv, `Sibada/scPDSI`, and both providers. A comparison does not mean the library was changed to match. It does mean that agreement on those pairs is not independent confirmation.
@@ -166,7 +171,7 @@ Each table lists the pairs that are not *independent*, plus *independent* pairs 
 | R climatekit / Climate Engine API | *unknown* | code not public; question 1 |
 | R climatekit / Earth Engine GRIDMET/DROUGHT | *unknown* | code not public; question 2 |
 | R climatekit / NCEI climdiv SPI | *unknown* | code not public; question 4 |
-| NDMC SPI Generator / NCL dim_spi_n | *shared numerical routine* | *shared numerical routine* (unnamed common source of the gamma fit; gamma path: identical comments in the gamma fit routine, including the misspelling "paarameters") |
+| NDMC SPI Generator / NCL dim_spi_n | *shared numerical routine* | *shared numerical routine* (unnamed common source of the gamma fit; gamma path: the gamma fit routines have the same comments (apart from capitalisation), including the misspelling "paarameters", and the same estimator lines) |
 | NDMC SPI Generator / Climate Engine API | *unknown* | code not public; question 1 |
 | NDMC SPI Generator / Earth Engine GRIDMET/DROUGHT | *unknown* | code not public; question 2 |
 | NDMC SPI Generator / NCEI climdiv SPI | *unknown* | code not public; question 4 |
@@ -260,13 +265,13 @@ No pair is *independent*.
 
 | Pair | Class | Relation found |
 | --- | --- | --- |
-| climate_indices / NCEI pdi.f | *shared numerical routine* | *shared numerical routine* (NCDC Palmer Fortran; both carry NCDC Palmer Fortran: the library translated NCDC's pdinew.f, and pdi.f is a modified NCDC program) |
+| climate_indices / NCEI pdi.f | *shared numerical routine* | *shared numerical routine* (NCDC Palmer Fortran; same NCDC Palmer program family by both sources' own statements, identity unconfirmed (question 4)) |
 | climate_indices / nClimDiv (NCEI) | *validated against* | *validated against* (climate_indices → nClimDiv (NCEI)) |
-| climate_indices / Wells, Goddard and Hayes C++ | *shared numerical routine* | *shared numerical routine* (NCDC Palmer Fortran; both carry NCDC Palmer Fortran: the library translated NCDC's pdinew.f, and the Wells C++ is based mostly on NCDC's pdsi.f) |
-| climate_indices / Sibada/scPDSI | *validated against* | *validated against* (climate_indices → Sibada/scPDSI; the oracle harness run in standard-PDSI mode reproduces the library's Z-Index)<br>*shared numerical routine* (NCDC Palmer Fortran; through the Wells C++, which is based mostly on NCDC's pdsi.f) |
+| climate_indices / Wells, Goddard and Hayes C++ | *shared numerical routine* | *shared numerical routine* (NCDC Palmer Fortran; same NCDC Palmer program family by both sources' own statements, identity unconfirmed (question 4)) |
+| climate_indices / Sibada/scPDSI | *validated against* | *validated against* (climate_indices → Sibada/scPDSI; the oracle harness run in standard-PDSI mode reproduces the library's Z-Index)<br>*shared numerical routine* (NCDC Palmer Fortran; same NCDC Palmer program family by both sources' own statements, identity unconfirmed (question 4)) |
 | NCEI pdi.f / nClimDiv (NCEI) | *unknown* | code not public; question 4<br>note: pdi.f is NCEI's public version of its Palmer program, "not an exact copy" of what it runs; question 4. |
-| NCEI pdi.f / Wells, Goddard and Hayes C++ | *shared numerical routine* | *shared numerical routine* (NCDC Palmer Fortran; both are modified versions of NCDC Palmer Fortran) |
-| NCEI pdi.f / Sibada/scPDSI | *shared numerical routine* | *shared numerical routine* (NCDC Palmer Fortran; through the Wells C++) |
+| NCEI pdi.f / Wells, Goddard and Hayes C++ | *shared numerical routine* | *shared numerical routine* (NCDC Palmer Fortran; same NCDC Palmer program family by both sources' own statements, identity unconfirmed (question 4)) |
+| NCEI pdi.f / Sibada/scPDSI | *shared numerical routine* | *shared numerical routine* (NCDC Palmer Fortran; same NCDC Palmer program family by both sources' own statements, identity unconfirmed (question 4)) |
 | nClimDiv (NCEI) / JonKing93/pdsi | *unknown* | code not public; question 4 |
 | nClimDiv (NCEI) / Wells, Goddard and Hayes C++ | *unknown* | code not public; question 4 |
 | nClimDiv (NCEI) / Sibada/scPDSI | *unknown* | code not public; question 4 |
@@ -344,17 +349,21 @@ For REFIMPL-40 ([#1642](https://github.com/monocongo/climate_indices/issues/1642
 
 ## Evidence
 
-Every citation behind a relation, note, stated origin, or ancestor, grouped by the implementation it comes from. `lineage.json` holds the same entries.
+Every citation behind a relation, note, stated origin, ancestor, or statement in the findings, grouped by the implementation it comes from. `lineage.json` holds the same entries, the last group under `citations`.
 
 **climate_indices**
 
 - monocongo/climate_indices@0b15ec8c (2017-07-28), `commit message`: "updates to function signatures, new translation of pdinew.f, more tests"
 - monocongo/climate_indices@224ef6bc (2017-06-21), `commit message`: "first draft of function to reproduce the water balance code in pdinew.f"
+- monocongo/climate_indices@5e87424c (2018-12-11), `commit message`: "wrote numpy arrays used for testing into *.npy files, now reading these files for fixture arrays"
 - monocongo/climate_indices@6dde1a55 (2018-10-03), `commit message`: "initial code for Hargreaves, with previous Thornthwaite folded into same file"
 - monocongo/climate_indices@a7235bf7, `docs/research/earthengine-climate-engine-pilot.md`:9-13: "Measure agreement between climate_indices and two provider products that use gridMET inputs."
+- monocongo/climate_indices@a7235bf7, `src/climate_indices/cf_metadata_registry.py`:327: "Hobbins, M. T., Wood, A., McEvoy, D. J., Huntington, J. L., Morton, C., "
+- monocongo/climate_indices@a7235bf7, `src/climate_indices/compute.py`:2083: "alphas = (1 + np.sqrt(1 + 4 * a / 3)) / (4 * a)"
 - monocongo/climate_indices@a7235bf7, `src/climate_indices/drought/_palmer_pdi.py`:1: "NCEI pdi.f-lineage Palmer spell recursion for the standard PDSI family."
 - monocongo/climate_indices@a7235bf7, `src/climate_indices/drought/eto.py`:5-6: "Derived from original code found in PyETo: https://github.com/woodcrafty/PyETo"
 - monocongo/climate_indices@a7235bf7, `src/climate_indices/drought/eto.py`:558: "Based on equation 52 in Allen et al (1998)."
+- monocongo/climate_indices@a7235bf7, `src/climate_indices/drought/pm_eto.py`:1-4: "Penman-Monteith reference evapotranspiration (FAO-56) helper functions. This module implements the component equations from FAO Irrigation and Drainage Paper 56 (Allen et al., 1998)"
 - monocongo/climate_indices@a7235bf7, `src/climate_indices/drought/self_calibration.py`:8: "Every function here is a faithful port of the reference algorithm"
 - monocongo/climate_indices@a7235bf7, `src/climate_indices/drought/self_calibration.py`:89: "Ports the reference implementation's kthLargest()"
 - monocongo/climate_indices@a7235bf7, `src/climate_indices/lmoments.py`:279: "This is a Python translation of the original Fortran subroutine SAMLMR()"
@@ -369,13 +378,15 @@ Every citation behind a relation, note, stated origin, or ancestor, grouped by t
 - monocongo/climate_indices@a7235bf7, `tests/fixture/spei_loglogistic/provenance.json`:2: "R SPEI package (CRAN)"
 - monocongo/climate_indices@a7235bf7, `tests/fixture/speibase/provenance.json`:123: "PLAUSIBILITY CHECK ONLY, NOT EXTERNAL NUMERICAL VALIDATION."
 - monocongo/climate_indices@a7235bf7, `tests/fixture/zero_handling/provenance.json`:2: "R SEI and SCI packages"
+- monocongo/climate_indices@a7235bf7, `tests/parity_registry.py`:1: "One parity registry and harness shared by every ported Rust kernel."
 - monocongo/climate_indices@a7235bf7, `tests/test_nclimdiv_reference.py`:1-5: "Palmer-family comparisons against NOAA nClimDiv. ... against the operational NOAA NCEI nClimDiv reference arrays"
 - monocongo/climate_indices@a7235bf7, `tests/test_noaa_eddi_reference.py`:3-4: "Validates the library's EDDI implementation against pre-computed EDDI values from the NOAA Physical Sciences Laboratory (PSL)."
 - monocongo/climate_indices@a7235bf7, `tests/test_speibase_like_for_like.py`:1: "Like-for-like SPEI comparison against the CSIC SPEIbase v2.11 grids."
 - monocongo/climate_indices@c3b2d165 (2017-09-07), `commit message`: "new version which matches to the original pdinew.f results >99%"
 - monocongo/climate_indices@cccf6ff9 (initial commit, 2017-06-13), `thornthwaite.py`:7: "Derived from original code found here: https://github.com/woodcrafty/PyETo"
-- monocongo/climate_indices@d0a3a401 (2026-08-08; file removed from main by 2ee0f18b), `docs/superpowers/specs/2026-08-07-scpdsi-epic-design.md`:12: "Traced directly from the Wells, Goddard & Hayes reference C++ implementation (Sibada/scPDSI on GitHub, GPLv3 — used here for algorithm reference only"
+- monocongo/climate_indices@d0a3a401 (2026-08-08; file removed from main by 2ee0f18b), `docs/superpowers/specs/2026-08-07-scpdsi-epic-design.md`:12: "Traced directly from the Wells, Goddard & Hayes reference C++ implementation (Sibada/scPDSI on GitHub, GPLv3 — used here for algorithm reference only; see "Licensing" below for why no GPL source enters this repository), specifically Rext_PDSI_mon(sc=true) and the functions it calls"
 - monocongo/climate_indices@d106d578 (2018-10-28), `commit message`: "new code for Pearson distribution fitting, replacing previous code that was originally translated from NCDC global SPI"
+- monocongo/climate_indices@e7b1f461 (2026-04-05), `commit message`: "feat(pm-et): add Penman-Monteith FAO56 implementation and tests"
 
 **xclim**
 
@@ -383,6 +394,7 @@ Every citation behind a relation, note, stated origin, or ancestor, grouped by t
 - xclim 1.0.0 sdist, `src/xclim/compute/_agro.py`:1109: "The results from climate_indices library can be reproduced with method = "APP" and fitwkargs = {"floc": 0}"
 - xclim 1.0.0 sdist, `src/xclim/compute/stats.py`:172-175: "if method == "PWM" and not hasattr(dist, "lmom_fit"): ... Please pass an instance from the lmoments3 package."
 - xclim 1.0.0 sdist, `src/xclim/compute/stats.py`:54-56: "if method in ["ML", "MLE"]: ... params = dist.fit(x, *args, method="mle", **kwargs, **fitkwargs)"
+- xclim 1.0.0 sdist, `src/xclim/compute/stats.py`:657: "a0 = (1 + np.sqrt(1 + 4 * A / 3)) / (4 * A)"
 - xclim 1.0.0 sdist, `tests/test_indices.py`:351-353: "gamma/APP reference results: Obtained with monocongo/climate_indices library; MS/fisk/ML reference results: Obtained with R package SPEI"
 
 **spei (Vonk)**
@@ -416,16 +428,18 @@ Every citation behind a relation, note, stated origin, or ancestor, grouped by t
 
 **R climatekit**
 
+- climatekit 0.2.3 CRAN tarball, `NEWS.md`:12-13: "uses the generalised logistic form, which covers any L-skewness between -1 and 1, as the SPEI package does."
 - climatekit 0.2.3 CRAN tarball, `R/drought.R`:444-446: "Uses Maximum Likelihood Estimation via Thom's (1958) approximation, as specified by the WMO User Guide (WMO-No. 1090) and consistent with the SPEI R package."
+- climatekit 0.2.3 CRAN tarball, `R/drought.R`:466: "alpha <- (1 + sqrt(1 + 4 * A / 3)) / (4 * A)"
 
 **NDMC SPI Generator**
 
-- SPIgenerator.zip sha256 ce8f37bc (1.7.6.0), `code/spi_dll/gammadistributionestimatedprobabilities.cs`:85, 124, 132, 140: "gamma - gamma paarameters ... Bogus Data array but do something reasonable ... They were all zeroes. ... Use MLE"
+- SPIgenerator.zip sha256 ce8f37bc (1.7.6.0), `code/spi_dll/gammadistributionestimatedprobabilities.cs`:85, 124, 132, 140-142: "gamma - gamma paarameters ... Bogus Data array but do something reasonable ... They were all zeroes. ... Use MLE ... alpha = Math.Log( mn ) - sumlog / nact; gamm = (1.0 + Math.Sqrt( 1.0 + 4.0 * alpha / 3.0 )) / (4.0 * alpha);"
 
 **NCL dim_spi_n**
 
 - NCAR/ncl tag 6.6.2 (ni/src/lib/nfpfort/spid.f, spi3.f), `ni/src/lib/nfpfort/spi3.f`:42, 69-74: "NCDC code ... This program used the program of John Kleist, Colorado State Univ. ... The subroutines and functions in upper case came from Jon Hosking, IBM. Ned Guttman"
-- NCAR/ncl tag 6.6.2 (ni/src/lib/nfpfort/spid.f, spi3.f), `ni/src/lib/nfpfort/spid.f`:163, 197, 205, 213: "gamma - gamma paarameters ... Bogus data array but do something reasonable ... They were all zeroes. ... Use MLE"
+- NCAR/ncl tag 6.6.2 (ni/src/lib/nfpfort/spid.f, spi3.f), `ni/src/lib/nfpfort/spid.f`:163, 197, 205, 213, 218-219: "gamma - gamma paarameters ... Bogus data array but do something reasonable ... They were all zeroes. ... Use MLE ... alpha = log(av) - sumlog / nact ... gamm  = (1.0d0 + sqrt(1.0d0 + 4.0d0*alpha/ 3.0d0)) /(4.0d0*alpha)"
 
 **NCEI climdiv SPI**
 
@@ -466,3 +480,7 @@ Every citation behind a relation, note, stated origin, or ancestor, grouped by t
 **ktripa/scpdsi-tools**
 
 - ktripa/scpdsi-tools@c73b22c8, `scpdsi_tools.py`:14-15: "Self-calibration follows Wells et al. (2004); the Palmer water balance and recursion follow Palmer (1965)."
+
+**precip-index**
+
+- bennyistanto/precip-index@1c2ef1c3, `README.md`:42: "Built upon the foundation of climate-indices by James Adams"
