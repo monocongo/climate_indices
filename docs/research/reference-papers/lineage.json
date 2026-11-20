@@ -1536,28 +1536,38 @@
         {
           "a": "r_spei",
           "b": "r_sci",
-          "class": "independent",
+          "class": "shared numerical routine",
           "direction": null,
-          "relations": [],
-          "notes": [
+          "relations": [
             {
-              "note": "Both depend on lmomco: R SPEI for PWM-to-L-moment conversion and fallback fits, R SCI only for maximum-likelihood starting values, which do not set the value.",
+              "class": "shared numerical routine",
+              "from": null,
+              "to": null,
+              "configuration": "same dependency (lmomco): R SPEI's lmomco fallback (pargam, parpe3) when lmom's pel* routine errors; R SCI's starting estimates (pargam, parpe3 on unbiased L-moments), which become the fit when start.fun.fix = TRUE and the maximum-likelihood fit fails or does not converge",
               "evidence": [
                 {
                   "source": "r_spei",
                   "ref": "SPEI 1.8.1 CRAN tarball",
                   "file": "R/spei.R",
-                  "line": "665-695",
-                  "quote": "\"ub-pwm\" = PWM(x.mon, order = 0:2) ... \"log-Logistic\" = tryCatch(pelglo(fortran_vec) ... \"Gamma\" = tryCatch(pelgam(... \"PearsonIII\" = tryCatch(pelpe3("
+                  "line": "685-695",
+                  "quote": "\"Gamma\" = tryCatch(pelgam(fortran_vec), error = function(e) { pargam(lmom)$para ... \"PearsonIII\" = tryCatch(pelpe3(fortran_vec), error = function(e) { parpe3(lmom)$para"
                 },
                 {
                   "source": "r_sci",
                   "ref": "SCI 1.0-3 CRAN tarball",
-                  "file": "DESCRIPTION",
-                  "line": "22",
-                  "quote": "Depends: fitdistrplus, lmomco"
+                  "file": "R/distrstart.r",
+                  "line": "13-16, 86",
+                  "quote": "x.lmom <- try(lmom.ub(x),TRUE) ... result <- pargam(x.lmom, checklmom = FALSE) ... estimate <- parpe3(x.lmom, checklmom = FALSE)"
+                },
+                {
+                  "source": "r_sci",
+                  "ref": "SCI 1.0-3 CRAN tarball",
+                  "file": "R/sci.r",
+                  "line": "26, 101-103, 122, 132-134",
+                  "quote": "start.fun.fix=FALSE ... fail.value <- mledist.par$start ... x.fit[[mm]] <- fail.value ... use starting values instead."
                 }
-              ]
+              ],
+              "routine": "lmomco parameter estimators (pargam, parpe3)"
             }
           ]
         },
@@ -4432,8 +4442,8 @@
   "summary": {
     "derived": 6,
     "validated against": 22,
-    "shared numerical routine": 33,
-    "independent": 66,
+    "shared numerical routine": 34,
+    "independent": 65,
     "unknown": 50
   }
 }

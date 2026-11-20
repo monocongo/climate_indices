@@ -63,7 +63,7 @@ The Method section above is as committed in `13467e5a`, except for the table row
 3. **"A common port" is read as "ports of one code base".** Two implementations that each translate the same upstream code, such as Hosking's L-moment Fortran, share a numerical routine even if neither calls the other's translation. Every such relation says whether the pair uses the *same dependency* or *separate ports of the same Fortran*, so a reader can apply the narrower reading instead.
 4. **Notes.** A statement about another implementation that fits no class, such as "loosely based on", is recorded as a note on the pair and does not change its class.
 5. **Program families.** The library's `pdsi`, `pdi.f`, and the Wells C++ each say they carry code from NCDC's Palmer Fortran, under three file names (`pdinew.f`, "the program in use at" NCDC, `pdsi.f`). Their pairs are classed *shared numerical routine*, and each such relation is labelled "same NCDC Palmer program family ..., identity unconfirmed (question 4)". The alternative was to call them *independent* against both sources' own statements. The excerpts cited for these pairs establish a common NCDC origin, not a routine that both implementations use to set the index value. Under a reading that requires a named common routine, the four pairs that rest on this origin alone (the library's `pdsi` with `pdi.f`, the library's `pdsi` with the Wells C++, `pdi.f` with the Wells C++, and `pdi.f` with `Sibada/scPDSI`) would be *independent*: standard Palmer *shared numerical routine* 4 to 0 and *independent* 4 to 8. The library / `Sibada/scPDSI` pair would keep *validated against*. Each relation's label, "identity unconfirmed (question 4)", lets a reader apply that reading.
-6. **Strongest class over configurations.** The method gave a pair "the class in the configurations that the study tickets use". It is applied as the strongest class over all configurations, which here gives the same result because the studies use those configurations (see "Configurations" below).
+6. **Strongest class over configurations.** The method gave a pair "the class in the configurations that the study tickets use". It is applied as the strongest class over all configurations, which here gives the same result because the studies use those configurations (see "Configurations" below), with one exception. SPI for R `SPEI` and R `SCI` is *shared numerical routine* because both use lmomco's `pargam` and `parpe3` in fallback paths only (R `SPEI` when `lmom`'s estimator errors, R `SCI` with `start.fun.fix = TRUE` after a failed maximum-likelihood fit). Neither path is the default, and the study tickets do not use them, so under the method's original wording that pair would be *independent*.
 7. **Comparisons with unread products.** The product rule decides what can be said about code that was not read. A comparison that this repository made against a product or service is about the repository's own tests and documents, so the pair is *validated against* even though the product's code was not read.
 
 ### How the method was applied
@@ -79,7 +79,7 @@ There are 177 pairs over eight indices. Every *unknown* pair involves a provider
 
 | Index | Pairs | derived | validated against | shared numerical routine | independent | unknown |
 | --- | --- | --- | --- | --- | --- | --- |
-| SPI | 78 | 0 | 9 | 16 | 23 | 30 |
+| SPI | 78 | 0 | 9 | 17 | 22 | 30 |
 | SPEI | 36 | 0 | 6 | 13 | 4 | 13 |
 | PET Thornthwaite | 6 | 1 | 0 | 0 | 5 | 0 |
 | PET Hargreaves | 15 | 1 | 1 | 0 | 13 | 0 |
@@ -87,7 +87,7 @@ There are 177 pairs over eight indices. Every *unknown* pair involves a provider
 | EDDI and non-parametric | 6 | 0 | 3 | 0 | 0 | 3 |
 | PDSI, PHDI, PMDI, Z-Index | 15 | 1 | 2 | 4 | 4 | 4 |
 | scPDSI | 6 | 3 | 0 | 0 | 3 | 0 |
-| **All** | **177** | **6** | **22** | **33** | **66** | **50** |
+| **All** | **177** | **6** | **22** | **34** | **65** | **50** |
 
 ### Findings
 
@@ -153,7 +153,7 @@ Each table lists the pairs that are not *independent*, plus *independent* pairs 
 | standard_precip / Climate Engine API | *unknown* | code not public; question 1 |
 | standard_precip / Earth Engine GRIDMET/DROUGHT | *unknown* | code not public; question 2 |
 | standard_precip / NCEI climdiv SPI | *unknown* | code not public; question 4 |
-| R SPEI / R SCI | *independent* | note: Both depend on lmomco: R SPEI for PWM-to-L-moment conversion and fallback fits, R SCI only for maximum-likelihood starting values, which do not set the value. |
+| R SPEI / R SCI | *shared numerical routine* | *shared numerical routine* (lmomco parameter estimators (pargam, parpe3); same dependency (lmomco): R SPEI's lmomco fallback (pargam, parpe3) when lmom's pel* routine errors; R SCI's starting estimates (pargam, parpe3 on unbiased L-moments), which become the fit when start.fun.fix = TRUE and the maximum-likelihood fit fails or does not converge) |
 | R SPEI / R SEI | *shared numerical routine* | *shared numerical routine* (Hosking L-moment routines (IBM RC20525); same dependency: R SPEI pp-pwm and ub-pwm fits (default) (lmom dependency); R SEI method = "lmoment" (lmom dependency)) |
 | R SPEI / R climatekit | *independent* | note: climatekit calls its Thom fit "consistent with the SPEI R package" without comparing output; R SPEI fits gamma with lmom::pelgam, not Thom's approximation. |
 | R SPEI / NCL dim_spi_n | *shared numerical routine* | *shared numerical routine* (Hosking L-moment routines (IBM RC20525); separate ports of the same Fortran: R SPEI pp-pwm and ub-pwm fits (default) (lmom dependency); NCL dim_spi_n Pearson III path (opt@spi_type = 3) (embedded Fortran (NCDC spi code))) |
@@ -413,12 +413,15 @@ Every citation behind a relation, note, stated origin, ancestor, or statement in
 **R SPEI**
 
 - SPEI 1.8.1 CRAN tarball, `R/spei.R`:665-695: ""ub-pwm" = PWM(x.mon, order = 0:2) ... "log-Logistic" = tryCatch(pelglo(fortran_vec) ... "Gamma" = tryCatch(pelgam(... "PearsonIII" = tryCatch(pelpe3("
+- SPEI 1.8.1 CRAN tarball, `R/spei.R`:685-695: ""Gamma" = tryCatch(pelgam(fortran_vec), error = function(e) { pargam(lmom)$para ... "PearsonIII" = tryCatch(pelpe3(fortran_vec), error = function(e) { parpe3(lmom)$para"
 - SPEI 1.8.1 CRAN tarball, `R/spi.R`:13: "sol <- spei("
 - lmom 3.3 CRAN tarball (dependency), `DESCRIPTION`:Author: "Author: J. R. M. Hosking [aut, cre]"
 
 **R SCI**
 
 - SCI 1.0-3 CRAN tarball, `DESCRIPTION`:22: "Depends: fitdistrplus, lmomco"
+- SCI 1.0-3 CRAN tarball, `R/distrstart.r`:13-16, 86: "x.lmom <- try(lmom.ub(x),TRUE) ... result <- pargam(x.lmom, checklmom = FALSE) ... estimate <- parpe3(x.lmom, checklmom = FALSE)"
+- SCI 1.0-3 CRAN tarball, `R/sci.r`:26, 101-103, 122, 132-134: "start.fun.fix=FALSE ... fail.value <- mledist.par$start ... x.fit[[mm]] <- fail.value ... use starting values instead."
 - SCI 1.0-3 CRAN tarball, `R/sci.r`:117: "suppressWarnings(do.call(mledist, mledist.par))"
 
 **R SEI**
