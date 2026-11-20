@@ -18,7 +18,7 @@ from __future__ import annotations
 
 import json
 import shutil
-import subprocess
+import subprocess  # nosec B404 # Only Git runs, with fixed arguments and no shell.
 import sys
 import types
 from collections.abc import Callable
@@ -73,8 +73,9 @@ def verify_pinned_sources() -> None:
     if git is None:
         raise SystemExit("git is unavailable; cannot verify the studied sources against the pin")
     for path in STUDIED_SOURCES:
-        # nosec B603 B607 - literal git arguments, no shell
-        proc = subprocess.run([git, "diff", "--quiet", PINNED_COMMIT, "--", path], cwd=ROOT)
+        proc = subprocess.run(  # nosec B603 # The resolved Git path and fixed arguments are trusted local inputs.
+            [git, "diff", "--quiet", PINNED_COMMIT, "--", path], cwd=ROOT
+        )
         if proc.returncode == 1:
             raise SystemExit(f"{path} differs from the pinned commit {PINNED_COMMIT}; update the pin first")
         if proc.returncode != 0:
