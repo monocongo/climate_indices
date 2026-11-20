@@ -20,7 +20,7 @@ the source says; leave a section empty rather than guess.
 
 One short quote, under fifteen words, with its page.
 
-> 
+>
 
 ## What the source does not say
 
