@@ -12,9 +12,17 @@ UPSTREAM_SHA=9a636117577f476a93f206897fb91dc94d4eddc2   # JonKing93/pdsi main, 2
 IMAGE=gnuoctave/octave@sha256:100d394c57b86469748d26ddafcf73a1074338a66dabcababe2e4e05146772b9
 
 mkdir -p "$WORK/data" "$WORK/out"
-[[ -d "$WORK/upstream/.git" ]] || git clone -q https://github.com/JonKing93/pdsi.git "$WORK/upstream"
+# Refuse to discard local changes in a reused checkout; ignored build artifacts are left in place.
+if [[ -d "$WORK/upstream/.git" ]]; then
+  if [[ -n "$(git -C "$WORK/upstream" status --porcelain)" ]]; then
+    echo "error: $WORK/upstream has local changes; remove it or choose another work directory" >&2
+    exit 1
+  fi
+else
+  git clone -q https://github.com/JonKing93/pdsi.git "$WORK/upstream"
+fi
 git -C "$WORK/upstream" reset --hard -q "$UPSTREAM_SHA"
-git -C "$WORK/upstream" clean -fdx -q
+git -C "$WORK/upstream" clean -fd -q
 uv run --project "$REPO" python -I "$HERE/prep.py" "$REPO" "$WORK/data"
 docker run --rm --platform linux/amd64 --network none \
   -v "$WORK/upstream:/work/upstream:ro" -v "$WORK/data:/work/data:ro" -v "$WORK/out:/work/out" \
