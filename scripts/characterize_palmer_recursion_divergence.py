@@ -22,7 +22,6 @@ import subprocess
 import sys
 import types
 from collections.abc import Callable
-from dataclasses import replace
 from functools import lru_cache
 from pathlib import Path
 from typing import Any
@@ -215,7 +214,7 @@ def _spell_is_open(x3: float) -> bool:
     ``docs/algorithm_refs/palmer.md`` ("Exact-zero comparisons"), so the comparison
     stays exact and Sonar's S1244 rule is suppressed here.
     """
-    return x3 != 0.0  # NOSONAR: 0.0 is an exact state sentinel, not a tolerance
+    return x3 != 0.0  # NOSONAR
 
 
 def trace_wells(z: np.ndarray, factors: DurationFactors) -> tuple[_palmer_wells.WellsResult, list[tuple[str, ...]]]:
@@ -496,9 +495,19 @@ def histogram(lengths: list[int]) -> dict[str, int]:
     return {name: sum(lo <= n <= hi for n in lengths) for name, lo, hi in bins}
 
 
-def run_all() -> dict[str, Any]:
-    divs = divisions()
-    pdi_pdsi, wells_pdsi, base, x3_pairs = {}, {}, {}, {}
+def _base_masks(
+    divs: tuple[str, ...],
+) -> tuple[
+    dict[str, np.ndarray],
+    dict[str, np.ndarray],
+    dict[str, np.ndarray],
+    dict[str, tuple[np.ndarray, np.ndarray]],
+]:
+    """Run both recursions per division and keep the outputs, disagreement mask and X3 pair."""
+    pdi_pdsi: dict[str, np.ndarray] = {}
+    wells_pdsi: dict[str, np.ndarray] = {}
+    base: dict[str, np.ndarray] = {}
+    x3_pairs: dict[str, tuple[np.ndarray, np.ndarray]] = {}
     for division in divs:
         z = load_z(division)
         pdi_f, wells_f = default_factors()
@@ -507,15 +516,12 @@ def run_all() -> dict[str, Any]:
         pdi_pdsi[division], wells_pdsi[division] = p, w.pdsi
         base[division] = np.abs(p - w.pdsi) > DISAGREE
         x3_pairs[division] = (x3_p, w.x3)
-    n_months = sum(m.size for m in base.values())
-    n_series = next(iter(base.values())).size
+    return pdi_pdsi, wells_pdsi, base, x3_pairs
 
-    head_p = headline("P")
-    head_f = headline("F")
-    per_division_p = head_p.pop("per_division_rate")
-    head_f.pop("per_division_rate")
 
-    fp = {}
+def _floating_point_summary(divs: tuple[str, ...], base: dict[str, np.ndarray]) -> dict[str, dict[str, int]]:
+    """Disagreeing months and removed episodes under each floating-point variant."""
+    fp: dict[str, dict[str, int]] = {}
     for variant in ("fp", "fp2"):
         masks = disagree_masks(variant)
         fp[variant] = {
@@ -526,11 +532,18 @@ def run_all() -> dict[str, Any]:
                 sum(e - s for d in divs for s, e in episodes(base[d]) if not masks[d][s:e].any())
             ),
         }
+    return fp
 
-    attribution = attribute(wells_pdsi, base)
-    episode_labels = attribution.pop("_episode_labels")
 
-    lengths = [e - s for d in divs for s, e in episodes(base[d])]
+def _descriptive(
+    divs: tuple[str, ...],
+    base: dict[str, np.ndarray],
+    pdi_pdsi: dict[str, np.ndarray],
+    wells_pdsi: dict[str, np.ndarray],
+    episode_labels: dict[str, list[tuple[int, int, str]]],
+    n_series: int,
+) -> dict[str, Any]:
+    """Episode examples, decade and season rates, category changes and largest per label."""
     examples: dict[str, list[list[Any]]] = {}
     for d in divs:
         for s, e, label in episode_labels[d]:
@@ -560,12 +573,25 @@ def run_all() -> dict[str, Any]:
                 }
     decade_totals: dict[str, int] = {}
     for month in range(n_series):
-        decade_totals[str((START_YEAR + month // 12) // 10 * 10)] = decade_totals.get(
-            str((START_YEAR + month // 12) // 10 * 10), 0
-        ) + len(divs)
+        key = str((START_YEAR + month // 12) // 10 * 10)
+        decade_totals[key] = decade_totals.get(key, 0) + len(divs)
     decade_rate = {k: round(v[0] / decade_totals[k], 6) for k, v in sorted(by_decade.items())}
+    return {
+        "examples": examples,
+        "by_season": by_season,
+        "cat_diff": cat_diff,
+        "largest": largest,
+        "decade_rate": decade_rate,
+    }
 
-    # H5: months after three months of the same established |X3| > 1.5 spell in both machines
+
+def _h5_counts(
+    divs: tuple[str, ...],
+    base: dict[str, np.ndarray],
+    x3_pairs: dict[str, tuple[np.ndarray, np.ndarray]],
+    n_series: int,
+) -> tuple[int, int]:
+    """Months inside a same-sign established spell in both machines, and how many disagree."""
     h5_n = h5_bad = 0
     for d in divs:
         x3_p, x3_w = x3_pairs[d]
@@ -577,13 +603,23 @@ def run_all() -> dict[str, Any]:
             if same_sign and np.all(np.abs(window_p) > 1.5) and np.all(np.abs(window_w) > 1.5):
                 h5_n += 1
                 h5_bad += int(base[d][month])
+    return h5_n, h5_bad
 
+
+def _hypotheses(
+    head_p: dict[str, Any],
+    fp: dict[str, dict[str, int]],
+    attribution: dict[str, Any],
+    h5_n: int,
+    h5_bad: int,
+) -> dict[str, dict[str, Any]]:
+    """The pre-registered H1 to H5 verdicts."""
     closer = head_p["closer_to_nclimdiv"]
     decided = closer["pdi"] + closer["wells"]
     n_dis = head_p["disagree_counts"][str(DISAGREE)]
     n_unclassified = attribution["episodes_by_label"].get("residual", 0)
     h3_share = max(f["base_months_removed"] for f in fp.values()) / max(n_dis, 1)
-    hypotheses = {
+    return {
         "H1": {
             "rate": round(head_p["disagree_rate"], 6),
             "max_abs_diff": round(head_p["max_abs_diff"], 6),
@@ -606,21 +642,44 @@ def run_all() -> dict[str, Any]:
             "pass": h5_bad / max(h5_n, 1) < 0.005,
         },
     }
+
+
+def run_all() -> dict[str, Any]:
+    divs = divisions()
+    pdi_pdsi, wells_pdsi, base, x3_pairs = _base_masks(divs)
+    n_months = sum(m.size for m in base.values())
+    n_series = next(iter(base.values())).size
+
+    head_p = headline("P")
+    head_f = headline("F")
+    per_division_p = head_p.pop("per_division_rate")
+    head_f.pop("per_division_rate")
+
+    fp = _floating_point_summary(divs, base)
+    attribution = attribute(wells_pdsi, base)
+    episode_labels = attribution.pop("_episode_labels")
+    lengths = [e - s for d in divs for s, e in episodes(base[d])]
+    descriptive = _descriptive(divs, base, pdi_pdsi, wells_pdsi, episode_labels, n_series)
+    h5_n, h5_bad = _h5_counts(divs, base, x3_pairs, n_series)
+    n_dis = head_p["disagree_counts"][str(DISAGREE)]
     return {
-        "pinned_commit": "46481c48c79e878eb50ce3398ba062fd3a1ff38c",
+        "pinned_commit": PINNED_COMMIT,
         "months": n_months,
         "episodes": len(lengths),
         "headline": {"P": head_p, "F": head_f},
         "floating_point": fp,
         "attribution": attribution,
-        "largest_by_label": dict(sorted(largest.items())),
-        "example_episodes_by_label": examples,
+        "largest_by_label": dict(sorted(descriptive["largest"].items())),
+        "example_episodes_by_label": descriptive["examples"],
         "episode_length_histogram": histogram(lengths),
-        "category_changes": {"months": cat_diff, "share_of_disagreeing_months": round(cat_diff / n_dis, 6)},
-        "disagreement_rate_by_decade": decade_rate,
-        "disagreeing_months_by_calendar_month": {str(i + 1): int(v) for i, v in enumerate(by_season)},
+        "category_changes": {
+            "months": descriptive["cat_diff"],
+            "share_of_disagreeing_months": round(descriptive["cat_diff"] / n_dis, 6),
+        },
+        "disagreement_rate_by_decade": descriptive["decade_rate"],
+        "disagreeing_months_by_calendar_month": {str(i + 1): int(v) for i, v in enumerate(descriptive["by_season"])},
         "per_division_rate_P": {k: round(v, 6) for k, v in per_division_p.items()},
-        "hypotheses": hypotheses,
+        "hypotheses": _hypotheses(head_p, fp, attribution, h5_n, h5_bad),
     }
 
 
@@ -631,13 +690,17 @@ def _complement_fraction(m: float, b: float) -> float:
 
 def division_form(wells: DurationFactors) -> DurationFactors:
     """Wells factors with the pdi.f division form ``b / (m + b)``, for the P-fp2 run."""
-    divided: DurationFactors = replace(
-        wells,
+    return DurationFactors(
+        wetm=wells.wetm,
+        wetb=wells.wetb,
+        drym=wells.drym,
+        dryb=wells.dryb,
+        wet_denominator=wells.wet_denominator,
+        dry_denominator=wells.dry_denominator,
         wetc=wells.wetb / wells.wet_denominator,
         dryc=wells.wetb / (wells.drym + wells.wetb),
         dry_spell_c=wells.dryb / wells.dry_denominator,
     )
-    return divided
 
 
 def disagree_masks(variant: str) -> dict[str, np.ndarray]:
