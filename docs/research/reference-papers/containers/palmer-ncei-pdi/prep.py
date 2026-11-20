@@ -43,3 +43,5 @@ for d in divs:
 print(f"{len(divs)} divisions written; first-match AWC differs from palmer_awc.json for {len(bad)}")
 for b in bad:
     print("  ", b)
+if bad:
+    sys.exit(1)
