@@ -8,7 +8,7 @@
 
 - This is a survey, not a comparison. Every number below is a **smoke value**: it shows that a comparator installed and produced one index value. No evidence class in `VALIDATION.md` fits a one-month smoke value (there, even `characterization` means measured ceilings), it is not evidence for any claim, and no study ticket may cite it. Each study pre-registers its hypotheses, thresholds, and sample before it runs (see the map's Notes).
 - Smoke values are at **L0 (the lowest evidence level), as shipped**: the comparator's own defaults, with the arguments each package offers. Where a package has no calibration-period argument, the difference from the others is expected, not a discrepancy.
-- Agreement between two packages is evidence only if they are independent. [REFIMPL-04](https://github.com/monocongo/climate_indices/issues/1606) has not resolved lineage, so every cross-package agreement here is "same lineage not excluded".
+- Agreement between two packages is evidence only if they are independent. [REFIMPL-04](https://github.com/monocongo/climate_indices/issues/1606) classifies every pair in [lineage.md](lineage.md); read each agreement here against that pair's class.
 - "Headless on Linux" was run only for NCL and the NDMC SPI Generator, which ran in Linux containers (see "Programs run in containers"). Everything else ran on macOS arm64. Several CRAN dependencies compile Fortran and C++ (see the environment notes), so [REFIMPL-08](https://github.com/monocongo/climate_indices/issues/1610) must confirm Linux for them.
 - "Committing outputs" rows state the project rule (numeric outputs and provenance only, never comparator code). They are not a legal opinion on output licensing.
 - Include/exclude entries are proposals for the maintainer to approve.
