@@ -80,7 +80,7 @@ A failed hypothesis is reported as failed. No threshold is changed after the fir
 
 1. This commit.
 2. `scripts/characterize_palmer_recursion_divergence.py` runs both recursions without modifying either module. It writes `palmer-recursion-divergence-results.json`, deterministically, with no random numbers.
-3. For each observed class, a greedy-deletion shrink of a real episode finds the shortest synthetic Z sequence that still first diverges in that class. Each is traced to a line in both modules.
+3. For each observed class, greedy deletion reduces a real episode to a Z sequence that reproduces the class. Each reduced sequence is traced to a line in both modules.
 4. `tests/test_palmer_recursion_divergence.py` pins both outputs on each reduced sequence.
 5. The textual analysis compares each class with Palmer (1965) and Wells, Goddard, and Hayes (2004).
 
@@ -157,7 +157,7 @@ The largest disagreement (8.135 units, division 0501, October 1915) belongs to c
 
 ### Classes
 
-An episode's label is the set of mechanisms that must all be harmonized for it to vanish (D2). No episode needed Tol: leaving only Tol out of the full harmonization leaves 0 disagreeing months, so the 1e-5 tolerances in the Wells recursion are not needed to remove any disagreement above 1e-9. Whether they change output values below that threshold was not tested. All classes below are logic differences; the floating-point class is empty.
+An episode's label lists the mechanisms whose omission from the full harmonization leaves the episode disagreeing (D2). This necessity applies only within the full harmonization. A subset can remove the episode without including every listed mechanism. No episode needed Tol: leaving only Tol out of the full harmonization leaves 0 disagreeing months, so the 1e-5 tolerances in the Wells recursion are not needed to remove any disagreement above 1e-9. Whether they change output values below that threshold was not tested. All classes below are logic differences; the floating-point class is empty.
 
 | Class | Episodes | Months | Largest \|difference\| (division, month) | Reduced sequence (active months) |
 | --- | ---: | ---: | --- | ---: |
