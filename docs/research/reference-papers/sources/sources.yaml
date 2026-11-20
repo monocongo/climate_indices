@@ -7,7 +7,8 @@
 #   id               <first-author>-<year> for papers, a short slug for code.
 #   kind             paper | code | data | data-doc
 #   family           palmer | spi | spei | pet | other
-#   citation         Full citation, only what the repo already carries.
+#   citation         Full citation, only what the repo already carries: palmer-provenance.md's source
+#                    table (#1659), docs/algorithm-reference.md, or cf_metadata_registry.py.
 #   doi              Only from a verified source; never from memory.
 #   url              Where it can be obtained, if known.
 #   status           opened (read, recorded in opened_in) | located (URL known, not yet recorded as read)
@@ -207,7 +208,7 @@ sources:
 - id: karl-knight-1985
   kind: paper
   family: palmer
-  citation: Karl, T. R., and Knight, R. W. (1985), the PHDI atlas (full citation not in the repo).
+  citation: Karl, T. R., and Knight, R. W. (1985), PHDI atlas.
   doi: null
   url: null
   status: not-opened
