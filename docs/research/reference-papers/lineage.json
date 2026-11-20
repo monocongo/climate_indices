@@ -309,6 +309,34 @@
     }
   },
   "citations": {
+    "sei_estimator_default": {
+      "source": "r_sei",
+      "ref": "SEI 0.2.0 CRAN tarball",
+      "file": "R/fit_dist.R",
+      "line": "52-53",
+      "quote": "the default is to estimate parameters using maximum likelihood estimation ... method = \"mle\""
+    },
+    "sei_lmme_method": {
+      "source": "r_sei",
+      "ref": "SEI 0.2.0 CRAN tarball",
+      "file": "R/fit_dist.R",
+      "line": "251-252",
+      "quote": "else if (method == \"lmme\") ... params <- fit_dist_lmme(data = data, dist = dist)"
+    },
+    "sei_lmme_support": {
+      "source": "r_sei",
+      "ref": "SEI 0.2.0 CRAN tarball",
+      "file": "R/fit_dist.R",
+      "line": "302-303",
+      "quote": "method 'lmme' is not available for the log-logistic distribution"
+    },
+    "sei_method_validation": {
+      "source": "r_sei",
+      "ref": "SEI 0.2.0 CRAN tarball",
+      "file": "R/fit_dist.R",
+      "line": "392-393",
+      "quote": "method must be one of 'mle', 'mme', 'qme', 'mge', 'mse', 'lmme'"
+    },
     "thom_ci": {
       "source": "climate_indices",
       "ref": "monocongo/climate_indices@a7235bf7",
@@ -687,7 +715,7 @@
               "class": "shared numerical routine",
               "from": null,
               "to": null,
-              "configuration": "separate ports of the same Fortran: climate_indices Pearson III fit, from its SAMLMR translation (own translation (lmoments.py)); R SEI method = \"lmoment\" (lmom dependency)",
+              "configuration": "separate ports of the same Fortran: climate_indices Pearson III fit, from its SAMLMR translation (own translation (lmoments.py)); R SEI method = \"lmme\" (lmom dependency; excludes log-logistic)",
               "evidence": [
                 {
                   "source": "climate_indices",
@@ -1076,7 +1104,7 @@
               "class": "shared numerical routine",
               "from": null,
               "to": null,
-              "configuration": "separate ports of the same Fortran: xclim method = \"PWM\" with an lmoments3 distribution (lmoments3 dependency); R SEI method = \"lmoment\" (lmom dependency)",
+              "configuration": "separate ports of the same Fortran: xclim method = \"PWM\" with an lmoments3 distribution (lmoments3 dependency); R SEI method = \"lmme\" (lmom dependency; excludes log-logistic)",
               "evidence": [
                 {
                   "source": "xclim",
@@ -1416,7 +1444,7 @@
               "class": "shared numerical routine",
               "from": null,
               "to": null,
-              "configuration": "separate ports of the same Fortran: standard_precip fit_type = \"lmom\" (lmoments3 dependency); R SEI method = \"lmoment\" (lmom dependency)",
+              "configuration": "separate ports of the same Fortran: standard_precip fit_type = \"lmom\" (lmoments3 dependency); R SEI method = \"lmme\" (lmom dependency; excludes log-logistic)",
               "evidence": [
                 {
                   "source": "standard_precip",
@@ -1581,7 +1609,7 @@
               "class": "shared numerical routine",
               "from": null,
               "to": null,
-              "configuration": "same dependency: R SPEI pp-pwm and ub-pwm fits (default) (lmom dependency); R SEI method = \"lmoment\" (lmom dependency)",
+              "configuration": "same dependency: R SPEI pp-pwm and ub-pwm fits (default) (lmom dependency); R SEI method = \"lmme\" (lmom dependency; excludes log-logistic)",
               "evidence": [
                 {
                   "source": "r_spei",
@@ -1846,7 +1874,7 @@
               "class": "shared numerical routine",
               "from": null,
               "to": null,
-              "configuration": "separate ports of the same Fortran: R SEI method = \"lmoment\" (lmom dependency); NCL dim_spi_n Pearson III path (opt@spi_type = 3) (embedded Fortran (NCDC spi code))",
+              "configuration": "separate ports of the same Fortran: R SEI method = \"lmme\" (lmom dependency; excludes log-logistic); NCL dim_spi_n Pearson III path (opt@spi_type = 3) (embedded Fortran (NCDC spi code))",
               "evidence": [
                 {
                   "source": "r_sei",
@@ -2358,7 +2386,7 @@
               "class": "shared numerical routine",
               "from": null,
               "to": null,
-              "configuration": "separate ports of the same Fortran: climate_indices Pearson III, log-logistic and GEV fits, all from its SAMLMR translation (own translation (lmoments.py)); R SEI method = \"lmoment\" (lmom dependency)",
+              "configuration": "separate ports of the same Fortran: climate_indices Pearson III, log-logistic and GEV fits, all from its SAMLMR translation (own translation (lmoments.py)); R SEI method = \"lmme\" (lmom dependency; excludes log-logistic)",
               "evidence": [
                 {
                   "source": "climate_indices",
@@ -2727,7 +2755,7 @@
               "class": "shared numerical routine",
               "from": null,
               "to": null,
-              "configuration": "separate ports of the same Fortran: xclim method = \"PWM\" with an lmoments3 distribution (lmoments3 dependency); R SEI method = \"lmoment\" (lmom dependency)",
+              "configuration": "separate ports of the same Fortran: xclim method = \"PWM\" with an lmoments3 distribution (lmoments3 dependency); R SEI method = \"lmme\" (lmom dependency; excludes log-logistic)",
               "evidence": [
                 {
                   "source": "xclim",
@@ -2980,7 +3008,7 @@
               "class": "shared numerical routine",
               "from": null,
               "to": null,
-              "configuration": "separate ports of the same Fortran: standard_precip fit_type = \"lmom\" (lmoments3 dependency); R SEI method = \"lmoment\" (lmom dependency)",
+              "configuration": "separate ports of the same Fortran: standard_precip fit_type = \"lmom\" (lmoments3 dependency); R SEI method = \"lmme\" (lmom dependency; excludes log-logistic)",
               "evidence": [
                 {
                   "source": "standard_precip",
@@ -3095,7 +3123,7 @@
               "class": "shared numerical routine",
               "from": null,
               "to": null,
-              "configuration": "same dependency: R SPEI pp-pwm and ub-pwm fits (default) (lmom dependency); R SEI method = \"lmoment\" (lmom dependency)",
+              "configuration": "same dependency: R SPEI pp-pwm and ub-pwm fits (default) (lmom dependency); R SEI method = \"lmme\" (lmom dependency; excludes log-logistic)",
               "evidence": [
                 {
                   "source": "r_spei",
@@ -3265,7 +3293,7 @@
               "class": "shared numerical routine",
               "from": null,
               "to": null,
-              "configuration": "same dependency: R SEI method = \"lmoment\" (lmom dependency); SPEIbase v2.11 ub-pwm log-logistic (lmom dependency, through R SPEI)",
+              "configuration": "same dependency: R SEI method = \"lmme\" (lmom dependency; excludes log-logistic); SPEIbase v2.11 ub-pwm log-logistic (lmom dependency, through R SPEI)",
               "evidence": [
                 {
                   "source": "r_sei",
