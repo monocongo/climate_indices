@@ -6,8 +6,9 @@ Each case is a reduced reproducing sequence for one divergence class, found by
 sequences after greedy deletion reaches a fixed point, so a case can keep a month that is
 removable without losing the class: the sequences are reduced, not proven minimal.  The class name is the set
 of code-level differences (E establishment threshold, T termination at |X3| <= 0.5, A abatement
-trigger, C candidate carried at establishment, F end-of-record flush) that must all be
-harmonized for the disagreement to disappear.
+trigger, C candidate carried at establishment, F end-of-record flush) whose omission from
+full harmonization leaves the episode disagreeing. This necessity applies only within full
+harmonization, not to every subset that removes the disagreement.
 
 The tests characterize behavior: they pin what ``_palmer_pdi.calculate`` (NCEI ``pdi.f``
 lineage) and ``_palmer_wells.calculate`` (Wells lineage) return on the same Z-Index series at
@@ -21,6 +22,7 @@ import json
 from functools import lru_cache
 from pathlib import Path
 from types import ModuleType
+from unittest.mock import Mock
 
 import numpy as np
 import pytest
@@ -227,6 +229,55 @@ def test_sequence_still_reproduces_its_class(label: str) -> None:
     """The study's own classifier must still return the class the case is named for."""
     active, _ = _CASES[label]
     assert _load_finder().label_of(active) == label
+
+
+def test_generator_rejects_source_drift_before_reading_results(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    finder = _load_finder()
+    output = tmp_path / "sequences.json"
+    output.write_text("unchanged")
+    monkeypatch.setattr(finder, "RESULTS", tmp_path / "missing-results.json")
+    monkeypatch.setattr(finder, "OUT", output)
+
+    def reject_drift() -> None:
+        raise SystemExit("source drift")
+
+    monkeypatch.setattr(finder.c, "verify_pinned_sources", reject_drift)
+    with pytest.raises(SystemExit, match="source drift"):
+        finder.main()
+    assert output.read_text() == "unchanged"
+
+
+@pytest.mark.parametrize("pin", ["different-commit", None])
+def test_generator_rejects_results_without_the_study_pin(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, pin: str | None
+) -> None:
+    finder = _load_finder()
+    source = tmp_path / "results.json"
+    source.write_text(json.dumps({"pinned_commit": pin} if pin is not None else {}))
+    output = tmp_path / "sequences.json"
+    output.write_text("unchanged")
+    monkeypatch.setattr(finder, "RESULTS", source)
+    monkeypatch.setattr(finder, "OUT", output)
+    monkeypatch.setattr(finder.c, "verify_pinned_sources", lambda: None)
+
+    with pytest.raises(SystemExit, match="study results must use the pinned commit"):
+        finder.main()
+    assert output.read_text() == "unchanged"
+
+
+def test_generator_accepts_the_study_pin(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    finder = _load_finder()
+    source = tmp_path / "results.json"
+    source.write_text(json.dumps({"pinned_commit": finder.c.PINNED_COMMIT, "example_episodes_by_label": {}}))
+    output = tmp_path / "sequences.json"
+    monkeypatch.setattr(finder, "RESULTS", source)
+    monkeypatch.setattr(finder, "OUT", output)
+    verify = Mock()
+    monkeypatch.setattr(finder.c, "verify_pinned_sources", verify)
+
+    finder.main()
+    verify.assert_called_once_with()
+    assert json.loads(output.read_text()) == {}
 
 
 def test_sequences_match_the_committed_json() -> None:

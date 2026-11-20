@@ -131,10 +131,13 @@ def seed_window(division: str, start: int, stop: int, target: str) -> list[float
 
 
 def main() -> None:
+    c.verify_pinned_sources()
     try:
         results_in = json.loads(RESULTS.read_text())
     except (OSError, ValueError) as error:
         raise RuntimeError(f"cannot read the study results at {RESULTS}") from error
+    if results_in.get("pinned_commit") != c.PINNED_COMMIT:
+        raise SystemExit(f"study results must use the pinned commit {c.PINNED_COMMIT}")
     examples = results_in["example_episodes_by_label"]
     _, wells_f = c.default_factors()
     results: dict[str, dict[str, Any]] = {}
