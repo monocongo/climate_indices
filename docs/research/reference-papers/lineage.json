@@ -426,7 +426,7 @@
               "class": "shared numerical routine",
               "from": null,
               "to": null,
-              "configuration": "separate ports of the same Fortran: climate_indices Pearson III, log-logistic and GEV fits, all from its SAMLMR translation (own translation (lmoments.py)); xclim method = \"PWM\" with an lmoments3 distribution (lmoments3 dependency)",
+              "configuration": "separate ports of the same Fortran: climate_indices Pearson III fit, from its SAMLMR translation (own translation (lmoments.py)); xclim method = \"PWM\" with an lmoments3 distribution (lmoments3 dependency)",
               "evidence": [
                 {
                   "source": "climate_indices",
@@ -511,7 +511,7 @@
               "class": "shared numerical routine",
               "from": null,
               "to": null,
-              "configuration": "separate ports of the same Fortran: climate_indices Pearson III, log-logistic and GEV fits, all from its SAMLMR translation (own translation (lmoments.py)); standard_precip fit_type = \"lmom\" (lmoments3 dependency)",
+              "configuration": "separate ports of the same Fortran: climate_indices Pearson III fit, from its SAMLMR translation (own translation (lmoments.py)); standard_precip fit_type = \"lmom\" (lmoments3 dependency)",
               "evidence": [
                 {
                   "source": "climate_indices",
@@ -570,7 +570,7 @@
               "class": "shared numerical routine",
               "from": null,
               "to": null,
-              "configuration": "separate ports of the same Fortran: climate_indices Pearson III, log-logistic and GEV fits, all from its SAMLMR translation (own translation (lmoments.py)); R SPEI pp-pwm and ub-pwm fits (default) (lmom dependency)",
+              "configuration": "separate ports of the same Fortran: climate_indices Pearson III fit, from its SAMLMR translation (own translation (lmoments.py)); R SPEI pp-pwm and ub-pwm fits (default) (lmom dependency)",
               "evidence": [
                 {
                   "source": "climate_indices",
@@ -680,7 +680,7 @@
               "class": "shared numerical routine",
               "from": null,
               "to": null,
-              "configuration": "separate ports of the same Fortran: climate_indices Pearson III, log-logistic and GEV fits, all from its SAMLMR translation (own translation (lmoments.py)); R SEI method = \"lmoment\" (lmom dependency)",
+              "configuration": "separate ports of the same Fortran: climate_indices Pearson III fit, from its SAMLMR translation (own translation (lmoments.py)); R SEI method = \"lmoment\" (lmom dependency)",
               "evidence": [
                 {
                   "source": "climate_indices",
@@ -753,7 +753,7 @@
               "class": "shared numerical routine",
               "from": null,
               "to": null,
-              "configuration": "separate ports of the same Fortran: climate_indices Pearson III, log-logistic and GEV fits, all from its SAMLMR translation (own translation (lmoments.py)); NCL dim_spi_n Pearson III path (opt@spi_type = 3) (embedded Fortran (NCDC spi code))",
+              "configuration": "separate ports of the same Fortran: climate_indices Pearson III fit, from its SAMLMR translation (own translation (lmoments.py)); NCL dim_spi_n Pearson III path (opt@spi_type = 3) (embedded Fortran (NCDC spi code))",
               "evidence": [
                 {
                   "source": "climate_indices",
