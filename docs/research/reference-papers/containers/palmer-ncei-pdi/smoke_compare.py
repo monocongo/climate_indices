@@ -68,11 +68,12 @@ for key, (fn, fx) in NAMES.items():
     }
     if key == "pdsi":
         i0 = divs.index("0101")
-        a = np.array(got[101])
-        d0 = np.abs(a - nc[i0])
+        a = np.array(got[101], dtype=float)
+        a[a <= -99.0] = np.nan
+        d0 = stat(a, nc[i0])
         res["pdsi_0101"] = {
             "median": round(float(np.median(d0)), 4),
-            "frac_within_0p05": round(float((d0 <= 0.05).mean()), 4),
+            "frac_within_0p05": round(float((d0 <= 0.05).sum() / a.size), 4),
             "months_gt_1": int((d0 > 1).sum()),
         }
 print(json.dumps(res, indent=1))
