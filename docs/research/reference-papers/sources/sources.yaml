@@ -1,6 +1,7 @@
-# Manifest of reference papers and code. One entry per source; the id is the file stem
-# everywhere (this file, file names, palmer-provenance.md, ticket comments).
-# Use only facts already in the repo or verified from a rights page; null means "not known".
+# Manifest of reference papers and code. One entry per source, identified by a stable id.
+# The id is the file stem under local/ and <family>/, or the directory name under external/.
+# Record facts from the repo, cited tickets, verified upstream artifacts, or rights pages.
+# Identify the evidence in notes or license_evidence; null means "not known".
 # docs/algorithm_refs/palmer-provenance.md (every opened_in below) is added by PR #1659; until it
 # merges the path is a forward reference.
 #
@@ -9,7 +10,8 @@
 #   kind             paper | code | data | data-doc
 #   family           palmer | spi | spei | pet | other
 #   citation         Full citation, only what the repo already carries: palmer-provenance.md's source
-#                    table (#1659), docs/algorithm-reference.md, or cf_metadata_registry.py.
+#                    table (#1659), docs/algorithm-reference.md, cf_metadata_registry.py,
+#                    research-notes.md, or tests/fixture/ncei_spi/provenance.json.
 #   doi              Only from a verified source; never from memory.
 #   url              Where it can be obtained, if known.
 #   status           opened (read, recorded in opened_in) | located (URL known, not yet recorded as read)
@@ -17,9 +19,10 @@
 #   opened_in        Where the repo says it was read.
 #   license_class    us-gov-public-domain | publisher-copyright | gpl-3 | unknown
 #   license_evidence URL or note supporting the class; null until found. Not a legal opinion.
-#   committable      yes | no | pending. pending until REFIMPL-27 (#1629) decides.
-#                    yes requires license_evidence and a file under palmer/.
-#   local_path       Path relative to sources/ when a copy exists locally (local/ or external/).
+#   committable      'yes' | 'no' | pending. Quote 'yes' and 'no' to keep them strings.
+#                    pending until REFIMPL-27 (#1629) decides.
+#                    'yes' requires license_evidence and a file under <family>/.
+#   local_path       Path relative to sources/ (local/, external/, or <family>/ once cleared).
 #   sha256           Of that local copy.
 #   supports         Provenance-table rows and D-items the source bears on.
 #   tickets          REFIMPL ids.
@@ -99,7 +102,7 @@ sources:
   family: palmer
   citation: Wells, N., Goddard, S., and Hayes, M. J. (2004), A self-calibrating Palmer Drought Severity Index, J.
     Climate 17, 2335-2351.
-  doi: null
+  doi: '10.1175/1520-0442(2004)017<2335:ASPDSI>2.0.CO;2'
   url: null
   status: opened
   opened_in: docs/algorithm_refs/palmer-provenance.md
@@ -282,7 +285,7 @@ sources:
   committable: pending
   local_path: external/ncei-spi-f/spi.f
   sha256: bd7bb8ab38b50ee65a77c1ba8aa1fc4bd073cb8b7f9e392b126014ae220c5216
-  supports: &id001 []
+  supports: []
   tickets:
   - REFIMPL-06
   notes: 'Last-Modified 2000-10-05; #1608 asks whether operational climdiv SPI runs it.'
@@ -300,7 +303,7 @@ sources:
   committable: pending
   local_path: external/ncei-soilcnst-asc/soilcnst.asc
   sha256: 40fc3a55a0c91aa1f83ce753b45950b2dbebad7c2fb7d23c9e829416cae588c2
-  supports: *id001
+  supports: []
   tickets:
   - REFIMPL-29
   - REFIMPL-46
@@ -340,7 +343,7 @@ sources:
   committable: 'no'
   local_path: null
   sha256: null
-  supports: *id001
+  supports: []
   tickets:
   - REFIMPL-06
   - REFIMPL-27
@@ -359,7 +362,7 @@ sources:
   committable: pending
   local_path: null
   sha256: null
-  supports: *id001
+  supports: []
   tickets:
   - REFIMPL-05
   - REFIMPL-06
@@ -377,7 +380,7 @@ sources:
   committable: pending
   local_path: null
   sha256: null
-  supports: *id001
+  supports: []
   tickets:
   - REFIMPL-30
   notes: Lead from research-notes.md; licence not checked; not cloned.
@@ -394,7 +397,7 @@ sources:
   committable: pending
   local_path: null
   sha256: null
-  supports: *id001
+  supports: []
   tickets:
   - REFIMPL-06
   - REFIMPL-30

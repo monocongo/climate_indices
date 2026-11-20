@@ -10,28 +10,32 @@ Sphinx (`docs/conf.py`) and from the sdist and wheel (`docs/` is excluded in `py
 ```
 sources.yaml        manifest, one entry per source (field meanings in its header)
 NOTES-TEMPLATE.md   template for a per-source notes file
-palmer/pdf/         papers cleared for commit
-palmer/notes/       page-cited notes, <id>.md
-palmer/code/        reference code cleared for commit
+<family>/pdf/       papers cleared for commit
+<family>/notes/     page-cited notes, <id>.md
+<family>/code/      reference code cleared for commit
 local/              gitignored: files not cleared for commit, <id>.<ext>
 external/           gitignored: clones and downloads of third-party code, one <id>/ directory each,
                     pinned by commit or sha256
 ```
+
+`palmer/` is the first family workspace. Create other family folders only when their files are needed.
 
 Do not use Git LFS here: `.gitattributes` applies it to `*.nc` only, and anonymous
 agent clones cannot fetch LFS objects.
 
 ## Ids
 
-The id is the file stem everywhere: the manifest, file names, `palmer-provenance.md`
-and ticket comments. Papers: `<surnames>-<year>`, all surnames for one or two authors
+Use the id in the manifest, `palmer-provenance.md`, and ticket comments.
+The id is the file stem under `local/` and `<family>/`.
+Under `external/<id>/`, keep upstream file names unchanged. Papers: `<surnames>-<year>`, all surnames for one or two authors
 (`palmer-1965`, `heddinghaus-sabol-1991`), the first author's for three or more
 (`wells-2004`). Code: a short slug (`ncei-pdi-f`, `sibada-scpdsi-0.1.3`).
 
 ## What may be committed
 
-Nothing goes into `palmer/pdf/` or `palmer/code/` until its manifest entry has
-`committable: yes` with a recorded `license_evidence`. Until REFIMPL-27 (#1629)
+Nothing goes into `<family>/pdf/` or `<family>/code/` until its manifest entry has
+`committable: 'yes'` with a recorded `license_evidence`. Quote `'yes'` and `'no'` to keep them YAML strings.
+Until REFIMPL-27 (#1629)
 decides, every entry is `pending` or `no`, and files stay under `local/` or `external/`.
 
 - Publisher-copyright papers are not committed.
@@ -44,14 +48,15 @@ Default pytest discovery searches only `tests/` to avoid importing downloaded re
 
 ## Add a source
 
-1. Add an entry to `sources.yaml`. Fill only what the repo or a rights page states; leave the rest `null`.
-2. Place the file under `local/` or `external/` (or `palmer/` once cleared) and record `local_path` and `sha256` (`shasum -a 256 <path>`).
-3. Write `palmer/notes/<id>.md` from `NOTES-TEMPLATE.md`.
-4. Update the tickets the source unblocks and the status table below.
+1. Add an entry to `sources.yaml`. Record only verified facts and their evidence; leave unknown fields `null`.
+2. Place the file under `local/` or `external/` (or `<family>/` once cleared).
+3. Record `local_path` and `sha256` (`shasum -a 256 <path>`).
+4. Write `<family>/notes/<id>.md` from `NOTES-TEMPLATE.md`.
+5. Update the tickets the source unblocks and the status table below.
 
 ## Prompt against a source
 
-Cite the id, point at `palmer/notes/<id>.md` when it exists, and name the provenance
+Cite the id, point at `<family>/notes/<id>.md` when it exists, and name the provenance
 rows or D-items the work is for. Example: "Using `heddinghaus-sabol-1991`, check
 provenance row 22 and D2; record the page in its notes file."
 
