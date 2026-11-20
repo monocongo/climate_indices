@@ -267,7 +267,7 @@ sources:
   - REFIMPL-29
   - REFIMPL-46
   notes: 'URL from maintainer; sha256 matches the pdi.f REFIMPL-30 (PR #1660) used; Last-Modified 2013-04-03; open
-    PRs #1660, #1667 and #1661''s report read it; set opened when they merge.'
+    PRs #1660 and #1667 and the REFIMPL-46 report (issue #1661) read it; set opened when they merge.'
 - id: ncei-spi-f
   kind: code
   family: spi
