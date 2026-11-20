@@ -122,7 +122,7 @@ sources:
   tickets:
   - REFIMPL-26
   - REFIMPL-33
-  notes: Text and page images; kept under local/.
+  notes: DOI from cf_metadata_registry.py; text and page images kept under local/.
 - id: heim-2002
   kind: paper
   family: palmer
@@ -247,7 +247,7 @@ sources:
   tickets:
   - REFIMPL-05
   - REFIMPL-26
-  notes: Not opened; the Wiley page returned 403 to an unauthenticated fetch; licence not checked.
+  notes: DOI from research-notes.md; not opened; Wiley returned 403 to an unauthenticated fetch; licence not checked.
 - id: ncei-pdi-f
   kind: code
   family: palmer

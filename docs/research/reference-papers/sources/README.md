@@ -14,11 +14,12 @@ NOTES-TEMPLATE.md   template for a per-source notes file
 <family>/notes/     page-cited notes, <id>.md
 <family>/code/      reference code cleared for commit
 local/              gitignored: files not cleared for commit, <id>.<ext>
-external/           gitignored: clones and downloads of third-party code, one <id>/ directory each,
+external/           gitignored: clones and downloads of third-party code and data, one <id>/ directory each,
                     pinned by commit or sha256
 ```
 
 `palmer/` is the first family workspace. Create other family folders only when their files are needed.
+Keep cleared data and data documentation directly under `<family>/`.
 
 Do not use Git LFS here: `.gitattributes` applies it to `*.nc` only, and anonymous
 agent clones cannot fetch LFS objects.
@@ -33,7 +34,7 @@ Under `external/<id>/`, keep upstream file names unchanged. Papers: `<surnames>-
 
 ## What may be committed
 
-Nothing goes into `<family>/pdf/` or `<family>/code/` until its manifest entry has
+Do not commit a source file under `<family>/` until its manifest entry has
 `committable: 'yes'` with a recorded `license_evidence`. Quote `'yes'` and `'no'` to keep them YAML strings.
 Until REFIMPL-27 (#1629)
 decides, every entry is `pending` or `no`, and files stay under `local/` or `external/`.
