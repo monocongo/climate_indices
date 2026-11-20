@@ -46,7 +46,8 @@ for key, (fn, fx) in NAMES.items():
     for i, d in enumerate(divs):
         a = np.array(got[int(d)], dtype=float)
         a[a <= -99.0] = np.nan
-        assert a.size == 1536, (d, a.size)
+        if a.size != 1536:
+            raise SystemExit(f"{d}: {a.size} months, expected 1536")
         dd = stat(a, nc[i])
         meds.append(np.median(dd))
         w05.append((dd <= 0.05).sum())
