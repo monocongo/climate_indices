@@ -61,8 +61,8 @@ These appear in the tickets as items to check, not as findings.
 - Whether the Wells C++ also applies a fixed number of rescaling passes. REFIMPL-33 checks.
 - Availability and licence of the NCEI `pdi.f` source and of the original Wells C++. REFIMPL-06 and REFIMPL-30.
 - Whether the Jacobi and `JonKing93` MATLAB tools run under GNU Octave. REFIMPL-30.
-- Whether other small packages beyond `precip-index` derive from `climate_indices`. REFIMPL-04; [comparators.md](comparators.md) answers `precip-index` for REFIMPL-03.
-- Whether `climate_indices.eto` derives from `PyETo`, and the provenance of the repository's Thornthwaite PET fixture. REFIMPL-04.
+- Whether small packages outside the comparator set derive from `climate_indices`. [lineage.md](lineage.md) (REFIMPL-04) found none among the included comparators; [comparators.md](comparators.md) answers `precip-index` for REFIMPL-03.
+- The provenance of the repository's Thornthwaite PET fixture, `tests/fixture/pet_thornthwaite.npy`. [lineage.md](lineage.md) (REFIMPL-04) confirms that `climate_indices.eto` derives from `PyETo` and asks the maintainer about the fixture.
 - Whether the Climate Engine API and Earth Engine `GRIDMET/DROUGHT` terms permit committing derived outputs. REFIMPL-06.
 - Headless operation on Linux for every included comparator except NCL and the NDMC program, which ran in Linux containers (REFIMPL-03). REFIMPL-08.
 - Current AMS and *GMD* policy wording on AI-assisted work. REFIMPL-07.

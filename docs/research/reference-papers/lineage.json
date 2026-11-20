@@ -1,0 +1,4449 @@
+{
+  "schema_version": 2,
+  "ticket": "https://github.com/monocongo/climate_indices/issues/1606",
+  "classes": [
+    "derived",
+    "validated against",
+    "shared numerical routine",
+    "independent",
+    "unknown"
+  ],
+  "implementations": {
+    "climate_indices": {
+      "name": "climate_indices",
+      "kind": "package",
+      "ref": "monocongo/climate_indices@a7235bf7",
+      "source_read": true,
+      "origin": []
+    },
+    "xclim": {
+      "name": "xclim",
+      "kind": "package",
+      "ref": "xclim 1.0.0 sdist",
+      "source_read": true,
+      "origin": []
+    },
+    "spei": {
+      "name": "spei (Vonk)",
+      "kind": "package",
+      "ref": "spei 0.8.3 sdist; repository tag v0.8.3 (8276b0c9)",
+      "source_read": true,
+      "origin": []
+    },
+    "standard_precip": {
+      "name": "standard_precip",
+      "kind": "package",
+      "ref": "standard-precip 2.0.0 sdist",
+      "source_read": true,
+      "origin": []
+    },
+    "r_spei": {
+      "name": "R SPEI",
+      "kind": "package",
+      "ref": "SPEI 1.8.1 CRAN tarball",
+      "source_read": true,
+      "origin": []
+    },
+    "r_sci": {
+      "name": "R SCI",
+      "kind": "package",
+      "ref": "SCI 1.0-3 CRAN tarball",
+      "source_read": true,
+      "origin": []
+    },
+    "r_sei": {
+      "name": "R SEI",
+      "kind": "package",
+      "ref": "SEI 0.2.0 CRAN tarball",
+      "source_read": true,
+      "origin": []
+    },
+    "r_climatekit": {
+      "name": "R climatekit",
+      "kind": "package",
+      "ref": "climatekit 0.2.3 CRAN tarball",
+      "source_read": true,
+      "origin": []
+    },
+    "ndmc_spi": {
+      "name": "NDMC SPI Generator",
+      "kind": "program",
+      "ref": "SPIgenerator.zip sha256 ce8f37bc (1.7.6.0)",
+      "source_read": true,
+      "origin": []
+    },
+    "ncl": {
+      "name": "NCL dim_spi_n",
+      "kind": "program",
+      "ref": "NCAR/ncl tag 6.6.2 (ni/src/lib/nfpfort/spid.f, spi3.f)",
+      "source_read": true,
+      "origin": []
+    },
+    "climate_engine": {
+      "name": "Climate Engine API",
+      "kind": "service",
+      "ref": "live service; code not public",
+      "source_read": false,
+      "origin": []
+    },
+    "gridmet_drought": {
+      "name": "Earth Engine GRIDMET/DROUGHT",
+      "kind": "service",
+      "ref": "live collection; code not public",
+      "source_read": false,
+      "origin": [
+        {
+          "source": "gridmet_drought",
+          "ref": "https://developers.google.com/earth-engine/datasets/catalog/GRIDMET_DROUGHT",
+          "accessed": "2026-11-20",
+          "quote": "where plotting positions are used to obtain probabilities which are transformed to indices"
+        }
+      ]
+    },
+    "ncei_climdiv_spi": {
+      "name": "NCEI climdiv SPI",
+      "kind": "product",
+      "ref": "operational code not public; NCEI's public spi.f (sha256 bd7bb8ab) is \"not an exact copy\"",
+      "source_read": false,
+      "origin": []
+    },
+    "speibase": {
+      "name": "SPEIbase v2.11",
+      "kind": "product",
+      "ref": "spei.csic.es names R SPEI 1.8.1 as the code; that package was read",
+      "source_read": true,
+      "origin": []
+    },
+    "pyeto": {
+      "name": "PyETo",
+      "kind": "package",
+      "ref": "woodcrafty/PyETo@79ddd88d",
+      "source_read": true,
+      "origin": []
+    },
+    "pyet": {
+      "name": "pyet",
+      "kind": "package",
+      "ref": "pyet 1.5.0 sdist",
+      "source_read": true,
+      "origin": []
+    },
+    "r_evapotranspiration": {
+      "name": "R Evapotranspiration",
+      "kind": "package",
+      "ref": "Evapotranspiration 1.16 CRAN tarball",
+      "source_read": true,
+      "origin": []
+    },
+    "noaa_psl_eddi": {
+      "name": "NOAA PSL EDDI",
+      "kind": "product",
+      "ref": "code not public",
+      "source_read": false,
+      "origin": []
+    },
+    "ncei_pdi_f": {
+      "name": "NCEI pdi.f",
+      "kind": "program",
+      "ref": "pdi.f sha256 e0c58ccb (2013-04-03)",
+      "source_read": true,
+      "origin": [
+        {
+          "source": "ncei_pdi_f",
+          "ref": "pdi.f sha256 e0c58ccb (2013-04-03)",
+          "file": "pdi.f",
+          "line": "13-16",
+          "quote": "It is a modified version of the program in use at the National Climatic Data Center ... Code taken from the old version is in upper case"
+        },
+        {
+          "source": "ncei_pdi_f",
+          "ref": "https://www.drought.gov/data-maps-tools/drought-indices-fortran-spi-pdsi",
+          "accessed": "2026-11-20",
+          "quote": "This code is not an exact copy of what is run on NCEI's internal servers, but represents general use version approved for public release."
+        }
+      ]
+    },
+    "nclimdiv": {
+      "name": "nClimDiv (NCEI)",
+      "kind": "product",
+      "ref": "operational code not public; NCEI's public pdi.f is \"not an exact copy\"",
+      "source_read": false,
+      "origin": []
+    },
+    "jonking93_pdsi": {
+      "name": "JonKing93/pdsi",
+      "kind": "package",
+      "ref": "JonKing93/pdsi@9a636117",
+      "source_read": true,
+      "origin": [
+        {
+          "source": "jonking93_pdsi",
+          "ref": "JonKing93/pdsi@9a636117",
+          "file": "README.md",
+          "line": "75",
+          "quote": "This PDSI function is based on a script written by Dave Meko."
+        }
+      ]
+    },
+    "wells_cpp": {
+      "name": "Wells, Goddard and Hayes C++",
+      "kind": "program",
+      "ref": "greenleaf.unl.edu scPDSI.zip sha256 52ceeb42 (scpdsi.cpp 2007-05-18)",
+      "source_read": true,
+      "origin": [
+        {
+          "source": "wells_cpp",
+          "ref": "greenleaf.unl.edu scPDSI.zip sha256 52ceeb42 (scpdsi.cpp 2007-05-18)",
+          "file": "scPDSI/src/scpdsi.cpp",
+          "line": "33-41",
+          "quote": "Most recently translated to C++ from FORTRAN ... Based mostly on the source code of pdsi.f, a FORTRAN program that calculates monthly PDSI values. The source code came from NCDC, originally written by Tom Karl, and revised by Roger Winchell, Alan McNab, and Richard Heim."
+        }
+      ]
+    },
+    "sibada_scpdsi": {
+      "name": "Sibada/scPDSI",
+      "kind": "package",
+      "ref": "Sibada/scPDSI@10f8c3b2",
+      "source_read": true,
+      "origin": []
+    },
+    "ktripa_scpdsi": {
+      "name": "ktripa/scpdsi-tools",
+      "kind": "package",
+      "ref": "ktripa/scpdsi-tools@c73b22c8",
+      "source_read": true,
+      "origin": [
+        {
+          "source": "ktripa_scpdsi",
+          "ref": "ktripa/scpdsi-tools@c73b22c8",
+          "file": "scpdsi_tools.py",
+          "line": "14-15",
+          "quote": "Self-calibration follows Wells et al. (2004); the Palmer water balance and recursion follow Palmer (1965)."
+        }
+      ]
+    }
+  },
+  "ancestors": {
+    "hosking_rc20525": {
+      "name": "Hosking L-moment routines (IBM RC20525)",
+      "kind": "ancestor",
+      "descendants": [
+        "climate_indices",
+        "ncl",
+        "r_sei",
+        "r_spei",
+        "speibase",
+        "standard_precip",
+        "xclim"
+      ],
+      "evidence": [
+        {
+          "source": "r_spei",
+          "ref": "lmom 3.3 CRAN tarball (dependency)",
+          "file": "DESCRIPTION",
+          "line": "Author",
+          "quote": "Author: J. R. M. Hosking [aut, cre]"
+        },
+        {
+          "source": "standard_precip",
+          "ref": "lmoments3 1.0.8 sdist (dependency)",
+          "file": "README.rst",
+          "line": "35",
+          "quote": "This package contains a Python 3.x implementation of the lmoments.f library created by J. R. M. Hosking."
+        },
+        {
+          "source": "climate_indices",
+          "ref": "monocongo/climate_indices@a7235bf7",
+          "file": "src/climate_indices/lmoments.py",
+          "line": "65-70",
+          "quote": "based on Fortran code written for inclusion in IBM Research Report RC20525 ... This is a Python translation of the original Fortran subroutine"
+        },
+        {
+          "source": "ncl",
+          "ref": "NCAR/ncl tag 6.6.2 (ni/src/lib/nfpfort/spid.f, spi3.f)",
+          "file": "ni/src/lib/nfpfort/spi3.f",
+          "line": "42, 69-74",
+          "quote": "NCDC code ... This program used the program of John Kleist, Colorado State Univ. ... The subroutines and functions in upper case came from Jon Hosking, IBM. Ned Guttman"
+        }
+      ]
+    },
+    "ncdc_palmer_fortran": {
+      "name": "NCDC Palmer Fortran",
+      "kind": "ancestor",
+      "descendants": [
+        "climate_indices",
+        "ncei_pdi_f",
+        "wells_cpp",
+        "sibada_scpdsi"
+      ],
+      "evidence": [
+        {
+          "source": "climate_indices",
+          "ref": "monocongo/climate_indices@0b15ec8c (2017-07-28)",
+          "file": "commit message",
+          "line": null,
+          "quote": "updates to function signatures, new translation of pdinew.f, more tests"
+        },
+        {
+          "source": "ncei_pdi_f",
+          "ref": "pdi.f sha256 e0c58ccb (2013-04-03)",
+          "file": "pdi.f",
+          "line": "13-16",
+          "quote": "It is a modified version of the program in use at the National Climatic Data Center ... Code taken from the old version is in upper case"
+        },
+        {
+          "source": "wells_cpp",
+          "ref": "greenleaf.unl.edu scPDSI.zip sha256 52ceeb42 (scpdsi.cpp 2007-05-18)",
+          "file": "scPDSI/src/scpdsi.cpp",
+          "line": "33-41",
+          "quote": "Most recently translated to C++ from FORTRAN ... Based mostly on the source code of pdsi.f, a FORTRAN program that calculates monthly PDSI values. The source code came from NCDC, originally written by Tom Karl, and revised by Roger Winchell, Alan McNab, and Richard Heim."
+        },
+        {
+          "source": "sibada_scpdsi",
+          "ref": "Sibada/scPDSI@10f8c3b2",
+          "file": "DESCRIPTION",
+          "line": "16-17",
+          "quote": "The function to calculate PDSI is based on the C++ source codes developed by Nathan Wells, Steve Goddard and Michael J. Hayes"
+        }
+      ]
+    }
+  },
+  "citations": {
+    "thom_ci": {
+      "source": "climate_indices",
+      "ref": "monocongo/climate_indices@a7235bf7",
+      "file": "src/climate_indices/compute.py",
+      "line": "2083",
+      "quote": "alphas = (1 + np.sqrt(1 + 4 * a / 3)) / (4 * a)"
+    },
+    "thom_xclim": {
+      "source": "xclim",
+      "ref": "xclim 1.0.0 sdist",
+      "file": "src/xclim/compute/stats.py",
+      "line": "657",
+      "quote": "a0 = (1 + np.sqrt(1 + 4 * A / 3)) / (4 * A)"
+    },
+    "thom_climatekit": {
+      "source": "r_climatekit",
+      "ref": "climatekit 0.2.3 CRAN tarball",
+      "file": "R/drought.R",
+      "line": "466",
+      "quote": "alpha <- (1 + sqrt(1 + 4 * A / 3)) / (4 * A)"
+    },
+    "climatekit_news": {
+      "source": "r_climatekit",
+      "ref": "climatekit 0.2.3 CRAN tarball",
+      "file": "NEWS.md",
+      "line": "12-13",
+      "quote": "uses the generalised logistic form, which covers any L-skewness between -1 and 1, as the SPEI package does."
+    },
+    "precip_index": {
+      "source": "precip-index",
+      "ref": "bennyistanto/precip-index@1c2ef1c3",
+      "file": "README.md",
+      "line": "42",
+      "quote": "Built upon the foundation of climate-indices by James Adams"
+    },
+    "pm_eto_commit": {
+      "source": "climate_indices",
+      "ref": "monocongo/climate_indices@e7b1f461 (2026-04-05)",
+      "file": "commit message",
+      "line": null,
+      "quote": "feat(pm-et): add Penman-Monteith FAO56 implementation and tests"
+    },
+    "pm_eto_header": {
+      "source": "climate_indices",
+      "ref": "monocongo/climate_indices@a7235bf7",
+      "file": "src/climate_indices/drought/pm_eto.py",
+      "line": "1-4",
+      "quote": "Penman-Monteith reference evapotranspiration (FAO-56) helper functions. This module implements the component equations from FAO Irrigation and Drainage Paper 56 (Allen et al., 1998)"
+    },
+    "parity_registry": {
+      "source": "climate_indices",
+      "ref": "monocongo/climate_indices@a7235bf7",
+      "file": "tests/parity_registry.py",
+      "line": "1",
+      "quote": "One parity registry and harness shared by every ported Rust kernel."
+    },
+    "eddi_authors": {
+      "source": "climate_indices",
+      "ref": "monocongo/climate_indices@a7235bf7",
+      "file": "src/climate_indices/cf_metadata_registry.py",
+      "line": "327",
+      "quote": "Hobbins, M. T., Wood, A., McEvoy, D. J., Huntington, J. L., Morton, C., "
+    },
+    "pet_fixture_trace": {
+      "source": "climate_indices",
+      "ref": "monocongo/climate_indices@5e87424c (2018-12-11)",
+      "file": "commit message",
+      "line": null,
+      "quote": "wrote numpy arrays used for testing into *.npy files, now reading these files for fixture arrays"
+    }
+  },
+  "indices": {
+    "SPI": {
+      "implementations": [
+        "climate_indices",
+        "xclim",
+        "spei",
+        "standard_precip",
+        "r_spei",
+        "r_sci",
+        "r_sei",
+        "r_climatekit",
+        "ndmc_spi",
+        "ncl",
+        "climate_engine",
+        "gridmet_drought",
+        "ncei_climdiv_spi"
+      ],
+      "pairs": [
+        {
+          "a": "climate_indices",
+          "b": "xclim",
+          "class": "validated against",
+          "direction": {
+            "from": "xclim",
+            "to": "climate_indices"
+          },
+          "relations": [
+            {
+              "class": "validated against",
+              "from": "xclim",
+              "to": "climate_indices",
+              "configuration": "test reference values for gamma APP",
+              "evidence": [
+                {
+                  "source": "xclim",
+                  "ref": "xclim 1.0.0 sdist",
+                  "file": "tests/test_indices.py",
+                  "line": "351-353",
+                  "quote": "gamma/APP reference results: Obtained with monocongo/climate_indices library; MS/fisk/ML reference results: Obtained with R package SPEI"
+                },
+                {
+                  "source": "xclim",
+                  "ref": "xclim 1.0.0 sdist",
+                  "file": "src/xclim/compute/_agro.py",
+                  "line": "1109",
+                  "quote": "The results from climate_indices library can be reproduced with method = \"APP\" and fitwkargs = {\"floc\": 0}"
+                }
+              ]
+            },
+            {
+              "class": "shared numerical routine",
+              "from": null,
+              "to": null,
+              "configuration": "separate ports of the same Fortran: climate_indices Pearson III fit, from its SAMLMR translation (own translation (lmoments.py)); xclim method = \"PWM\" with an lmoments3 distribution (lmoments3 dependency)",
+              "evidence": [
+                {
+                  "source": "climate_indices",
+                  "ref": "monocongo/climate_indices@a7235bf7",
+                  "file": "src/climate_indices/lmoments.py",
+                  "line": "65-70",
+                  "quote": "based on Fortran code written for inclusion in IBM Research Report RC20525 ... This is a Python translation of the original Fortran subroutine"
+                },
+                {
+                  "source": "climate_indices",
+                  "ref": "monocongo/climate_indices@a7235bf7",
+                  "file": "src/climate_indices/lmoments.py",
+                  "line": "279",
+                  "quote": "This is a Python translation of the original Fortran subroutine SAMLMR()"
+                },
+                {
+                  "source": "climate_indices",
+                  "ref": "monocongo/climate_indices@a7235bf7",
+                  "file": "src/climate_indices/lmoments.py",
+                  "line": "381-383",
+                  "quote": "a Python translation of the PELGLO subroutine from J. R. M. Hosking's ... (IBM Research Report RC20525) as distributed in the R package lmom"
+                },
+                {
+                  "source": "climate_indices",
+                  "ref": "monocongo/climate_indices@a7235bf7",
+                  "file": "src/climate_indices/lmoments.py",
+                  "line": "601",
+                  "quote": "lmoments = _estimate_lmoments(timeseries, hint=\"\")"
+                },
+                {
+                  "source": "xclim",
+                  "ref": "xclim 1.0.0 sdist",
+                  "file": "src/xclim/compute/stats.py",
+                  "line": "172-175",
+                  "quote": "if method == \"PWM\" and not hasattr(dist, \"lmom_fit\"): ... Please pass an instance from the lmoments3 package."
+                },
+                {
+                  "source": "standard_precip",
+                  "ref": "lmoments3 1.0.8 sdist (dependency)",
+                  "file": "README.rst",
+                  "line": "35",
+                  "quote": "This package contains a Python 3.x implementation of the lmoments.f library created by J. R. M. Hosking."
+                }
+              ],
+              "routine": "Hosking L-moment routines (IBM RC20525)"
+            }
+          ]
+        },
+        {
+          "a": "climate_indices",
+          "b": "spei",
+          "class": "validated against",
+          "direction": {
+            "from": "spei",
+            "to": "climate_indices"
+          },
+          "relations": [
+            {
+              "class": "validated against",
+              "from": "spei",
+              "to": "climate_indices",
+              "configuration": "documentation only; the comparison code is commented out at v0.8.3",
+              "evidence": [
+                {
+                  "source": "spei",
+                  "ref": "spei 0.8.3 sdist; repository tag v0.8.3 (8276b0c9)",
+                  "file": "docs/examples/example04_package_comparison.ipynb",
+                  "line": "cells 9-11",
+                  "quote": "Previously there was a significant difference beteween the SPEI and climate_indices package ... (comparison code commented out)"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "a": "climate_indices",
+          "b": "standard_precip",
+          "class": "shared numerical routine",
+          "direction": null,
+          "relations": [
+            {
+              "class": "shared numerical routine",
+              "from": null,
+              "to": null,
+              "configuration": "separate ports of the same Fortran: climate_indices Pearson III fit, from its SAMLMR translation (own translation (lmoments.py)); standard_precip fit_type = \"lmom\" (lmoments3 dependency)",
+              "evidence": [
+                {
+                  "source": "climate_indices",
+                  "ref": "monocongo/climate_indices@a7235bf7",
+                  "file": "src/climate_indices/lmoments.py",
+                  "line": "65-70",
+                  "quote": "based on Fortran code written for inclusion in IBM Research Report RC20525 ... This is a Python translation of the original Fortran subroutine"
+                },
+                {
+                  "source": "climate_indices",
+                  "ref": "monocongo/climate_indices@a7235bf7",
+                  "file": "src/climate_indices/lmoments.py",
+                  "line": "279",
+                  "quote": "This is a Python translation of the original Fortran subroutine SAMLMR()"
+                },
+                {
+                  "source": "climate_indices",
+                  "ref": "monocongo/climate_indices@a7235bf7",
+                  "file": "src/climate_indices/lmoments.py",
+                  "line": "381-383",
+                  "quote": "a Python translation of the PELGLO subroutine from J. R. M. Hosking's ... (IBM Research Report RC20525) as distributed in the R package lmom"
+                },
+                {
+                  "source": "climate_indices",
+                  "ref": "monocongo/climate_indices@a7235bf7",
+                  "file": "src/climate_indices/lmoments.py",
+                  "line": "601",
+                  "quote": "lmoments = _estimate_lmoments(timeseries, hint=\"\")"
+                },
+                {
+                  "source": "standard_precip",
+                  "ref": "standard-precip 2.0.0 sdist",
+                  "file": "standard_precip/_distributions.py",
+                  "line": "3-6",
+                  "quote": "L-moment fits go through the external lmoments3 package (Hosking's algorithms ...). MLE fits go through plain scipy.stats distributions"
+                },
+                {
+                  "source": "standard_precip",
+                  "ref": "lmoments3 1.0.8 sdist (dependency)",
+                  "file": "README.rst",
+                  "line": "35",
+                  "quote": "This package contains a Python 3.x implementation of the lmoments.f library created by J. R. M. Hosking."
+                }
+              ],
+              "routine": "Hosking L-moment routines (IBM RC20525)"
+            }
+          ]
+        },
+        {
+          "a": "climate_indices",
+          "b": "r_spei",
+          "class": "shared numerical routine",
+          "direction": null,
+          "relations": [
+            {
+              "class": "shared numerical routine",
+              "from": null,
+              "to": null,
+              "configuration": "separate ports of the same Fortran: climate_indices Pearson III fit, from its SAMLMR translation (own translation (lmoments.py)); R SPEI pp-pwm and ub-pwm fits (default) (lmom dependency)",
+              "evidence": [
+                {
+                  "source": "climate_indices",
+                  "ref": "monocongo/climate_indices@a7235bf7",
+                  "file": "src/climate_indices/lmoments.py",
+                  "line": "65-70",
+                  "quote": "based on Fortran code written for inclusion in IBM Research Report RC20525 ... This is a Python translation of the original Fortran subroutine"
+                },
+                {
+                  "source": "climate_indices",
+                  "ref": "monocongo/climate_indices@a7235bf7",
+                  "file": "src/climate_indices/lmoments.py",
+                  "line": "279",
+                  "quote": "This is a Python translation of the original Fortran subroutine SAMLMR()"
+                },
+                {
+                  "source": "climate_indices",
+                  "ref": "monocongo/climate_indices@a7235bf7",
+                  "file": "src/climate_indices/lmoments.py",
+                  "line": "381-383",
+                  "quote": "a Python translation of the PELGLO subroutine from J. R. M. Hosking's ... (IBM Research Report RC20525) as distributed in the R package lmom"
+                },
+                {
+                  "source": "climate_indices",
+                  "ref": "monocongo/climate_indices@a7235bf7",
+                  "file": "src/climate_indices/lmoments.py",
+                  "line": "601",
+                  "quote": "lmoments = _estimate_lmoments(timeseries, hint=\"\")"
+                },
+                {
+                  "source": "r_spei",
+                  "ref": "SPEI 1.8.1 CRAN tarball",
+                  "file": "R/spei.R",
+                  "line": "665-695",
+                  "quote": "\"ub-pwm\" = PWM(x.mon, order = 0:2) ... \"log-Logistic\" = tryCatch(pelglo(fortran_vec) ... \"Gamma\" = tryCatch(pelgam(... \"PearsonIII\" = tryCatch(pelpe3("
+                },
+                {
+                  "source": "r_spei",
+                  "ref": "lmom 3.3 CRAN tarball (dependency)",
+                  "file": "DESCRIPTION",
+                  "line": "Author",
+                  "quote": "Author: J. R. M. Hosking [aut, cre]"
+                },
+                {
+                  "source": "r_spei",
+                  "ref": "SPEI 1.8.1 CRAN tarball",
+                  "file": "R/spi.R",
+                  "line": "13",
+                  "quote": "sol <- spei("
+                }
+              ],
+              "routine": "Hosking L-moment routines (IBM RC20525)"
+            }
+          ]
+        },
+        {
+          "a": "climate_indices",
+          "b": "r_sci",
+          "class": "validated against",
+          "direction": {
+            "from": "climate_indices",
+            "to": "r_sci"
+          },
+          "relations": [
+            {
+              "class": "validated against",
+              "from": "climate_indices",
+              "to": "r_sci",
+              "configuration": "zero placement",
+              "evidence": [
+                {
+                  "source": "climate_indices",
+                  "ref": "monocongo/climate_indices@a7235bf7",
+                  "file": "tests/fixture/zero_handling/provenance.json",
+                  "line": "2",
+                  "quote": "R SEI and SCI packages"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "a": "climate_indices",
+          "b": "r_sei",
+          "class": "validated against",
+          "direction": {
+            "from": "climate_indices",
+            "to": "r_sei"
+          },
+          "relations": [
+            {
+              "class": "validated against",
+              "from": "climate_indices",
+              "to": "r_sei",
+              "configuration": "zero placement",
+              "evidence": [
+                {
+                  "source": "climate_indices",
+                  "ref": "monocongo/climate_indices@a7235bf7",
+                  "file": "tests/fixture/zero_handling/provenance.json",
+                  "line": "2",
+                  "quote": "R SEI and SCI packages"
+                }
+              ]
+            },
+            {
+              "class": "shared numerical routine",
+              "from": null,
+              "to": null,
+              "configuration": "separate ports of the same Fortran: climate_indices Pearson III fit, from its SAMLMR translation (own translation (lmoments.py)); R SEI method = \"lmoment\" (lmom dependency)",
+              "evidence": [
+                {
+                  "source": "climate_indices",
+                  "ref": "monocongo/climate_indices@a7235bf7",
+                  "file": "src/climate_indices/lmoments.py",
+                  "line": "65-70",
+                  "quote": "based on Fortran code written for inclusion in IBM Research Report RC20525 ... This is a Python translation of the original Fortran subroutine"
+                },
+                {
+                  "source": "climate_indices",
+                  "ref": "monocongo/climate_indices@a7235bf7",
+                  "file": "src/climate_indices/lmoments.py",
+                  "line": "279",
+                  "quote": "This is a Python translation of the original Fortran subroutine SAMLMR()"
+                },
+                {
+                  "source": "climate_indices",
+                  "ref": "monocongo/climate_indices@a7235bf7",
+                  "file": "src/climate_indices/lmoments.py",
+                  "line": "381-383",
+                  "quote": "a Python translation of the PELGLO subroutine from J. R. M. Hosking's ... (IBM Research Report RC20525) as distributed in the R package lmom"
+                },
+                {
+                  "source": "climate_indices",
+                  "ref": "monocongo/climate_indices@a7235bf7",
+                  "file": "src/climate_indices/lmoments.py",
+                  "line": "601",
+                  "quote": "lmoments = _estimate_lmoments(timeseries, hint=\"\")"
+                },
+                {
+                  "source": "r_sei",
+                  "ref": "SEI 0.2.0 CRAN tarball",
+                  "file": "R/fit_dist.R",
+                  "line": "291-308",
+                  "quote": "samp_mom <- lmom::samlmu(data) ... params <- lmom::pelgam(samp_mom)"
+                },
+                {
+                  "source": "r_spei",
+                  "ref": "lmom 3.3 CRAN tarball (dependency)",
+                  "file": "DESCRIPTION",
+                  "line": "Author",
+                  "quote": "Author: J. R. M. Hosking [aut, cre]"
+                }
+              ],
+              "routine": "Hosking L-moment routines (IBM RC20525)"
+            }
+          ]
+        },
+        {
+          "a": "climate_indices",
+          "b": "r_climatekit",
+          "class": "independent",
+          "direction": null,
+          "relations": []
+        },
+        {
+          "a": "climate_indices",
+          "b": "ndmc_spi",
+          "class": "independent",
+          "direction": null,
+          "relations": []
+        },
+        {
+          "a": "climate_indices",
+          "b": "ncl",
+          "class": "shared numerical routine",
+          "direction": null,
+          "relations": [
+            {
+              "class": "shared numerical routine",
+              "from": null,
+              "to": null,
+              "configuration": "separate ports of the same Fortran: climate_indices Pearson III fit, from its SAMLMR translation (own translation (lmoments.py)); NCL dim_spi_n Pearson III path (opt@spi_type = 3) (embedded Fortran (NCDC spi code))",
+              "evidence": [
+                {
+                  "source": "climate_indices",
+                  "ref": "monocongo/climate_indices@a7235bf7",
+                  "file": "src/climate_indices/lmoments.py",
+                  "line": "65-70",
+                  "quote": "based on Fortran code written for inclusion in IBM Research Report RC20525 ... This is a Python translation of the original Fortran subroutine"
+                },
+                {
+                  "source": "climate_indices",
+                  "ref": "monocongo/climate_indices@a7235bf7",
+                  "file": "src/climate_indices/lmoments.py",
+                  "line": "279",
+                  "quote": "This is a Python translation of the original Fortran subroutine SAMLMR()"
+                },
+                {
+                  "source": "climate_indices",
+                  "ref": "monocongo/climate_indices@a7235bf7",
+                  "file": "src/climate_indices/lmoments.py",
+                  "line": "381-383",
+                  "quote": "a Python translation of the PELGLO subroutine from J. R. M. Hosking's ... (IBM Research Report RC20525) as distributed in the R package lmom"
+                },
+                {
+                  "source": "climate_indices",
+                  "ref": "monocongo/climate_indices@a7235bf7",
+                  "file": "src/climate_indices/lmoments.py",
+                  "line": "601",
+                  "quote": "lmoments = _estimate_lmoments(timeseries, hint=\"\")"
+                },
+                {
+                  "source": "ncl",
+                  "ref": "NCAR/ncl tag 6.6.2 (ni/src/lib/nfpfort/spid.f, spi3.f)",
+                  "file": "ni/src/lib/nfpfort/spi3.f",
+                  "line": "42, 69-74",
+                  "quote": "NCDC code ... This program used the program of John Kleist, Colorado State Univ. ... The subroutines and functions in upper case came from Jon Hosking, IBM. Ned Guttman"
+                }
+              ],
+              "routine": "Hosking L-moment routines (IBM RC20525)"
+            }
+          ]
+        },
+        {
+          "a": "climate_indices",
+          "b": "climate_engine",
+          "class": "validated against",
+          "direction": {
+            "from": "climate_indices",
+            "to": "climate_engine"
+          },
+          "relations": [
+            {
+              "class": "validated against",
+              "from": "climate_indices",
+              "to": "climate_engine",
+              "configuration": "characterization pilot",
+              "evidence": [
+                {
+                  "source": "climate_indices",
+                  "ref": "monocongo/climate_indices@a7235bf7",
+                  "file": "docs/research/earthengine-climate-engine-pilot.md",
+                  "line": "9-13",
+                  "quote": "Measure agreement between climate_indices and two provider products that use gridMET inputs."
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "a": "climate_indices",
+          "b": "gridmet_drought",
+          "class": "validated against",
+          "direction": {
+            "from": "climate_indices",
+            "to": "gridmet_drought"
+          },
+          "relations": [
+            {
+              "class": "validated against",
+              "from": "climate_indices",
+              "to": "gridmet_drought",
+              "configuration": "characterization pilot",
+              "evidence": [
+                {
+                  "source": "climate_indices",
+                  "ref": "monocongo/climate_indices@a7235bf7",
+                  "file": "docs/research/earthengine-climate-engine-pilot.md",
+                  "line": "9-13",
+                  "quote": "Measure agreement between climate_indices and two provider products that use gridMET inputs."
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "a": "climate_indices",
+          "b": "ncei_climdiv_spi",
+          "class": "validated against",
+          "direction": {
+            "from": "climate_indices",
+            "to": "ncei_climdiv_spi"
+          },
+          "relations": [
+            {
+              "class": "validated against",
+              "from": "climate_indices",
+              "to": "ncei_climdiv_spi",
+              "configuration": "Pearson III",
+              "evidence": [
+                {
+                  "source": "climate_indices",
+                  "ref": "monocongo/climate_indices@a7235bf7",
+                  "file": "tests/fixture/ncei_spi/provenance.json",
+                  "line": "70",
+                  "quote": "External ground truth for climate_indices.indices.spi() with Distribution.pearson ... independence is plausible but not airtight"
+                }
+              ]
+            }
+          ],
+          "notes": [
+            {
+              "note": "The library's pre-2018 Pearson III code was \"originally translated from NCDC global SPI\"; NCEI's public spi.f carries Hosking's routines, as the library's lmoments.py does.",
+              "evidence": [
+                {
+                  "source": "climate_indices",
+                  "ref": "monocongo/climate_indices@d106d578 (2018-10-28)",
+                  "file": "commit message",
+                  "line": null,
+                  "quote": "new code for Pearson distribution fitting, replacing previous code that was originally translated from NCDC global SPI"
+                },
+                {
+                  "source": "ncei_climdiv_spi",
+                  "ref": "NCEI public spi.f sha256 bd7bb8ab",
+                  "file": "spi.f",
+                  "line": "64, 284-288",
+                  "quote": "written by Ned Guttman in January 1998 ... The subroutines and functions in upper case came from Jon Hosking, IBM."
+                },
+                {
+                  "source": "climate_indices",
+                  "ref": "monocongo/climate_indices@a7235bf7",
+                  "file": "src/climate_indices/lmoments.py",
+                  "line": "65-70",
+                  "quote": "based on Fortran code written for inclusion in IBM Research Report RC20525 ... This is a Python translation of the original Fortran subroutine"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "a": "xclim",
+          "b": "spei",
+          "class": "shared numerical routine",
+          "direction": null,
+          "relations": [
+            {
+              "class": "shared numerical routine",
+              "from": null,
+              "to": null,
+              "configuration": "maximum likelihood",
+              "evidence": [
+                {
+                  "source": "xclim",
+                  "ref": "xclim 1.0.0 sdist",
+                  "file": "src/xclim/compute/stats.py",
+                  "line": "54-56",
+                  "quote": "if method in [\"ML\", \"MLE\"]: ... params = dist.fit(x, *args, method=\"mle\", **kwargs, **fitkwargs)"
+                },
+                {
+                  "source": "spei",
+                  "ref": "spei 0.8.3 sdist; repository tag v0.8.3 (8276b0c9)",
+                  "file": "src/spei/dist.py",
+                  "line": "95",
+                  "quote": "fit_tuple = dist.fit("
+                }
+              ],
+              "routine": "scipy.stats rv_continuous.fit"
+            }
+          ]
+        },
+        {
+          "a": "xclim",
+          "b": "standard_precip",
+          "class": "shared numerical routine",
+          "direction": null,
+          "relations": [
+            {
+              "class": "shared numerical routine",
+              "from": null,
+              "to": null,
+              "configuration": "maximum likelihood",
+              "evidence": [
+                {
+                  "source": "xclim",
+                  "ref": "xclim 1.0.0 sdist",
+                  "file": "src/xclim/compute/stats.py",
+                  "line": "54-56",
+                  "quote": "if method in [\"ML\", \"MLE\"]: ... params = dist.fit(x, *args, method=\"mle\", **kwargs, **fitkwargs)"
+                },
+                {
+                  "source": "standard_precip",
+                  "ref": "standard-precip 2.0.0 sdist",
+                  "file": "standard_precip/_distributions.py",
+                  "line": "3-6",
+                  "quote": "L-moment fits go through the external lmoments3 package (Hosking's algorithms ...). MLE fits go through plain scipy.stats distributions"
+                }
+              ],
+              "routine": "scipy.stats rv_continuous.fit"
+            },
+            {
+              "class": "shared numerical routine",
+              "from": null,
+              "to": null,
+              "configuration": "same dependency: xclim method = \"PWM\" with an lmoments3 distribution (lmoments3 dependency); standard_precip fit_type = \"lmom\" (lmoments3 dependency)",
+              "evidence": [
+                {
+                  "source": "xclim",
+                  "ref": "xclim 1.0.0 sdist",
+                  "file": "src/xclim/compute/stats.py",
+                  "line": "172-175",
+                  "quote": "if method == \"PWM\" and not hasattr(dist, \"lmom_fit\"): ... Please pass an instance from the lmoments3 package."
+                },
+                {
+                  "source": "standard_precip",
+                  "ref": "lmoments3 1.0.8 sdist (dependency)",
+                  "file": "README.rst",
+                  "line": "35",
+                  "quote": "This package contains a Python 3.x implementation of the lmoments.f library created by J. R. M. Hosking."
+                },
+                {
+                  "source": "standard_precip",
+                  "ref": "standard-precip 2.0.0 sdist",
+                  "file": "standard_precip/_distributions.py",
+                  "line": "3-6",
+                  "quote": "L-moment fits go through the external lmoments3 package (Hosking's algorithms ...). MLE fits go through plain scipy.stats distributions"
+                },
+                {
+                  "source": "standard_precip",
+                  "ref": "lmoments3 1.0.8 sdist (dependency)",
+                  "file": "README.rst",
+                  "line": "35",
+                  "quote": "This package contains a Python 3.x implementation of the lmoments.f library created by J. R. M. Hosking."
+                }
+              ],
+              "routine": "Hosking L-moment routines (IBM RC20525)"
+            }
+          ]
+        },
+        {
+          "a": "xclim",
+          "b": "r_spei",
+          "class": "shared numerical routine",
+          "direction": null,
+          "relations": [
+            {
+              "class": "shared numerical routine",
+              "from": null,
+              "to": null,
+              "configuration": "separate ports of the same Fortran: xclim method = \"PWM\" with an lmoments3 distribution (lmoments3 dependency); R SPEI pp-pwm and ub-pwm fits (default) (lmom dependency)",
+              "evidence": [
+                {
+                  "source": "xclim",
+                  "ref": "xclim 1.0.0 sdist",
+                  "file": "src/xclim/compute/stats.py",
+                  "line": "172-175",
+                  "quote": "if method == \"PWM\" and not hasattr(dist, \"lmom_fit\"): ... Please pass an instance from the lmoments3 package."
+                },
+                {
+                  "source": "standard_precip",
+                  "ref": "lmoments3 1.0.8 sdist (dependency)",
+                  "file": "README.rst",
+                  "line": "35",
+                  "quote": "This package contains a Python 3.x implementation of the lmoments.f library created by J. R. M. Hosking."
+                },
+                {
+                  "source": "r_spei",
+                  "ref": "SPEI 1.8.1 CRAN tarball",
+                  "file": "R/spei.R",
+                  "line": "665-695",
+                  "quote": "\"ub-pwm\" = PWM(x.mon, order = 0:2) ... \"log-Logistic\" = tryCatch(pelglo(fortran_vec) ... \"Gamma\" = tryCatch(pelgam(... \"PearsonIII\" = tryCatch(pelpe3("
+                },
+                {
+                  "source": "r_spei",
+                  "ref": "lmom 3.3 CRAN tarball (dependency)",
+                  "file": "DESCRIPTION",
+                  "line": "Author",
+                  "quote": "Author: J. R. M. Hosking [aut, cre]"
+                },
+                {
+                  "source": "r_spei",
+                  "ref": "SPEI 1.8.1 CRAN tarball",
+                  "file": "R/spi.R",
+                  "line": "13",
+                  "quote": "sol <- spei("
+                }
+              ],
+              "routine": "Hosking L-moment routines (IBM RC20525)"
+            }
+          ]
+        },
+        {
+          "a": "xclim",
+          "b": "r_sci",
+          "class": "independent",
+          "direction": null,
+          "relations": []
+        },
+        {
+          "a": "xclim",
+          "b": "r_sei",
+          "class": "shared numerical routine",
+          "direction": null,
+          "relations": [
+            {
+              "class": "shared numerical routine",
+              "from": null,
+              "to": null,
+              "configuration": "separate ports of the same Fortran: xclim method = \"PWM\" with an lmoments3 distribution (lmoments3 dependency); R SEI method = \"lmoment\" (lmom dependency)",
+              "evidence": [
+                {
+                  "source": "xclim",
+                  "ref": "xclim 1.0.0 sdist",
+                  "file": "src/xclim/compute/stats.py",
+                  "line": "172-175",
+                  "quote": "if method == \"PWM\" and not hasattr(dist, \"lmom_fit\"): ... Please pass an instance from the lmoments3 package."
+                },
+                {
+                  "source": "standard_precip",
+                  "ref": "lmoments3 1.0.8 sdist (dependency)",
+                  "file": "README.rst",
+                  "line": "35",
+                  "quote": "This package contains a Python 3.x implementation of the lmoments.f library created by J. R. M. Hosking."
+                },
+                {
+                  "source": "r_sei",
+                  "ref": "SEI 0.2.0 CRAN tarball",
+                  "file": "R/fit_dist.R",
+                  "line": "291-308",
+                  "quote": "samp_mom <- lmom::samlmu(data) ... params <- lmom::pelgam(samp_mom)"
+                },
+                {
+                  "source": "r_spei",
+                  "ref": "lmom 3.3 CRAN tarball (dependency)",
+                  "file": "DESCRIPTION",
+                  "line": "Author",
+                  "quote": "Author: J. R. M. Hosking [aut, cre]"
+                }
+              ],
+              "routine": "Hosking L-moment routines (IBM RC20525)"
+            }
+          ]
+        },
+        {
+          "a": "xclim",
+          "b": "r_climatekit",
+          "class": "independent",
+          "direction": null,
+          "relations": []
+        },
+        {
+          "a": "xclim",
+          "b": "ndmc_spi",
+          "class": "independent",
+          "direction": null,
+          "relations": []
+        },
+        {
+          "a": "xclim",
+          "b": "ncl",
+          "class": "shared numerical routine",
+          "direction": null,
+          "relations": [
+            {
+              "class": "shared numerical routine",
+              "from": null,
+              "to": null,
+              "configuration": "separate ports of the same Fortran: xclim method = \"PWM\" with an lmoments3 distribution (lmoments3 dependency); NCL dim_spi_n Pearson III path (opt@spi_type = 3) (embedded Fortran (NCDC spi code))",
+              "evidence": [
+                {
+                  "source": "xclim",
+                  "ref": "xclim 1.0.0 sdist",
+                  "file": "src/xclim/compute/stats.py",
+                  "line": "172-175",
+                  "quote": "if method == \"PWM\" and not hasattr(dist, \"lmom_fit\"): ... Please pass an instance from the lmoments3 package."
+                },
+                {
+                  "source": "standard_precip",
+                  "ref": "lmoments3 1.0.8 sdist (dependency)",
+                  "file": "README.rst",
+                  "line": "35",
+                  "quote": "This package contains a Python 3.x implementation of the lmoments.f library created by J. R. M. Hosking."
+                },
+                {
+                  "source": "ncl",
+                  "ref": "NCAR/ncl tag 6.6.2 (ni/src/lib/nfpfort/spid.f, spi3.f)",
+                  "file": "ni/src/lib/nfpfort/spi3.f",
+                  "line": "42, 69-74",
+                  "quote": "NCDC code ... This program used the program of John Kleist, Colorado State Univ. ... The subroutines and functions in upper case came from Jon Hosking, IBM. Ned Guttman"
+                }
+              ],
+              "routine": "Hosking L-moment routines (IBM RC20525)"
+            }
+          ]
+        },
+        {
+          "a": "xclim",
+          "b": "climate_engine",
+          "class": "unknown",
+          "direction": null,
+          "relations": [],
+          "questions": [
+            1
+          ]
+        },
+        {
+          "a": "xclim",
+          "b": "gridmet_drought",
+          "class": "unknown",
+          "direction": null,
+          "relations": [],
+          "questions": [
+            2
+          ]
+        },
+        {
+          "a": "xclim",
+          "b": "ncei_climdiv_spi",
+          "class": "unknown",
+          "direction": null,
+          "relations": [],
+          "questions": [
+            4
+          ]
+        },
+        {
+          "a": "spei",
+          "b": "standard_precip",
+          "class": "validated against",
+          "direction": {
+            "from": "spei",
+            "to": "standard_precip"
+          },
+          "relations": [
+            {
+              "class": "validated against",
+              "from": "spei",
+              "to": "standard_precip",
+              "configuration": "documentation notebook",
+              "evidence": [
+                {
+                  "source": "spei",
+                  "ref": "spei 0.8.3 sdist; repository tag v0.8.3 (8276b0c9)",
+                  "file": "docs/examples/example04_package_comparison.ipynb",
+                  "line": "cells 0, 7-8, 15-16",
+                  "quote": "Current comparisons include: standard_precip (Python), climate_indices (Python), pastas (Python), SPEI (R)"
+                }
+              ]
+            },
+            {
+              "class": "shared numerical routine",
+              "from": null,
+              "to": null,
+              "configuration": "maximum likelihood",
+              "evidence": [
+                {
+                  "source": "spei",
+                  "ref": "spei 0.8.3 sdist; repository tag v0.8.3 (8276b0c9)",
+                  "file": "src/spei/dist.py",
+                  "line": "95",
+                  "quote": "fit_tuple = dist.fit("
+                },
+                {
+                  "source": "standard_precip",
+                  "ref": "standard-precip 2.0.0 sdist",
+                  "file": "standard_precip/_distributions.py",
+                  "line": "3-6",
+                  "quote": "L-moment fits go through the external lmoments3 package (Hosking's algorithms ...). MLE fits go through plain scipy.stats distributions"
+                }
+              ],
+              "routine": "scipy.stats rv_continuous.fit"
+            }
+          ]
+        },
+        {
+          "a": "spei",
+          "b": "r_spei",
+          "class": "validated against",
+          "direction": {
+            "from": "spei",
+            "to": "r_spei"
+          },
+          "relations": [
+            {
+              "class": "validated against",
+              "from": "spei",
+              "to": "r_spei",
+              "configuration": "documentation notebook; the comparison is textual",
+              "evidence": [
+                {
+                  "source": "spei",
+                  "ref": "spei 0.8.3 sdist; repository tag v0.8.3 (8276b0c9)",
+                  "file": "docs/examples/example04_package_comparison.ipynb",
+                  "line": "cells 13, 16",
+                  "quote": "spir_res = sr.spi(prec_rsum.values, scale=3) ... The SPEI R package also has a similar result but seems to vary a bit more."
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "a": "spei",
+          "b": "r_sci",
+          "class": "independent",
+          "direction": null,
+          "relations": []
+        },
+        {
+          "a": "spei",
+          "b": "r_sei",
+          "class": "independent",
+          "direction": null,
+          "relations": []
+        },
+        {
+          "a": "spei",
+          "b": "r_climatekit",
+          "class": "independent",
+          "direction": null,
+          "relations": []
+        },
+        {
+          "a": "spei",
+          "b": "ndmc_spi",
+          "class": "independent",
+          "direction": null,
+          "relations": []
+        },
+        {
+          "a": "spei",
+          "b": "ncl",
+          "class": "independent",
+          "direction": null,
+          "relations": []
+        },
+        {
+          "a": "spei",
+          "b": "climate_engine",
+          "class": "unknown",
+          "direction": null,
+          "relations": [],
+          "questions": [
+            1
+          ]
+        },
+        {
+          "a": "spei",
+          "b": "gridmet_drought",
+          "class": "unknown",
+          "direction": null,
+          "relations": [],
+          "questions": [
+            2
+          ]
+        },
+        {
+          "a": "spei",
+          "b": "ncei_climdiv_spi",
+          "class": "unknown",
+          "direction": null,
+          "relations": [],
+          "questions": [
+            4
+          ]
+        },
+        {
+          "a": "standard_precip",
+          "b": "r_spei",
+          "class": "shared numerical routine",
+          "direction": null,
+          "relations": [
+            {
+              "class": "shared numerical routine",
+              "from": null,
+              "to": null,
+              "configuration": "separate ports of the same Fortran: standard_precip fit_type = \"lmom\" (lmoments3 dependency); R SPEI pp-pwm and ub-pwm fits (default) (lmom dependency)",
+              "evidence": [
+                {
+                  "source": "standard_precip",
+                  "ref": "standard-precip 2.0.0 sdist",
+                  "file": "standard_precip/_distributions.py",
+                  "line": "3-6",
+                  "quote": "L-moment fits go through the external lmoments3 package (Hosking's algorithms ...). MLE fits go through plain scipy.stats distributions"
+                },
+                {
+                  "source": "standard_precip",
+                  "ref": "lmoments3 1.0.8 sdist (dependency)",
+                  "file": "README.rst",
+                  "line": "35",
+                  "quote": "This package contains a Python 3.x implementation of the lmoments.f library created by J. R. M. Hosking."
+                },
+                {
+                  "source": "r_spei",
+                  "ref": "SPEI 1.8.1 CRAN tarball",
+                  "file": "R/spei.R",
+                  "line": "665-695",
+                  "quote": "\"ub-pwm\" = PWM(x.mon, order = 0:2) ... \"log-Logistic\" = tryCatch(pelglo(fortran_vec) ... \"Gamma\" = tryCatch(pelgam(... \"PearsonIII\" = tryCatch(pelpe3("
+                },
+                {
+                  "source": "r_spei",
+                  "ref": "lmom 3.3 CRAN tarball (dependency)",
+                  "file": "DESCRIPTION",
+                  "line": "Author",
+                  "quote": "Author: J. R. M. Hosking [aut, cre]"
+                },
+                {
+                  "source": "r_spei",
+                  "ref": "SPEI 1.8.1 CRAN tarball",
+                  "file": "R/spi.R",
+                  "line": "13",
+                  "quote": "sol <- spei("
+                }
+              ],
+              "routine": "Hosking L-moment routines (IBM RC20525)"
+            }
+          ],
+          "notes": [
+            {
+              "note": "standard_precip says its functions are \"loosely based on\" R SPEI; that names a design source, not a code port.",
+              "evidence": [
+                {
+                  "source": "standard_precip",
+                  "ref": "standard-precip 2.0.0 sdist",
+                  "file": "README.md",
+                  "line": "14",
+                  "quote": "These functions are loosely based on the SPEI package in R"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "a": "standard_precip",
+          "b": "r_sci",
+          "class": "independent",
+          "direction": null,
+          "relations": []
+        },
+        {
+          "a": "standard_precip",
+          "b": "r_sei",
+          "class": "shared numerical routine",
+          "direction": null,
+          "relations": [
+            {
+              "class": "shared numerical routine",
+              "from": null,
+              "to": null,
+              "configuration": "separate ports of the same Fortran: standard_precip fit_type = \"lmom\" (lmoments3 dependency); R SEI method = \"lmoment\" (lmom dependency)",
+              "evidence": [
+                {
+                  "source": "standard_precip",
+                  "ref": "standard-precip 2.0.0 sdist",
+                  "file": "standard_precip/_distributions.py",
+                  "line": "3-6",
+                  "quote": "L-moment fits go through the external lmoments3 package (Hosking's algorithms ...). MLE fits go through plain scipy.stats distributions"
+                },
+                {
+                  "source": "standard_precip",
+                  "ref": "lmoments3 1.0.8 sdist (dependency)",
+                  "file": "README.rst",
+                  "line": "35",
+                  "quote": "This package contains a Python 3.x implementation of the lmoments.f library created by J. R. M. Hosking."
+                },
+                {
+                  "source": "r_sei",
+                  "ref": "SEI 0.2.0 CRAN tarball",
+                  "file": "R/fit_dist.R",
+                  "line": "291-308",
+                  "quote": "samp_mom <- lmom::samlmu(data) ... params <- lmom::pelgam(samp_mom)"
+                },
+                {
+                  "source": "r_spei",
+                  "ref": "lmom 3.3 CRAN tarball (dependency)",
+                  "file": "DESCRIPTION",
+                  "line": "Author",
+                  "quote": "Author: J. R. M. Hosking [aut, cre]"
+                }
+              ],
+              "routine": "Hosking L-moment routines (IBM RC20525)"
+            }
+          ]
+        },
+        {
+          "a": "standard_precip",
+          "b": "r_climatekit",
+          "class": "independent",
+          "direction": null,
+          "relations": []
+        },
+        {
+          "a": "standard_precip",
+          "b": "ndmc_spi",
+          "class": "independent",
+          "direction": null,
+          "relations": []
+        },
+        {
+          "a": "standard_precip",
+          "b": "ncl",
+          "class": "shared numerical routine",
+          "direction": null,
+          "relations": [
+            {
+              "class": "shared numerical routine",
+              "from": null,
+              "to": null,
+              "configuration": "separate ports of the same Fortran: standard_precip fit_type = \"lmom\" (lmoments3 dependency); NCL dim_spi_n Pearson III path (opt@spi_type = 3) (embedded Fortran (NCDC spi code))",
+              "evidence": [
+                {
+                  "source": "standard_precip",
+                  "ref": "standard-precip 2.0.0 sdist",
+                  "file": "standard_precip/_distributions.py",
+                  "line": "3-6",
+                  "quote": "L-moment fits go through the external lmoments3 package (Hosking's algorithms ...). MLE fits go through plain scipy.stats distributions"
+                },
+                {
+                  "source": "standard_precip",
+                  "ref": "lmoments3 1.0.8 sdist (dependency)",
+                  "file": "README.rst",
+                  "line": "35",
+                  "quote": "This package contains a Python 3.x implementation of the lmoments.f library created by J. R. M. Hosking."
+                },
+                {
+                  "source": "ncl",
+                  "ref": "NCAR/ncl tag 6.6.2 (ni/src/lib/nfpfort/spid.f, spi3.f)",
+                  "file": "ni/src/lib/nfpfort/spi3.f",
+                  "line": "42, 69-74",
+                  "quote": "NCDC code ... This program used the program of John Kleist, Colorado State Univ. ... The subroutines and functions in upper case came from Jon Hosking, IBM. Ned Guttman"
+                }
+              ],
+              "routine": "Hosking L-moment routines (IBM RC20525)"
+            }
+          ]
+        },
+        {
+          "a": "standard_precip",
+          "b": "climate_engine",
+          "class": "unknown",
+          "direction": null,
+          "relations": [],
+          "questions": [
+            1
+          ]
+        },
+        {
+          "a": "standard_precip",
+          "b": "gridmet_drought",
+          "class": "unknown",
+          "direction": null,
+          "relations": [],
+          "questions": [
+            2
+          ]
+        },
+        {
+          "a": "standard_precip",
+          "b": "ncei_climdiv_spi",
+          "class": "unknown",
+          "direction": null,
+          "relations": [],
+          "questions": [
+            4
+          ]
+        },
+        {
+          "a": "r_spei",
+          "b": "r_sci",
+          "class": "shared numerical routine",
+          "direction": null,
+          "relations": [
+            {
+              "class": "shared numerical routine",
+              "from": null,
+              "to": null,
+              "configuration": "same dependency (lmomco): R SPEI's lmomco fallback (pargam, parpe3) when lmom's pel* routine errors; R SCI's starting estimates (pargam, parpe3 on unbiased L-moments), which become the fit when start.fun.fix = TRUE and the maximum-likelihood fit fails or does not converge",
+              "evidence": [
+                {
+                  "source": "r_spei",
+                  "ref": "SPEI 1.8.1 CRAN tarball",
+                  "file": "R/spei.R",
+                  "line": "685-695",
+                  "quote": "\"Gamma\" = tryCatch(pelgam(fortran_vec), error = function(e) { pargam(lmom)$para ... \"PearsonIII\" = tryCatch(pelpe3(fortran_vec), error = function(e) { parpe3(lmom)$para"
+                },
+                {
+                  "source": "r_sci",
+                  "ref": "SCI 1.0-3 CRAN tarball",
+                  "file": "R/distrstart.r",
+                  "line": "13-16, 86",
+                  "quote": "x.lmom <- try(lmom.ub(x),TRUE) ... result <- pargam(x.lmom, checklmom = FALSE) ... estimate <- parpe3(x.lmom, checklmom = FALSE)"
+                },
+                {
+                  "source": "r_sci",
+                  "ref": "SCI 1.0-3 CRAN tarball",
+                  "file": "R/sci.r",
+                  "line": "26, 101-103, 122, 132-134",
+                  "quote": "start.fun.fix=FALSE ... fail.value <- mledist.par$start ... x.fit[[mm]] <- fail.value ... use starting values instead."
+                }
+              ],
+              "routine": "lmomco parameter estimators (pargam, parpe3)"
+            }
+          ]
+        },
+        {
+          "a": "r_spei",
+          "b": "r_sei",
+          "class": "shared numerical routine",
+          "direction": null,
+          "relations": [
+            {
+              "class": "shared numerical routine",
+              "from": null,
+              "to": null,
+              "configuration": "same dependency: R SPEI pp-pwm and ub-pwm fits (default) (lmom dependency); R SEI method = \"lmoment\" (lmom dependency)",
+              "evidence": [
+                {
+                  "source": "r_spei",
+                  "ref": "SPEI 1.8.1 CRAN tarball",
+                  "file": "R/spei.R",
+                  "line": "665-695",
+                  "quote": "\"ub-pwm\" = PWM(x.mon, order = 0:2) ... \"log-Logistic\" = tryCatch(pelglo(fortran_vec) ... \"Gamma\" = tryCatch(pelgam(... \"PearsonIII\" = tryCatch(pelpe3("
+                },
+                {
+                  "source": "r_spei",
+                  "ref": "lmom 3.3 CRAN tarball (dependency)",
+                  "file": "DESCRIPTION",
+                  "line": "Author",
+                  "quote": "Author: J. R. M. Hosking [aut, cre]"
+                },
+                {
+                  "source": "r_spei",
+                  "ref": "SPEI 1.8.1 CRAN tarball",
+                  "file": "R/spi.R",
+                  "line": "13",
+                  "quote": "sol <- spei("
+                },
+                {
+                  "source": "r_sei",
+                  "ref": "SEI 0.2.0 CRAN tarball",
+                  "file": "R/fit_dist.R",
+                  "line": "291-308",
+                  "quote": "samp_mom <- lmom::samlmu(data) ... params <- lmom::pelgam(samp_mom)"
+                },
+                {
+                  "source": "r_spei",
+                  "ref": "lmom 3.3 CRAN tarball (dependency)",
+                  "file": "DESCRIPTION",
+                  "line": "Author",
+                  "quote": "Author: J. R. M. Hosking [aut, cre]"
+                }
+              ],
+              "routine": "Hosking L-moment routines (IBM RC20525)"
+            }
+          ]
+        },
+        {
+          "a": "r_spei",
+          "b": "r_climatekit",
+          "class": "independent",
+          "direction": null,
+          "relations": [],
+          "notes": [
+            {
+              "note": "climatekit calls its Thom fit \"consistent with the SPEI R package\" without comparing output; R SPEI fits gamma with lmom::pelgam, not Thom's approximation.",
+              "evidence": [
+                {
+                  "source": "r_climatekit",
+                  "ref": "climatekit 0.2.3 CRAN tarball",
+                  "file": "R/drought.R",
+                  "line": "444-446",
+                  "quote": "Uses Maximum Likelihood Estimation via Thom's (1958) approximation, as specified by the WMO User Guide (WMO-No. 1090) and consistent with the SPEI R package."
+                },
+                {
+                  "source": "r_spei",
+                  "ref": "SPEI 1.8.1 CRAN tarball",
+                  "file": "R/spei.R",
+                  "line": "665-695",
+                  "quote": "\"ub-pwm\" = PWM(x.mon, order = 0:2) ... \"log-Logistic\" = tryCatch(pelglo(fortran_vec) ... \"Gamma\" = tryCatch(pelgam(... \"PearsonIII\" = tryCatch(pelpe3("
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "a": "r_spei",
+          "b": "ndmc_spi",
+          "class": "independent",
+          "direction": null,
+          "relations": []
+        },
+        {
+          "a": "r_spei",
+          "b": "ncl",
+          "class": "shared numerical routine",
+          "direction": null,
+          "relations": [
+            {
+              "class": "shared numerical routine",
+              "from": null,
+              "to": null,
+              "configuration": "separate ports of the same Fortran: R SPEI pp-pwm and ub-pwm fits (default) (lmom dependency); NCL dim_spi_n Pearson III path (opt@spi_type = 3) (embedded Fortran (NCDC spi code))",
+              "evidence": [
+                {
+                  "source": "r_spei",
+                  "ref": "SPEI 1.8.1 CRAN tarball",
+                  "file": "R/spei.R",
+                  "line": "665-695",
+                  "quote": "\"ub-pwm\" = PWM(x.mon, order = 0:2) ... \"log-Logistic\" = tryCatch(pelglo(fortran_vec) ... \"Gamma\" = tryCatch(pelgam(... \"PearsonIII\" = tryCatch(pelpe3("
+                },
+                {
+                  "source": "r_spei",
+                  "ref": "lmom 3.3 CRAN tarball (dependency)",
+                  "file": "DESCRIPTION",
+                  "line": "Author",
+                  "quote": "Author: J. R. M. Hosking [aut, cre]"
+                },
+                {
+                  "source": "r_spei",
+                  "ref": "SPEI 1.8.1 CRAN tarball",
+                  "file": "R/spi.R",
+                  "line": "13",
+                  "quote": "sol <- spei("
+                },
+                {
+                  "source": "ncl",
+                  "ref": "NCAR/ncl tag 6.6.2 (ni/src/lib/nfpfort/spid.f, spi3.f)",
+                  "file": "ni/src/lib/nfpfort/spi3.f",
+                  "line": "42, 69-74",
+                  "quote": "NCDC code ... This program used the program of John Kleist, Colorado State Univ. ... The subroutines and functions in upper case came from Jon Hosking, IBM. Ned Guttman"
+                }
+              ],
+              "routine": "Hosking L-moment routines (IBM RC20525)"
+            }
+          ]
+        },
+        {
+          "a": "r_spei",
+          "b": "climate_engine",
+          "class": "unknown",
+          "direction": null,
+          "relations": [],
+          "questions": [
+            1
+          ]
+        },
+        {
+          "a": "r_spei",
+          "b": "gridmet_drought",
+          "class": "unknown",
+          "direction": null,
+          "relations": [],
+          "questions": [
+            2
+          ]
+        },
+        {
+          "a": "r_spei",
+          "b": "ncei_climdiv_spi",
+          "class": "unknown",
+          "direction": null,
+          "relations": [],
+          "questions": [
+            4
+          ]
+        },
+        {
+          "a": "r_sci",
+          "b": "r_sei",
+          "class": "shared numerical routine",
+          "direction": null,
+          "relations": [
+            {
+              "class": "shared numerical routine",
+              "from": null,
+              "to": null,
+              "configuration": "maximum likelihood",
+              "evidence": [
+                {
+                  "source": "r_sci",
+                  "ref": "SCI 1.0-3 CRAN tarball",
+                  "file": "R/sci.r",
+                  "line": "117",
+                  "quote": "suppressWarnings(do.call(mledist, mledist.par))"
+                },
+                {
+                  "source": "r_sci",
+                  "ref": "SCI 1.0-3 CRAN tarball",
+                  "file": "DESCRIPTION",
+                  "line": "22",
+                  "quote": "Depends: fitdistrplus, lmomco"
+                },
+                {
+                  "source": "r_sei",
+                  "ref": "SEI 0.2.0 CRAN tarball",
+                  "file": "R/fit_dist.R",
+                  "line": "267",
+                  "quote": "fit <- try(fitdistrplus::fitdist(data = data, distr = dist, method = method, ...))"
+                }
+              ],
+              "routine": "fitdistrplus"
+            }
+          ]
+        },
+        {
+          "a": "r_sci",
+          "b": "r_climatekit",
+          "class": "independent",
+          "direction": null,
+          "relations": []
+        },
+        {
+          "a": "r_sci",
+          "b": "ndmc_spi",
+          "class": "independent",
+          "direction": null,
+          "relations": []
+        },
+        {
+          "a": "r_sci",
+          "b": "ncl",
+          "class": "independent",
+          "direction": null,
+          "relations": []
+        },
+        {
+          "a": "r_sci",
+          "b": "climate_engine",
+          "class": "unknown",
+          "direction": null,
+          "relations": [],
+          "questions": [
+            1
+          ]
+        },
+        {
+          "a": "r_sci",
+          "b": "gridmet_drought",
+          "class": "unknown",
+          "direction": null,
+          "relations": [],
+          "questions": [
+            2
+          ]
+        },
+        {
+          "a": "r_sci",
+          "b": "ncei_climdiv_spi",
+          "class": "unknown",
+          "direction": null,
+          "relations": [],
+          "questions": [
+            4
+          ]
+        },
+        {
+          "a": "r_sei",
+          "b": "r_climatekit",
+          "class": "independent",
+          "direction": null,
+          "relations": []
+        },
+        {
+          "a": "r_sei",
+          "b": "ndmc_spi",
+          "class": "independent",
+          "direction": null,
+          "relations": []
+        },
+        {
+          "a": "r_sei",
+          "b": "ncl",
+          "class": "shared numerical routine",
+          "direction": null,
+          "relations": [
+            {
+              "class": "shared numerical routine",
+              "from": null,
+              "to": null,
+              "configuration": "separate ports of the same Fortran: R SEI method = \"lmoment\" (lmom dependency); NCL dim_spi_n Pearson III path (opt@spi_type = 3) (embedded Fortran (NCDC spi code))",
+              "evidence": [
+                {
+                  "source": "r_sei",
+                  "ref": "SEI 0.2.0 CRAN tarball",
+                  "file": "R/fit_dist.R",
+                  "line": "291-308",
+                  "quote": "samp_mom <- lmom::samlmu(data) ... params <- lmom::pelgam(samp_mom)"
+                },
+                {
+                  "source": "r_spei",
+                  "ref": "lmom 3.3 CRAN tarball (dependency)",
+                  "file": "DESCRIPTION",
+                  "line": "Author",
+                  "quote": "Author: J. R. M. Hosking [aut, cre]"
+                },
+                {
+                  "source": "ncl",
+                  "ref": "NCAR/ncl tag 6.6.2 (ni/src/lib/nfpfort/spid.f, spi3.f)",
+                  "file": "ni/src/lib/nfpfort/spi3.f",
+                  "line": "42, 69-74",
+                  "quote": "NCDC code ... This program used the program of John Kleist, Colorado State Univ. ... The subroutines and functions in upper case came from Jon Hosking, IBM. Ned Guttman"
+                }
+              ],
+              "routine": "Hosking L-moment routines (IBM RC20525)"
+            }
+          ]
+        },
+        {
+          "a": "r_sei",
+          "b": "climate_engine",
+          "class": "unknown",
+          "direction": null,
+          "relations": [],
+          "questions": [
+            1
+          ]
+        },
+        {
+          "a": "r_sei",
+          "b": "gridmet_drought",
+          "class": "unknown",
+          "direction": null,
+          "relations": [],
+          "questions": [
+            2
+          ]
+        },
+        {
+          "a": "r_sei",
+          "b": "ncei_climdiv_spi",
+          "class": "unknown",
+          "direction": null,
+          "relations": [],
+          "questions": [
+            4
+          ]
+        },
+        {
+          "a": "r_climatekit",
+          "b": "ndmc_spi",
+          "class": "independent",
+          "direction": null,
+          "relations": []
+        },
+        {
+          "a": "r_climatekit",
+          "b": "ncl",
+          "class": "independent",
+          "direction": null,
+          "relations": []
+        },
+        {
+          "a": "r_climatekit",
+          "b": "climate_engine",
+          "class": "unknown",
+          "direction": null,
+          "relations": [],
+          "questions": [
+            1
+          ]
+        },
+        {
+          "a": "r_climatekit",
+          "b": "gridmet_drought",
+          "class": "unknown",
+          "direction": null,
+          "relations": [],
+          "questions": [
+            2
+          ]
+        },
+        {
+          "a": "r_climatekit",
+          "b": "ncei_climdiv_spi",
+          "class": "unknown",
+          "direction": null,
+          "relations": [],
+          "questions": [
+            4
+          ]
+        },
+        {
+          "a": "ndmc_spi",
+          "b": "ncl",
+          "class": "shared numerical routine",
+          "direction": null,
+          "relations": [
+            {
+              "class": "shared numerical routine",
+              "from": null,
+              "to": null,
+              "configuration": "gamma path: the gamma fit routines have the same comments (apart from capitalisation), including the misspelling \"paarameters\", and the same estimator lines",
+              "evidence": [
+                {
+                  "source": "ncl",
+                  "ref": "NCAR/ncl tag 6.6.2 (ni/src/lib/nfpfort/spid.f, spi3.f)",
+                  "file": "ni/src/lib/nfpfort/spid.f",
+                  "line": "163, 197, 205, 213, 218-219",
+                  "quote": "gamma - gamma paarameters ... Bogus data array but do something reasonable ... They were all zeroes. ... Use MLE ... alpha = log(av) - sumlog / nact ... gamm  = (1.0d0 + sqrt(1.0d0 + 4.0d0*alpha/ 3.0d0)) /(4.0d0*alpha)"
+                },
+                {
+                  "source": "ndmc_spi",
+                  "ref": "SPIgenerator.zip sha256 ce8f37bc (1.7.6.0)",
+                  "file": "code/spi_dll/gammadistributionestimatedprobabilities.cs",
+                  "line": "85, 124, 132, 140-142",
+                  "quote": "gamma - gamma paarameters ... Bogus Data array but do something reasonable ... They were all zeroes. ... Use MLE ... alpha = Math.Log( mn ) - sumlog / nact; gamm = (1.0 + Math.Sqrt( 1.0 + 4.0 * alpha / 3.0 )) / (4.0 * alpha);"
+                }
+              ],
+              "routine": "unnamed common source of the gamma fit"
+            }
+          ]
+        },
+        {
+          "a": "ndmc_spi",
+          "b": "climate_engine",
+          "class": "unknown",
+          "direction": null,
+          "relations": [],
+          "questions": [
+            1
+          ]
+        },
+        {
+          "a": "ndmc_spi",
+          "b": "gridmet_drought",
+          "class": "unknown",
+          "direction": null,
+          "relations": [],
+          "questions": [
+            2
+          ]
+        },
+        {
+          "a": "ndmc_spi",
+          "b": "ncei_climdiv_spi",
+          "class": "unknown",
+          "direction": null,
+          "relations": [],
+          "questions": [
+            4
+          ]
+        },
+        {
+          "a": "ncl",
+          "b": "climate_engine",
+          "class": "unknown",
+          "direction": null,
+          "relations": [],
+          "questions": [
+            1
+          ]
+        },
+        {
+          "a": "ncl",
+          "b": "gridmet_drought",
+          "class": "unknown",
+          "direction": null,
+          "relations": [],
+          "questions": [
+            2
+          ]
+        },
+        {
+          "a": "ncl",
+          "b": "ncei_climdiv_spi",
+          "class": "unknown",
+          "direction": null,
+          "relations": [],
+          "questions": [
+            4
+          ],
+          "notes": [
+            {
+              "note": "NCL's Pearson III path embeds the NCDC SPI code that NCEI publishes as spi.f; whether the operational product runs that code is question 4.",
+              "evidence": [
+                {
+                  "source": "ncl",
+                  "ref": "NCAR/ncl tag 6.6.2 (ni/src/lib/nfpfort/spid.f, spi3.f)",
+                  "file": "ni/src/lib/nfpfort/spi3.f",
+                  "line": "42, 69-74",
+                  "quote": "NCDC code ... This program used the program of John Kleist, Colorado State Univ. ... The subroutines and functions in upper case came from Jon Hosking, IBM. Ned Guttman"
+                },
+                {
+                  "source": "ncei_climdiv_spi",
+                  "ref": "NCEI public spi.f sha256 bd7bb8ab",
+                  "file": "spi.f",
+                  "line": "64, 284-288",
+                  "quote": "written by Ned Guttman in January 1998 ... The subroutines and functions in upper case came from Jon Hosking, IBM."
+                },
+                {
+                  "source": "ncei_pdi_f",
+                  "ref": "https://www.drought.gov/data-maps-tools/drought-indices-fortran-spi-pdsi",
+                  "accessed": "2026-11-20",
+                  "quote": "This code is not an exact copy of what is run on NCEI's internal servers, but represents general use version approved for public release."
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "a": "climate_engine",
+          "b": "gridmet_drought",
+          "class": "unknown",
+          "direction": null,
+          "relations": [],
+          "questions": [
+            1,
+            2
+          ]
+        },
+        {
+          "a": "climate_engine",
+          "b": "ncei_climdiv_spi",
+          "class": "unknown",
+          "direction": null,
+          "relations": [],
+          "questions": [
+            1,
+            4
+          ]
+        },
+        {
+          "a": "gridmet_drought",
+          "b": "ncei_climdiv_spi",
+          "class": "unknown",
+          "direction": null,
+          "relations": [],
+          "questions": [
+            2,
+            4
+          ]
+        }
+      ]
+    },
+    "SPEI": {
+      "implementations": [
+        "climate_indices",
+        "xclim",
+        "spei",
+        "standard_precip",
+        "r_spei",
+        "r_sei",
+        "climate_engine",
+        "gridmet_drought",
+        "speibase"
+      ],
+      "pairs": [
+        {
+          "a": "climate_indices",
+          "b": "xclim",
+          "class": "validated against",
+          "direction": {
+            "from": "xclim",
+            "to": "climate_indices"
+          },
+          "relations": [
+            {
+              "class": "validated against",
+              "from": "xclim",
+              "to": "climate_indices",
+              "configuration": "offset changed to reproduce climate_indices",
+              "evidence": [
+                {
+                  "source": "xclim",
+                  "ref": "xclim 1.0.0 sdist",
+                  "file": "CHANGELOG.rst",
+                  "line": "1407",
+                  "quote": "The offset value in standardized_precipitation_evapotranspiration_index is changed to better reproduce results in the reference library monocongo/climate_indices."
+                }
+              ]
+            },
+            {
+              "class": "shared numerical routine",
+              "from": null,
+              "to": null,
+              "configuration": "separate ports of the same Fortran: climate_indices Pearson III, log-logistic and GEV fits, all from its SAMLMR translation (own translation (lmoments.py)); xclim method = \"PWM\" with an lmoments3 distribution (lmoments3 dependency)",
+              "evidence": [
+                {
+                  "source": "climate_indices",
+                  "ref": "monocongo/climate_indices@a7235bf7",
+                  "file": "src/climate_indices/lmoments.py",
+                  "line": "65-70",
+                  "quote": "based on Fortran code written for inclusion in IBM Research Report RC20525 ... This is a Python translation of the original Fortran subroutine"
+                },
+                {
+                  "source": "climate_indices",
+                  "ref": "monocongo/climate_indices@a7235bf7",
+                  "file": "src/climate_indices/lmoments.py",
+                  "line": "279",
+                  "quote": "This is a Python translation of the original Fortran subroutine SAMLMR()"
+                },
+                {
+                  "source": "climate_indices",
+                  "ref": "monocongo/climate_indices@a7235bf7",
+                  "file": "src/climate_indices/lmoments.py",
+                  "line": "381-383",
+                  "quote": "a Python translation of the PELGLO subroutine from J. R. M. Hosking's ... (IBM Research Report RC20525) as distributed in the R package lmom"
+                },
+                {
+                  "source": "climate_indices",
+                  "ref": "monocongo/climate_indices@a7235bf7",
+                  "file": "src/climate_indices/lmoments.py",
+                  "line": "601",
+                  "quote": "lmoments = _estimate_lmoments(timeseries, hint=\"\")"
+                },
+                {
+                  "source": "xclim",
+                  "ref": "xclim 1.0.0 sdist",
+                  "file": "src/xclim/compute/stats.py",
+                  "line": "172-175",
+                  "quote": "if method == \"PWM\" and not hasattr(dist, \"lmom_fit\"): ... Please pass an instance from the lmoments3 package."
+                },
+                {
+                  "source": "standard_precip",
+                  "ref": "lmoments3 1.0.8 sdist (dependency)",
+                  "file": "README.rst",
+                  "line": "35",
+                  "quote": "This package contains a Python 3.x implementation of the lmoments.f library created by J. R. M. Hosking."
+                }
+              ],
+              "routine": "Hosking L-moment routines (IBM RC20525)"
+            }
+          ]
+        },
+        {
+          "a": "climate_indices",
+          "b": "spei",
+          "class": "independent",
+          "direction": null,
+          "relations": []
+        },
+        {
+          "a": "climate_indices",
+          "b": "standard_precip",
+          "class": "shared numerical routine",
+          "direction": null,
+          "relations": [
+            {
+              "class": "shared numerical routine",
+              "from": null,
+              "to": null,
+              "configuration": "separate ports of the same Fortran: climate_indices Pearson III, log-logistic and GEV fits, all from its SAMLMR translation (own translation (lmoments.py)); standard_precip fit_type = \"lmom\" (lmoments3 dependency)",
+              "evidence": [
+                {
+                  "source": "climate_indices",
+                  "ref": "monocongo/climate_indices@a7235bf7",
+                  "file": "src/climate_indices/lmoments.py",
+                  "line": "65-70",
+                  "quote": "based on Fortran code written for inclusion in IBM Research Report RC20525 ... This is a Python translation of the original Fortran subroutine"
+                },
+                {
+                  "source": "climate_indices",
+                  "ref": "monocongo/climate_indices@a7235bf7",
+                  "file": "src/climate_indices/lmoments.py",
+                  "line": "279",
+                  "quote": "This is a Python translation of the original Fortran subroutine SAMLMR()"
+                },
+                {
+                  "source": "climate_indices",
+                  "ref": "monocongo/climate_indices@a7235bf7",
+                  "file": "src/climate_indices/lmoments.py",
+                  "line": "381-383",
+                  "quote": "a Python translation of the PELGLO subroutine from J. R. M. Hosking's ... (IBM Research Report RC20525) as distributed in the R package lmom"
+                },
+                {
+                  "source": "climate_indices",
+                  "ref": "monocongo/climate_indices@a7235bf7",
+                  "file": "src/climate_indices/lmoments.py",
+                  "line": "601",
+                  "quote": "lmoments = _estimate_lmoments(timeseries, hint=\"\")"
+                },
+                {
+                  "source": "standard_precip",
+                  "ref": "standard-precip 2.0.0 sdist",
+                  "file": "standard_precip/_distributions.py",
+                  "line": "3-6",
+                  "quote": "L-moment fits go through the external lmoments3 package (Hosking's algorithms ...). MLE fits go through plain scipy.stats distributions"
+                },
+                {
+                  "source": "standard_precip",
+                  "ref": "lmoments3 1.0.8 sdist (dependency)",
+                  "file": "README.rst",
+                  "line": "35",
+                  "quote": "This package contains a Python 3.x implementation of the lmoments.f library created by J. R. M. Hosking."
+                }
+              ],
+              "routine": "Hosking L-moment routines (IBM RC20525)"
+            }
+          ]
+        },
+        {
+          "a": "climate_indices",
+          "b": "r_spei",
+          "class": "validated against",
+          "direction": {
+            "from": "climate_indices",
+            "to": "r_spei"
+          },
+          "relations": [
+            {
+              "class": "validated against",
+              "from": "climate_indices",
+              "to": "r_spei",
+              "configuration": "log-logistic",
+              "evidence": [
+                {
+                  "source": "climate_indices",
+                  "ref": "monocongo/climate_indices@a7235bf7",
+                  "file": "tests/fixture/spei_loglogistic/provenance.json",
+                  "line": "2",
+                  "quote": "R SPEI package (CRAN)"
+                },
+                {
+                  "source": "climate_indices",
+                  "ref": "monocongo/climate_indices@a7235bf7",
+                  "file": "src/climate_indices/lmoments.py",
+                  "line": "363-364",
+                  "quote": "This is the distribution R's SPEI package fits as \"log-Logistic\" (lmom's PELGLO with unbiased-PWM L-moments), so it is what SPEIbase uses."
+                }
+              ]
+            },
+            {
+              "class": "shared numerical routine",
+              "from": null,
+              "to": null,
+              "configuration": "separate ports of the same Fortran: climate_indices Pearson III, log-logistic and GEV fits, all from its SAMLMR translation (own translation (lmoments.py)); R SPEI pp-pwm and ub-pwm fits (default) (lmom dependency)",
+              "evidence": [
+                {
+                  "source": "climate_indices",
+                  "ref": "monocongo/climate_indices@a7235bf7",
+                  "file": "src/climate_indices/lmoments.py",
+                  "line": "65-70",
+                  "quote": "based on Fortran code written for inclusion in IBM Research Report RC20525 ... This is a Python translation of the original Fortran subroutine"
+                },
+                {
+                  "source": "climate_indices",
+                  "ref": "monocongo/climate_indices@a7235bf7",
+                  "file": "src/climate_indices/lmoments.py",
+                  "line": "279",
+                  "quote": "This is a Python translation of the original Fortran subroutine SAMLMR()"
+                },
+                {
+                  "source": "climate_indices",
+                  "ref": "monocongo/climate_indices@a7235bf7",
+                  "file": "src/climate_indices/lmoments.py",
+                  "line": "381-383",
+                  "quote": "a Python translation of the PELGLO subroutine from J. R. M. Hosking's ... (IBM Research Report RC20525) as distributed in the R package lmom"
+                },
+                {
+                  "source": "climate_indices",
+                  "ref": "monocongo/climate_indices@a7235bf7",
+                  "file": "src/climate_indices/lmoments.py",
+                  "line": "601",
+                  "quote": "lmoments = _estimate_lmoments(timeseries, hint=\"\")"
+                },
+                {
+                  "source": "r_spei",
+                  "ref": "SPEI 1.8.1 CRAN tarball",
+                  "file": "R/spei.R",
+                  "line": "665-695",
+                  "quote": "\"ub-pwm\" = PWM(x.mon, order = 0:2) ... \"log-Logistic\" = tryCatch(pelglo(fortran_vec) ... \"Gamma\" = tryCatch(pelgam(... \"PearsonIII\" = tryCatch(pelpe3("
+                },
+                {
+                  "source": "r_spei",
+                  "ref": "lmom 3.3 CRAN tarball (dependency)",
+                  "file": "DESCRIPTION",
+                  "line": "Author",
+                  "quote": "Author: J. R. M. Hosking [aut, cre]"
+                },
+                {
+                  "source": "r_spei",
+                  "ref": "SPEI 1.8.1 CRAN tarball",
+                  "file": "R/spi.R",
+                  "line": "13",
+                  "quote": "sol <- spei("
+                }
+              ],
+              "routine": "Hosking L-moment routines (IBM RC20525)"
+            }
+          ]
+        },
+        {
+          "a": "climate_indices",
+          "b": "r_sei",
+          "class": "shared numerical routine",
+          "direction": null,
+          "relations": [
+            {
+              "class": "shared numerical routine",
+              "from": null,
+              "to": null,
+              "configuration": "separate ports of the same Fortran: climate_indices Pearson III, log-logistic and GEV fits, all from its SAMLMR translation (own translation (lmoments.py)); R SEI method = \"lmoment\" (lmom dependency)",
+              "evidence": [
+                {
+                  "source": "climate_indices",
+                  "ref": "monocongo/climate_indices@a7235bf7",
+                  "file": "src/climate_indices/lmoments.py",
+                  "line": "65-70",
+                  "quote": "based on Fortran code written for inclusion in IBM Research Report RC20525 ... This is a Python translation of the original Fortran subroutine"
+                },
+                {
+                  "source": "climate_indices",
+                  "ref": "monocongo/climate_indices@a7235bf7",
+                  "file": "src/climate_indices/lmoments.py",
+                  "line": "279",
+                  "quote": "This is a Python translation of the original Fortran subroutine SAMLMR()"
+                },
+                {
+                  "source": "climate_indices",
+                  "ref": "monocongo/climate_indices@a7235bf7",
+                  "file": "src/climate_indices/lmoments.py",
+                  "line": "381-383",
+                  "quote": "a Python translation of the PELGLO subroutine from J. R. M. Hosking's ... (IBM Research Report RC20525) as distributed in the R package lmom"
+                },
+                {
+                  "source": "climate_indices",
+                  "ref": "monocongo/climate_indices@a7235bf7",
+                  "file": "src/climate_indices/lmoments.py",
+                  "line": "601",
+                  "quote": "lmoments = _estimate_lmoments(timeseries, hint=\"\")"
+                },
+                {
+                  "source": "r_sei",
+                  "ref": "SEI 0.2.0 CRAN tarball",
+                  "file": "R/fit_dist.R",
+                  "line": "291-308",
+                  "quote": "samp_mom <- lmom::samlmu(data) ... params <- lmom::pelgam(samp_mom)"
+                },
+                {
+                  "source": "r_spei",
+                  "ref": "lmom 3.3 CRAN tarball (dependency)",
+                  "file": "DESCRIPTION",
+                  "line": "Author",
+                  "quote": "Author: J. R. M. Hosking [aut, cre]"
+                }
+              ],
+              "routine": "Hosking L-moment routines (IBM RC20525)"
+            }
+          ]
+        },
+        {
+          "a": "climate_indices",
+          "b": "climate_engine",
+          "class": "validated against",
+          "direction": {
+            "from": "climate_indices",
+            "to": "climate_engine"
+          },
+          "relations": [
+            {
+              "class": "validated against",
+              "from": "climate_indices",
+              "to": "climate_engine",
+              "configuration": "characterization pilot",
+              "evidence": [
+                {
+                  "source": "climate_indices",
+                  "ref": "monocongo/climate_indices@a7235bf7",
+                  "file": "docs/research/earthengine-climate-engine-pilot.md",
+                  "line": "9-13",
+                  "quote": "Measure agreement between climate_indices and two provider products that use gridMET inputs."
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "a": "climate_indices",
+          "b": "gridmet_drought",
+          "class": "validated against",
+          "direction": {
+            "from": "climate_indices",
+            "to": "gridmet_drought"
+          },
+          "relations": [
+            {
+              "class": "validated against",
+              "from": "climate_indices",
+              "to": "gridmet_drought",
+              "configuration": "characterization pilot",
+              "evidence": [
+                {
+                  "source": "climate_indices",
+                  "ref": "monocongo/climate_indices@a7235bf7",
+                  "file": "docs/research/earthengine-climate-engine-pilot.md",
+                  "line": "9-13",
+                  "quote": "Measure agreement between climate_indices and two provider products that use gridMET inputs."
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "a": "climate_indices",
+          "b": "speibase",
+          "class": "validated against",
+          "direction": {
+            "from": "climate_indices",
+            "to": "speibase"
+          },
+          "relations": [
+            {
+              "class": "validated against",
+              "from": "climate_indices",
+              "to": "speibase",
+              "configuration": "input-matched log-logistic comparison",
+              "evidence": [
+                {
+                  "source": "climate_indices",
+                  "ref": "monocongo/climate_indices@a7235bf7",
+                  "file": "tests/test_speibase_like_for_like.py",
+                  "line": "1",
+                  "quote": "Like-for-like SPEI comparison against the CSIC SPEIbase v2.11 grids."
+                },
+                {
+                  "source": "climate_indices",
+                  "ref": "monocongo/climate_indices@a7235bf7",
+                  "file": "tests/fixture/speibase/provenance.json",
+                  "line": "123",
+                  "quote": "PLAUSIBILITY CHECK ONLY, NOT EXTERNAL NUMERICAL VALIDATION."
+                }
+              ]
+            },
+            {
+              "class": "shared numerical routine",
+              "from": null,
+              "to": null,
+              "configuration": "separate ports of the same Fortran: climate_indices Pearson III, log-logistic and GEV fits, all from its SAMLMR translation (own translation (lmoments.py)); SPEIbase v2.11 ub-pwm log-logistic (lmom dependency, through R SPEI)",
+              "evidence": [
+                {
+                  "source": "climate_indices",
+                  "ref": "monocongo/climate_indices@a7235bf7",
+                  "file": "src/climate_indices/lmoments.py",
+                  "line": "65-70",
+                  "quote": "based on Fortran code written for inclusion in IBM Research Report RC20525 ... This is a Python translation of the original Fortran subroutine"
+                },
+                {
+                  "source": "climate_indices",
+                  "ref": "monocongo/climate_indices@a7235bf7",
+                  "file": "src/climate_indices/lmoments.py",
+                  "line": "279",
+                  "quote": "This is a Python translation of the original Fortran subroutine SAMLMR()"
+                },
+                {
+                  "source": "climate_indices",
+                  "ref": "monocongo/climate_indices@a7235bf7",
+                  "file": "src/climate_indices/lmoments.py",
+                  "line": "381-383",
+                  "quote": "a Python translation of the PELGLO subroutine from J. R. M. Hosking's ... (IBM Research Report RC20525) as distributed in the R package lmom"
+                },
+                {
+                  "source": "climate_indices",
+                  "ref": "monocongo/climate_indices@a7235bf7",
+                  "file": "src/climate_indices/lmoments.py",
+                  "line": "601",
+                  "quote": "lmoments = _estimate_lmoments(timeseries, hint=\"\")"
+                },
+                {
+                  "source": "speibase",
+                  "ref": "https://spei.csic.es/database.html",
+                  "accessed": "2026-11-20",
+                  "quote": "SPEIbase v2.11: 1) the CRU TS 4.09 dataset ... 2) Using SPEI package version 1.8.1."
+                },
+                {
+                  "source": "speibase",
+                  "ref": "https://spei.csic.es/database.html",
+                  "accessed": "2026-11-20",
+                  "quote": "Unbiased probability weighted moments (ub-pwm) method has been used for fitting the log-Logistic distribution"
+                },
+                {
+                  "source": "r_spei",
+                  "ref": "SPEI 1.8.1 CRAN tarball",
+                  "file": "R/spei.R",
+                  "line": "665-695",
+                  "quote": "\"ub-pwm\" = PWM(x.mon, order = 0:2) ... \"log-Logistic\" = tryCatch(pelglo(fortran_vec) ... \"Gamma\" = tryCatch(pelgam(... \"PearsonIII\" = tryCatch(pelpe3("
+                }
+              ],
+              "routine": "Hosking L-moment routines (IBM RC20525)"
+            }
+          ]
+        },
+        {
+          "a": "xclim",
+          "b": "spei",
+          "class": "shared numerical routine",
+          "direction": null,
+          "relations": [
+            {
+              "class": "shared numerical routine",
+              "from": null,
+              "to": null,
+              "configuration": "maximum likelihood",
+              "evidence": [
+                {
+                  "source": "xclim",
+                  "ref": "xclim 1.0.0 sdist",
+                  "file": "src/xclim/compute/stats.py",
+                  "line": "54-56",
+                  "quote": "if method in [\"ML\", \"MLE\"]: ... params = dist.fit(x, *args, method=\"mle\", **kwargs, **fitkwargs)"
+                },
+                {
+                  "source": "spei",
+                  "ref": "spei 0.8.3 sdist; repository tag v0.8.3 (8276b0c9)",
+                  "file": "src/spei/dist.py",
+                  "line": "95",
+                  "quote": "fit_tuple = dist.fit("
+                }
+              ],
+              "routine": "scipy.stats rv_continuous.fit"
+            }
+          ]
+        },
+        {
+          "a": "xclim",
+          "b": "standard_precip",
+          "class": "shared numerical routine",
+          "direction": null,
+          "relations": [
+            {
+              "class": "shared numerical routine",
+              "from": null,
+              "to": null,
+              "configuration": "maximum likelihood",
+              "evidence": [
+                {
+                  "source": "xclim",
+                  "ref": "xclim 1.0.0 sdist",
+                  "file": "src/xclim/compute/stats.py",
+                  "line": "54-56",
+                  "quote": "if method in [\"ML\", \"MLE\"]: ... params = dist.fit(x, *args, method=\"mle\", **kwargs, **fitkwargs)"
+                },
+                {
+                  "source": "standard_precip",
+                  "ref": "standard-precip 2.0.0 sdist",
+                  "file": "standard_precip/_distributions.py",
+                  "line": "3-6",
+                  "quote": "L-moment fits go through the external lmoments3 package (Hosking's algorithms ...). MLE fits go through plain scipy.stats distributions"
+                }
+              ],
+              "routine": "scipy.stats rv_continuous.fit"
+            },
+            {
+              "class": "shared numerical routine",
+              "from": null,
+              "to": null,
+              "configuration": "same dependency: xclim method = \"PWM\" with an lmoments3 distribution (lmoments3 dependency); standard_precip fit_type = \"lmom\" (lmoments3 dependency)",
+              "evidence": [
+                {
+                  "source": "xclim",
+                  "ref": "xclim 1.0.0 sdist",
+                  "file": "src/xclim/compute/stats.py",
+                  "line": "172-175",
+                  "quote": "if method == \"PWM\" and not hasattr(dist, \"lmom_fit\"): ... Please pass an instance from the lmoments3 package."
+                },
+                {
+                  "source": "standard_precip",
+                  "ref": "lmoments3 1.0.8 sdist (dependency)",
+                  "file": "README.rst",
+                  "line": "35",
+                  "quote": "This package contains a Python 3.x implementation of the lmoments.f library created by J. R. M. Hosking."
+                },
+                {
+                  "source": "standard_precip",
+                  "ref": "standard-precip 2.0.0 sdist",
+                  "file": "standard_precip/_distributions.py",
+                  "line": "3-6",
+                  "quote": "L-moment fits go through the external lmoments3 package (Hosking's algorithms ...). MLE fits go through plain scipy.stats distributions"
+                },
+                {
+                  "source": "standard_precip",
+                  "ref": "lmoments3 1.0.8 sdist (dependency)",
+                  "file": "README.rst",
+                  "line": "35",
+                  "quote": "This package contains a Python 3.x implementation of the lmoments.f library created by J. R. M. Hosking."
+                }
+              ],
+              "routine": "Hosking L-moment routines (IBM RC20525)"
+            }
+          ]
+        },
+        {
+          "a": "xclim",
+          "b": "r_spei",
+          "class": "validated against",
+          "direction": {
+            "from": "xclim",
+            "to": "r_spei"
+          },
+          "relations": [
+            {
+              "class": "validated against",
+              "from": "xclim",
+              "to": "r_spei",
+              "configuration": "fisk ML test reference values",
+              "evidence": [
+                {
+                  "source": "xclim",
+                  "ref": "xclim 1.0.0 sdist",
+                  "file": "tests/test_indices.py",
+                  "line": "351-353",
+                  "quote": "gamma/APP reference results: Obtained with monocongo/climate_indices library; MS/fisk/ML reference results: Obtained with R package SPEI"
+                }
+              ]
+            },
+            {
+              "class": "shared numerical routine",
+              "from": null,
+              "to": null,
+              "configuration": "separate ports of the same Fortran: xclim method = \"PWM\" with an lmoments3 distribution (lmoments3 dependency); R SPEI pp-pwm and ub-pwm fits (default) (lmom dependency)",
+              "evidence": [
+                {
+                  "source": "xclim",
+                  "ref": "xclim 1.0.0 sdist",
+                  "file": "src/xclim/compute/stats.py",
+                  "line": "172-175",
+                  "quote": "if method == \"PWM\" and not hasattr(dist, \"lmom_fit\"): ... Please pass an instance from the lmoments3 package."
+                },
+                {
+                  "source": "standard_precip",
+                  "ref": "lmoments3 1.0.8 sdist (dependency)",
+                  "file": "README.rst",
+                  "line": "35",
+                  "quote": "This package contains a Python 3.x implementation of the lmoments.f library created by J. R. M. Hosking."
+                },
+                {
+                  "source": "r_spei",
+                  "ref": "SPEI 1.8.1 CRAN tarball",
+                  "file": "R/spei.R",
+                  "line": "665-695",
+                  "quote": "\"ub-pwm\" = PWM(x.mon, order = 0:2) ... \"log-Logistic\" = tryCatch(pelglo(fortran_vec) ... \"Gamma\" = tryCatch(pelgam(... \"PearsonIII\" = tryCatch(pelpe3("
+                },
+                {
+                  "source": "r_spei",
+                  "ref": "lmom 3.3 CRAN tarball (dependency)",
+                  "file": "DESCRIPTION",
+                  "line": "Author",
+                  "quote": "Author: J. R. M. Hosking [aut, cre]"
+                },
+                {
+                  "source": "r_spei",
+                  "ref": "SPEI 1.8.1 CRAN tarball",
+                  "file": "R/spi.R",
+                  "line": "13",
+                  "quote": "sol <- spei("
+                }
+              ],
+              "routine": "Hosking L-moment routines (IBM RC20525)"
+            }
+          ]
+        },
+        {
+          "a": "xclim",
+          "b": "r_sei",
+          "class": "shared numerical routine",
+          "direction": null,
+          "relations": [
+            {
+              "class": "shared numerical routine",
+              "from": null,
+              "to": null,
+              "configuration": "separate ports of the same Fortran: xclim method = \"PWM\" with an lmoments3 distribution (lmoments3 dependency); R SEI method = \"lmoment\" (lmom dependency)",
+              "evidence": [
+                {
+                  "source": "xclim",
+                  "ref": "xclim 1.0.0 sdist",
+                  "file": "src/xclim/compute/stats.py",
+                  "line": "172-175",
+                  "quote": "if method == \"PWM\" and not hasattr(dist, \"lmom_fit\"): ... Please pass an instance from the lmoments3 package."
+                },
+                {
+                  "source": "standard_precip",
+                  "ref": "lmoments3 1.0.8 sdist (dependency)",
+                  "file": "README.rst",
+                  "line": "35",
+                  "quote": "This package contains a Python 3.x implementation of the lmoments.f library created by J. R. M. Hosking."
+                },
+                {
+                  "source": "r_sei",
+                  "ref": "SEI 0.2.0 CRAN tarball",
+                  "file": "R/fit_dist.R",
+                  "line": "291-308",
+                  "quote": "samp_mom <- lmom::samlmu(data) ... params <- lmom::pelgam(samp_mom)"
+                },
+                {
+                  "source": "r_spei",
+                  "ref": "lmom 3.3 CRAN tarball (dependency)",
+                  "file": "DESCRIPTION",
+                  "line": "Author",
+                  "quote": "Author: J. R. M. Hosking [aut, cre]"
+                }
+              ],
+              "routine": "Hosking L-moment routines (IBM RC20525)"
+            }
+          ]
+        },
+        {
+          "a": "xclim",
+          "b": "climate_engine",
+          "class": "unknown",
+          "direction": null,
+          "relations": [],
+          "questions": [
+            1
+          ]
+        },
+        {
+          "a": "xclim",
+          "b": "gridmet_drought",
+          "class": "unknown",
+          "direction": null,
+          "relations": [],
+          "questions": [
+            2
+          ]
+        },
+        {
+          "a": "xclim",
+          "b": "speibase",
+          "class": "shared numerical routine",
+          "direction": null,
+          "relations": [
+            {
+              "class": "shared numerical routine",
+              "from": null,
+              "to": null,
+              "configuration": "separate ports of the same Fortran: xclim method = \"PWM\" with an lmoments3 distribution (lmoments3 dependency); SPEIbase v2.11 ub-pwm log-logistic (lmom dependency, through R SPEI)",
+              "evidence": [
+                {
+                  "source": "xclim",
+                  "ref": "xclim 1.0.0 sdist",
+                  "file": "src/xclim/compute/stats.py",
+                  "line": "172-175",
+                  "quote": "if method == \"PWM\" and not hasattr(dist, \"lmom_fit\"): ... Please pass an instance from the lmoments3 package."
+                },
+                {
+                  "source": "standard_precip",
+                  "ref": "lmoments3 1.0.8 sdist (dependency)",
+                  "file": "README.rst",
+                  "line": "35",
+                  "quote": "This package contains a Python 3.x implementation of the lmoments.f library created by J. R. M. Hosking."
+                },
+                {
+                  "source": "speibase",
+                  "ref": "https://spei.csic.es/database.html",
+                  "accessed": "2026-11-20",
+                  "quote": "SPEIbase v2.11: 1) the CRU TS 4.09 dataset ... 2) Using SPEI package version 1.8.1."
+                },
+                {
+                  "source": "speibase",
+                  "ref": "https://spei.csic.es/database.html",
+                  "accessed": "2026-11-20",
+                  "quote": "Unbiased probability weighted moments (ub-pwm) method has been used for fitting the log-Logistic distribution"
+                },
+                {
+                  "source": "r_spei",
+                  "ref": "SPEI 1.8.1 CRAN tarball",
+                  "file": "R/spei.R",
+                  "line": "665-695",
+                  "quote": "\"ub-pwm\" = PWM(x.mon, order = 0:2) ... \"log-Logistic\" = tryCatch(pelglo(fortran_vec) ... \"Gamma\" = tryCatch(pelgam(... \"PearsonIII\" = tryCatch(pelpe3("
+                }
+              ],
+              "routine": "Hosking L-moment routines (IBM RC20525)"
+            }
+          ]
+        },
+        {
+          "a": "spei",
+          "b": "standard_precip",
+          "class": "shared numerical routine",
+          "direction": null,
+          "relations": [
+            {
+              "class": "shared numerical routine",
+              "from": null,
+              "to": null,
+              "configuration": "maximum likelihood",
+              "evidence": [
+                {
+                  "source": "spei",
+                  "ref": "spei 0.8.3 sdist; repository tag v0.8.3 (8276b0c9)",
+                  "file": "src/spei/dist.py",
+                  "line": "95",
+                  "quote": "fit_tuple = dist.fit("
+                },
+                {
+                  "source": "standard_precip",
+                  "ref": "standard-precip 2.0.0 sdist",
+                  "file": "standard_precip/_distributions.py",
+                  "line": "3-6",
+                  "quote": "L-moment fits go through the external lmoments3 package (Hosking's algorithms ...). MLE fits go through plain scipy.stats distributions"
+                }
+              ],
+              "routine": "scipy.stats rv_continuous.fit"
+            }
+          ]
+        },
+        {
+          "a": "spei",
+          "b": "r_spei",
+          "class": "independent",
+          "direction": null,
+          "relations": []
+        },
+        {
+          "a": "spei",
+          "b": "r_sei",
+          "class": "independent",
+          "direction": null,
+          "relations": []
+        },
+        {
+          "a": "spei",
+          "b": "climate_engine",
+          "class": "unknown",
+          "direction": null,
+          "relations": [],
+          "questions": [
+            1
+          ]
+        },
+        {
+          "a": "spei",
+          "b": "gridmet_drought",
+          "class": "unknown",
+          "direction": null,
+          "relations": [],
+          "questions": [
+            2
+          ]
+        },
+        {
+          "a": "spei",
+          "b": "speibase",
+          "class": "independent",
+          "direction": null,
+          "relations": []
+        },
+        {
+          "a": "standard_precip",
+          "b": "r_spei",
+          "class": "shared numerical routine",
+          "direction": null,
+          "relations": [
+            {
+              "class": "shared numerical routine",
+              "from": null,
+              "to": null,
+              "configuration": "separate ports of the same Fortran: standard_precip fit_type = \"lmom\" (lmoments3 dependency); R SPEI pp-pwm and ub-pwm fits (default) (lmom dependency)",
+              "evidence": [
+                {
+                  "source": "standard_precip",
+                  "ref": "standard-precip 2.0.0 sdist",
+                  "file": "standard_precip/_distributions.py",
+                  "line": "3-6",
+                  "quote": "L-moment fits go through the external lmoments3 package (Hosking's algorithms ...). MLE fits go through plain scipy.stats distributions"
+                },
+                {
+                  "source": "standard_precip",
+                  "ref": "lmoments3 1.0.8 sdist (dependency)",
+                  "file": "README.rst",
+                  "line": "35",
+                  "quote": "This package contains a Python 3.x implementation of the lmoments.f library created by J. R. M. Hosking."
+                },
+                {
+                  "source": "r_spei",
+                  "ref": "SPEI 1.8.1 CRAN tarball",
+                  "file": "R/spei.R",
+                  "line": "665-695",
+                  "quote": "\"ub-pwm\" = PWM(x.mon, order = 0:2) ... \"log-Logistic\" = tryCatch(pelglo(fortran_vec) ... \"Gamma\" = tryCatch(pelgam(... \"PearsonIII\" = tryCatch(pelpe3("
+                },
+                {
+                  "source": "r_spei",
+                  "ref": "lmom 3.3 CRAN tarball (dependency)",
+                  "file": "DESCRIPTION",
+                  "line": "Author",
+                  "quote": "Author: J. R. M. Hosking [aut, cre]"
+                },
+                {
+                  "source": "r_spei",
+                  "ref": "SPEI 1.8.1 CRAN tarball",
+                  "file": "R/spi.R",
+                  "line": "13",
+                  "quote": "sol <- spei("
+                }
+              ],
+              "routine": "Hosking L-moment routines (IBM RC20525)"
+            }
+          ],
+          "notes": [
+            {
+              "note": "standard_precip says its functions are \"loosely based on\" R SPEI; that names a design source, not a code port.",
+              "evidence": [
+                {
+                  "source": "standard_precip",
+                  "ref": "standard-precip 2.0.0 sdist",
+                  "file": "README.md",
+                  "line": "14",
+                  "quote": "These functions are loosely based on the SPEI package in R"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "a": "standard_precip",
+          "b": "r_sei",
+          "class": "shared numerical routine",
+          "direction": null,
+          "relations": [
+            {
+              "class": "shared numerical routine",
+              "from": null,
+              "to": null,
+              "configuration": "separate ports of the same Fortran: standard_precip fit_type = \"lmom\" (lmoments3 dependency); R SEI method = \"lmoment\" (lmom dependency)",
+              "evidence": [
+                {
+                  "source": "standard_precip",
+                  "ref": "standard-precip 2.0.0 sdist",
+                  "file": "standard_precip/_distributions.py",
+                  "line": "3-6",
+                  "quote": "L-moment fits go through the external lmoments3 package (Hosking's algorithms ...). MLE fits go through plain scipy.stats distributions"
+                },
+                {
+                  "source": "standard_precip",
+                  "ref": "lmoments3 1.0.8 sdist (dependency)",
+                  "file": "README.rst",
+                  "line": "35",
+                  "quote": "This package contains a Python 3.x implementation of the lmoments.f library created by J. R. M. Hosking."
+                },
+                {
+                  "source": "r_sei",
+                  "ref": "SEI 0.2.0 CRAN tarball",
+                  "file": "R/fit_dist.R",
+                  "line": "291-308",
+                  "quote": "samp_mom <- lmom::samlmu(data) ... params <- lmom::pelgam(samp_mom)"
+                },
+                {
+                  "source": "r_spei",
+                  "ref": "lmom 3.3 CRAN tarball (dependency)",
+                  "file": "DESCRIPTION",
+                  "line": "Author",
+                  "quote": "Author: J. R. M. Hosking [aut, cre]"
+                }
+              ],
+              "routine": "Hosking L-moment routines (IBM RC20525)"
+            }
+          ]
+        },
+        {
+          "a": "standard_precip",
+          "b": "climate_engine",
+          "class": "unknown",
+          "direction": null,
+          "relations": [],
+          "questions": [
+            1
+          ]
+        },
+        {
+          "a": "standard_precip",
+          "b": "gridmet_drought",
+          "class": "unknown",
+          "direction": null,
+          "relations": [],
+          "questions": [
+            2
+          ]
+        },
+        {
+          "a": "standard_precip",
+          "b": "speibase",
+          "class": "shared numerical routine",
+          "direction": null,
+          "relations": [
+            {
+              "class": "shared numerical routine",
+              "from": null,
+              "to": null,
+              "configuration": "separate ports of the same Fortran: standard_precip fit_type = \"lmom\" (lmoments3 dependency); SPEIbase v2.11 ub-pwm log-logistic (lmom dependency, through R SPEI)",
+              "evidence": [
+                {
+                  "source": "standard_precip",
+                  "ref": "standard-precip 2.0.0 sdist",
+                  "file": "standard_precip/_distributions.py",
+                  "line": "3-6",
+                  "quote": "L-moment fits go through the external lmoments3 package (Hosking's algorithms ...). MLE fits go through plain scipy.stats distributions"
+                },
+                {
+                  "source": "standard_precip",
+                  "ref": "lmoments3 1.0.8 sdist (dependency)",
+                  "file": "README.rst",
+                  "line": "35",
+                  "quote": "This package contains a Python 3.x implementation of the lmoments.f library created by J. R. M. Hosking."
+                },
+                {
+                  "source": "speibase",
+                  "ref": "https://spei.csic.es/database.html",
+                  "accessed": "2026-11-20",
+                  "quote": "SPEIbase v2.11: 1) the CRU TS 4.09 dataset ... 2) Using SPEI package version 1.8.1."
+                },
+                {
+                  "source": "speibase",
+                  "ref": "https://spei.csic.es/database.html",
+                  "accessed": "2026-11-20",
+                  "quote": "Unbiased probability weighted moments (ub-pwm) method has been used for fitting the log-Logistic distribution"
+                },
+                {
+                  "source": "r_spei",
+                  "ref": "SPEI 1.8.1 CRAN tarball",
+                  "file": "R/spei.R",
+                  "line": "665-695",
+                  "quote": "\"ub-pwm\" = PWM(x.mon, order = 0:2) ... \"log-Logistic\" = tryCatch(pelglo(fortran_vec) ... \"Gamma\" = tryCatch(pelgam(... \"PearsonIII\" = tryCatch(pelpe3("
+                }
+              ],
+              "routine": "Hosking L-moment routines (IBM RC20525)"
+            }
+          ]
+        },
+        {
+          "a": "r_spei",
+          "b": "r_sei",
+          "class": "shared numerical routine",
+          "direction": null,
+          "relations": [
+            {
+              "class": "shared numerical routine",
+              "from": null,
+              "to": null,
+              "configuration": "same dependency: R SPEI pp-pwm and ub-pwm fits (default) (lmom dependency); R SEI method = \"lmoment\" (lmom dependency)",
+              "evidence": [
+                {
+                  "source": "r_spei",
+                  "ref": "SPEI 1.8.1 CRAN tarball",
+                  "file": "R/spei.R",
+                  "line": "665-695",
+                  "quote": "\"ub-pwm\" = PWM(x.mon, order = 0:2) ... \"log-Logistic\" = tryCatch(pelglo(fortran_vec) ... \"Gamma\" = tryCatch(pelgam(... \"PearsonIII\" = tryCatch(pelpe3("
+                },
+                {
+                  "source": "r_spei",
+                  "ref": "lmom 3.3 CRAN tarball (dependency)",
+                  "file": "DESCRIPTION",
+                  "line": "Author",
+                  "quote": "Author: J. R. M. Hosking [aut, cre]"
+                },
+                {
+                  "source": "r_spei",
+                  "ref": "SPEI 1.8.1 CRAN tarball",
+                  "file": "R/spi.R",
+                  "line": "13",
+                  "quote": "sol <- spei("
+                },
+                {
+                  "source": "r_sei",
+                  "ref": "SEI 0.2.0 CRAN tarball",
+                  "file": "R/fit_dist.R",
+                  "line": "291-308",
+                  "quote": "samp_mom <- lmom::samlmu(data) ... params <- lmom::pelgam(samp_mom)"
+                },
+                {
+                  "source": "r_spei",
+                  "ref": "lmom 3.3 CRAN tarball (dependency)",
+                  "file": "DESCRIPTION",
+                  "line": "Author",
+                  "quote": "Author: J. R. M. Hosking [aut, cre]"
+                }
+              ],
+              "routine": "Hosking L-moment routines (IBM RC20525)"
+            }
+          ]
+        },
+        {
+          "a": "r_spei",
+          "b": "climate_engine",
+          "class": "unknown",
+          "direction": null,
+          "relations": [],
+          "questions": [
+            1
+          ]
+        },
+        {
+          "a": "r_spei",
+          "b": "gridmet_drought",
+          "class": "unknown",
+          "direction": null,
+          "relations": [],
+          "questions": [
+            2
+          ]
+        },
+        {
+          "a": "r_spei",
+          "b": "speibase",
+          "class": "shared numerical routine",
+          "direction": null,
+          "relations": [
+            {
+              "class": "shared numerical routine",
+              "from": null,
+              "to": null,
+              "configuration": "SPEIbase is computed with the package (ub-pwm log-logistic)",
+              "evidence": [
+                {
+                  "source": "speibase",
+                  "ref": "https://spei.csic.es/database.html",
+                  "accessed": "2026-11-20",
+                  "quote": "SPEIbase v2.11: 1) the CRU TS 4.09 dataset ... 2) Using SPEI package version 1.8.1."
+                },
+                {
+                  "source": "speibase",
+                  "ref": "https://spei.csic.es/database.html",
+                  "accessed": "2026-11-20",
+                  "quote": "Unbiased probability weighted moments (ub-pwm) method has been used for fitting the log-Logistic distribution"
+                }
+              ],
+              "routine": "R SPEI 1.8.1 spei() (whole computation)"
+            },
+            {
+              "class": "shared numerical routine",
+              "from": null,
+              "to": null,
+              "configuration": "same dependency: R SPEI pp-pwm and ub-pwm fits (default) (lmom dependency); SPEIbase v2.11 ub-pwm log-logistic (lmom dependency, through R SPEI)",
+              "evidence": [
+                {
+                  "source": "r_spei",
+                  "ref": "SPEI 1.8.1 CRAN tarball",
+                  "file": "R/spei.R",
+                  "line": "665-695",
+                  "quote": "\"ub-pwm\" = PWM(x.mon, order = 0:2) ... \"log-Logistic\" = tryCatch(pelglo(fortran_vec) ... \"Gamma\" = tryCatch(pelgam(... \"PearsonIII\" = tryCatch(pelpe3("
+                },
+                {
+                  "source": "r_spei",
+                  "ref": "lmom 3.3 CRAN tarball (dependency)",
+                  "file": "DESCRIPTION",
+                  "line": "Author",
+                  "quote": "Author: J. R. M. Hosking [aut, cre]"
+                },
+                {
+                  "source": "r_spei",
+                  "ref": "SPEI 1.8.1 CRAN tarball",
+                  "file": "R/spi.R",
+                  "line": "13",
+                  "quote": "sol <- spei("
+                },
+                {
+                  "source": "speibase",
+                  "ref": "https://spei.csic.es/database.html",
+                  "accessed": "2026-11-20",
+                  "quote": "SPEIbase v2.11: 1) the CRU TS 4.09 dataset ... 2) Using SPEI package version 1.8.1."
+                },
+                {
+                  "source": "speibase",
+                  "ref": "https://spei.csic.es/database.html",
+                  "accessed": "2026-11-20",
+                  "quote": "Unbiased probability weighted moments (ub-pwm) method has been used for fitting the log-Logistic distribution"
+                },
+                {
+                  "source": "r_spei",
+                  "ref": "SPEI 1.8.1 CRAN tarball",
+                  "file": "R/spei.R",
+                  "line": "665-695",
+                  "quote": "\"ub-pwm\" = PWM(x.mon, order = 0:2) ... \"log-Logistic\" = tryCatch(pelglo(fortran_vec) ... \"Gamma\" = tryCatch(pelgam(... \"PearsonIII\" = tryCatch(pelpe3("
+                }
+              ],
+              "routine": "Hosking L-moment routines (IBM RC20525)"
+            }
+          ]
+        },
+        {
+          "a": "r_sei",
+          "b": "climate_engine",
+          "class": "unknown",
+          "direction": null,
+          "relations": [],
+          "questions": [
+            1
+          ]
+        },
+        {
+          "a": "r_sei",
+          "b": "gridmet_drought",
+          "class": "unknown",
+          "direction": null,
+          "relations": [],
+          "questions": [
+            2
+          ]
+        },
+        {
+          "a": "r_sei",
+          "b": "speibase",
+          "class": "shared numerical routine",
+          "direction": null,
+          "relations": [
+            {
+              "class": "shared numerical routine",
+              "from": null,
+              "to": null,
+              "configuration": "same dependency: R SEI method = \"lmoment\" (lmom dependency); SPEIbase v2.11 ub-pwm log-logistic (lmom dependency, through R SPEI)",
+              "evidence": [
+                {
+                  "source": "r_sei",
+                  "ref": "SEI 0.2.0 CRAN tarball",
+                  "file": "R/fit_dist.R",
+                  "line": "291-308",
+                  "quote": "samp_mom <- lmom::samlmu(data) ... params <- lmom::pelgam(samp_mom)"
+                },
+                {
+                  "source": "r_spei",
+                  "ref": "lmom 3.3 CRAN tarball (dependency)",
+                  "file": "DESCRIPTION",
+                  "line": "Author",
+                  "quote": "Author: J. R. M. Hosking [aut, cre]"
+                },
+                {
+                  "source": "speibase",
+                  "ref": "https://spei.csic.es/database.html",
+                  "accessed": "2026-11-20",
+                  "quote": "SPEIbase v2.11: 1) the CRU TS 4.09 dataset ... 2) Using SPEI package version 1.8.1."
+                },
+                {
+                  "source": "speibase",
+                  "ref": "https://spei.csic.es/database.html",
+                  "accessed": "2026-11-20",
+                  "quote": "Unbiased probability weighted moments (ub-pwm) method has been used for fitting the log-Logistic distribution"
+                },
+                {
+                  "source": "r_spei",
+                  "ref": "SPEI 1.8.1 CRAN tarball",
+                  "file": "R/spei.R",
+                  "line": "665-695",
+                  "quote": "\"ub-pwm\" = PWM(x.mon, order = 0:2) ... \"log-Logistic\" = tryCatch(pelglo(fortran_vec) ... \"Gamma\" = tryCatch(pelgam(... \"PearsonIII\" = tryCatch(pelpe3("
+                }
+              ],
+              "routine": "Hosking L-moment routines (IBM RC20525)"
+            }
+          ]
+        },
+        {
+          "a": "climate_engine",
+          "b": "gridmet_drought",
+          "class": "unknown",
+          "direction": null,
+          "relations": [],
+          "questions": [
+            1,
+            2
+          ]
+        },
+        {
+          "a": "climate_engine",
+          "b": "speibase",
+          "class": "unknown",
+          "direction": null,
+          "relations": [],
+          "questions": [
+            1
+          ]
+        },
+        {
+          "a": "gridmet_drought",
+          "b": "speibase",
+          "class": "unknown",
+          "direction": null,
+          "relations": [],
+          "questions": [
+            2
+          ]
+        }
+      ]
+    },
+    "PET Thornthwaite": {
+      "implementations": [
+        "climate_indices",
+        "xclim",
+        "pyeto",
+        "r_spei"
+      ],
+      "pairs": [
+        {
+          "a": "climate_indices",
+          "b": "xclim",
+          "class": "independent",
+          "direction": null,
+          "relations": []
+        },
+        {
+          "a": "climate_indices",
+          "b": "pyeto",
+          "class": "derived",
+          "direction": {
+            "from": "climate_indices",
+            "to": "pyeto"
+          },
+          "relations": [
+            {
+              "class": "derived",
+              "from": "climate_indices",
+              "to": "pyeto",
+              "configuration": null,
+              "evidence": [
+                {
+                  "source": "climate_indices",
+                  "ref": "monocongo/climate_indices@a7235bf7",
+                  "file": "src/climate_indices/drought/eto.py",
+                  "line": "5-6",
+                  "quote": "Derived from original code found in PyETo: https://github.com/woodcrafty/PyETo"
+                },
+                {
+                  "source": "climate_indices",
+                  "ref": "monocongo/climate_indices@cccf6ff9 (initial commit, 2017-06-13)",
+                  "file": "thornthwaite.py",
+                  "line": "7",
+                  "quote": "Derived from original code found here: https://github.com/woodcrafty/PyETo"
+                },
+                {
+                  "source": "climate_indices",
+                  "ref": "monocongo/climate_indices@6dde1a55 (2018-10-03)",
+                  "file": "commit message",
+                  "line": null,
+                  "quote": "initial code for Hargreaves, with previous Thornthwaite folded into same file"
+                },
+                {
+                  "source": "climate_indices",
+                  "ref": "monocongo/climate_indices@a7235bf7",
+                  "file": "src/climate_indices/drought/eto.py",
+                  "line": "558",
+                  "quote": "Based on equation 52 in Allen et al (1998)."
+                },
+                {
+                  "source": "pyeto",
+                  "ref": "woodcrafty/PyETo@79ddd88d",
+                  "file": "pyeto/fao.py",
+                  "line": "328",
+                  "quote": "Based on equation 52 in Allen et al (1998)."
+                },
+                {
+                  "source": "climate_indices",
+                  "ref": "monocongo/climate_indices@a7235bf7",
+                  "file": "tests/fixture/pet_literature/provenance.json",
+                  "line": "5",
+                  "quote": "the upstream project climate_indices.eto derives its implementation from"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "a": "climate_indices",
+          "b": "r_spei",
+          "class": "independent",
+          "direction": null,
+          "relations": []
+        },
+        {
+          "a": "xclim",
+          "b": "pyeto",
+          "class": "independent",
+          "direction": null,
+          "relations": []
+        },
+        {
+          "a": "xclim",
+          "b": "r_spei",
+          "class": "independent",
+          "direction": null,
+          "relations": []
+        },
+        {
+          "a": "pyeto",
+          "b": "r_spei",
+          "class": "independent",
+          "direction": null,
+          "relations": []
+        }
+      ]
+    },
+    "PET Hargreaves": {
+      "implementations": [
+        "climate_indices",
+        "xclim",
+        "pyet",
+        "pyeto",
+        "r_evapotranspiration",
+        "r_spei"
+      ],
+      "pairs": [
+        {
+          "a": "climate_indices",
+          "b": "xclim",
+          "class": "independent",
+          "direction": null,
+          "relations": []
+        },
+        {
+          "a": "climate_indices",
+          "b": "pyet",
+          "class": "independent",
+          "direction": null,
+          "relations": []
+        },
+        {
+          "a": "climate_indices",
+          "b": "pyeto",
+          "class": "derived",
+          "direction": {
+            "from": "climate_indices",
+            "to": "pyeto"
+          },
+          "relations": [
+            {
+              "class": "derived",
+              "from": "climate_indices",
+              "to": "pyeto",
+              "configuration": null,
+              "evidence": [
+                {
+                  "source": "climate_indices",
+                  "ref": "monocongo/climate_indices@a7235bf7",
+                  "file": "src/climate_indices/drought/eto.py",
+                  "line": "5-6",
+                  "quote": "Derived from original code found in PyETo: https://github.com/woodcrafty/PyETo"
+                },
+                {
+                  "source": "climate_indices",
+                  "ref": "monocongo/climate_indices@cccf6ff9 (initial commit, 2017-06-13)",
+                  "file": "thornthwaite.py",
+                  "line": "7",
+                  "quote": "Derived from original code found here: https://github.com/woodcrafty/PyETo"
+                },
+                {
+                  "source": "climate_indices",
+                  "ref": "monocongo/climate_indices@6dde1a55 (2018-10-03)",
+                  "file": "commit message",
+                  "line": null,
+                  "quote": "initial code for Hargreaves, with previous Thornthwaite folded into same file"
+                },
+                {
+                  "source": "climate_indices",
+                  "ref": "monocongo/climate_indices@a7235bf7",
+                  "file": "src/climate_indices/drought/eto.py",
+                  "line": "558",
+                  "quote": "Based on equation 52 in Allen et al (1998)."
+                },
+                {
+                  "source": "pyeto",
+                  "ref": "woodcrafty/PyETo@79ddd88d",
+                  "file": "pyeto/fao.py",
+                  "line": "328",
+                  "quote": "Based on equation 52 in Allen et al (1998)."
+                },
+                {
+                  "source": "climate_indices",
+                  "ref": "monocongo/climate_indices@a7235bf7",
+                  "file": "tests/fixture/pet_literature/provenance.json",
+                  "line": "5",
+                  "quote": "the upstream project climate_indices.eto derives its implementation from"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "a": "climate_indices",
+          "b": "r_evapotranspiration",
+          "class": "independent",
+          "direction": null,
+          "relations": []
+        },
+        {
+          "a": "climate_indices",
+          "b": "r_spei",
+          "class": "independent",
+          "direction": null,
+          "relations": []
+        },
+        {
+          "a": "xclim",
+          "b": "pyet",
+          "class": "independent",
+          "direction": null,
+          "relations": []
+        },
+        {
+          "a": "xclim",
+          "b": "pyeto",
+          "class": "independent",
+          "direction": null,
+          "relations": []
+        },
+        {
+          "a": "xclim",
+          "b": "r_evapotranspiration",
+          "class": "independent",
+          "direction": null,
+          "relations": []
+        },
+        {
+          "a": "xclim",
+          "b": "r_spei",
+          "class": "independent",
+          "direction": null,
+          "relations": []
+        },
+        {
+          "a": "pyet",
+          "b": "pyeto",
+          "class": "independent",
+          "direction": null,
+          "relations": []
+        },
+        {
+          "a": "pyet",
+          "b": "r_evapotranspiration",
+          "class": "validated against",
+          "direction": {
+            "from": "pyet",
+            "to": "r_evapotranspiration"
+          },
+          "relations": [
+            {
+              "class": "validated against",
+              "from": "pyet",
+              "to": "r_evapotranspiration",
+              "configuration": null,
+              "evidence": [
+                {
+                  "source": "pyet",
+                  "ref": "pyet 1.5.0 sdist",
+                  "file": "tests/test_rpackage.py",
+                  "line": "66, 483-490",
+                  "quote": "lambda0 = 2.45  # Lambda in Danlu R Evapotranspiration package ... r_har = [4.6, 4.3, ...]"
+                },
+                {
+                  "source": "pyet",
+                  "ref": "pyet 1.5.0 sdist",
+                  "file": "tests/test_rpackage.py",
+                  "line": "66, 200-215",
+                  "quote": "lambda0 = 2.45  # Lambda in Danlu R Evapotranspiration package ... def test_fao56(self):"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "a": "pyet",
+          "b": "r_spei",
+          "class": "independent",
+          "direction": null,
+          "relations": []
+        },
+        {
+          "a": "pyeto",
+          "b": "r_evapotranspiration",
+          "class": "independent",
+          "direction": null,
+          "relations": []
+        },
+        {
+          "a": "pyeto",
+          "b": "r_spei",
+          "class": "independent",
+          "direction": null,
+          "relations": []
+        },
+        {
+          "a": "r_evapotranspiration",
+          "b": "r_spei",
+          "class": "independent",
+          "direction": null,
+          "relations": []
+        }
+      ]
+    },
+    "PET FAO-56 Penman-Monteith": {
+      "implementations": [
+        "climate_indices",
+        "xclim",
+        "pyet",
+        "pyeto",
+        "r_evapotranspiration",
+        "r_spei"
+      ],
+      "pairs": [
+        {
+          "a": "climate_indices",
+          "b": "xclim",
+          "class": "independent",
+          "direction": null,
+          "relations": []
+        },
+        {
+          "a": "climate_indices",
+          "b": "pyet",
+          "class": "independent",
+          "direction": null,
+          "relations": []
+        },
+        {
+          "a": "climate_indices",
+          "b": "pyeto",
+          "class": "independent",
+          "direction": null,
+          "relations": []
+        },
+        {
+          "a": "climate_indices",
+          "b": "r_evapotranspiration",
+          "class": "independent",
+          "direction": null,
+          "relations": []
+        },
+        {
+          "a": "climate_indices",
+          "b": "r_spei",
+          "class": "independent",
+          "direction": null,
+          "relations": []
+        },
+        {
+          "a": "xclim",
+          "b": "pyet",
+          "class": "independent",
+          "direction": null,
+          "relations": []
+        },
+        {
+          "a": "xclim",
+          "b": "pyeto",
+          "class": "independent",
+          "direction": null,
+          "relations": []
+        },
+        {
+          "a": "xclim",
+          "b": "r_evapotranspiration",
+          "class": "independent",
+          "direction": null,
+          "relations": []
+        },
+        {
+          "a": "xclim",
+          "b": "r_spei",
+          "class": "independent",
+          "direction": null,
+          "relations": []
+        },
+        {
+          "a": "pyet",
+          "b": "pyeto",
+          "class": "independent",
+          "direction": null,
+          "relations": []
+        },
+        {
+          "a": "pyet",
+          "b": "r_evapotranspiration",
+          "class": "validated against",
+          "direction": {
+            "from": "pyet",
+            "to": "r_evapotranspiration"
+          },
+          "relations": [
+            {
+              "class": "validated against",
+              "from": "pyet",
+              "to": "r_evapotranspiration",
+              "configuration": null,
+              "evidence": [
+                {
+                  "source": "pyet",
+                  "ref": "pyet 1.5.0 sdist",
+                  "file": "tests/test_rpackage.py",
+                  "line": "66, 483-490",
+                  "quote": "lambda0 = 2.45  # Lambda in Danlu R Evapotranspiration package ... r_har = [4.6, 4.3, ...]"
+                },
+                {
+                  "source": "pyet",
+                  "ref": "pyet 1.5.0 sdist",
+                  "file": "tests/test_rpackage.py",
+                  "line": "66, 200-215",
+                  "quote": "lambda0 = 2.45  # Lambda in Danlu R Evapotranspiration package ... def test_fao56(self):"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "a": "pyet",
+          "b": "r_spei",
+          "class": "independent",
+          "direction": null,
+          "relations": []
+        },
+        {
+          "a": "pyeto",
+          "b": "r_evapotranspiration",
+          "class": "independent",
+          "direction": null,
+          "relations": []
+        },
+        {
+          "a": "pyeto",
+          "b": "r_spei",
+          "class": "independent",
+          "direction": null,
+          "relations": []
+        },
+        {
+          "a": "r_evapotranspiration",
+          "b": "r_spei",
+          "class": "independent",
+          "direction": null,
+          "relations": []
+        }
+      ]
+    },
+    "EDDI and non-parametric": {
+      "implementations": [
+        "climate_indices",
+        "noaa_psl_eddi",
+        "climate_engine",
+        "gridmet_drought"
+      ],
+      "pairs": [
+        {
+          "a": "climate_indices",
+          "b": "noaa_psl_eddi",
+          "class": "validated against",
+          "direction": {
+            "from": "climate_indices",
+            "to": "noaa_psl_eddi"
+          },
+          "relations": [
+            {
+              "class": "validated against",
+              "from": "climate_indices",
+              "to": "noaa_psl_eddi",
+              "configuration": null,
+              "evidence": [
+                {
+                  "source": "climate_indices",
+                  "ref": "monocongo/climate_indices@a7235bf7",
+                  "file": "tests/test_noaa_eddi_reference.py",
+                  "line": "3-4",
+                  "quote": "Validates the library's EDDI implementation against pre-computed EDDI values from the NOAA Physical Sciences Laboratory (PSL)."
+                },
+                {
+                  "source": "climate_indices",
+                  "ref": "monocongo/climate_indices@a7235bf7",
+                  "file": "tests/fixture/noaa-eddi-1month/provenance.json",
+                  "line": "2",
+                  "quote": "NOAA Physical Sciences Laboratory (PSL)"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "a": "climate_indices",
+          "b": "climate_engine",
+          "class": "validated against",
+          "direction": {
+            "from": "climate_indices",
+            "to": "climate_engine"
+          },
+          "relations": [
+            {
+              "class": "validated against",
+              "from": "climate_indices",
+              "to": "climate_engine",
+              "configuration": "characterization pilot",
+              "evidence": [
+                {
+                  "source": "climate_indices",
+                  "ref": "monocongo/climate_indices@a7235bf7",
+                  "file": "docs/research/earthengine-climate-engine-pilot.md",
+                  "line": "9-13",
+                  "quote": "Measure agreement between climate_indices and two provider products that use gridMET inputs."
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "a": "climate_indices",
+          "b": "gridmet_drought",
+          "class": "validated against",
+          "direction": {
+            "from": "climate_indices",
+            "to": "gridmet_drought"
+          },
+          "relations": [
+            {
+              "class": "validated against",
+              "from": "climate_indices",
+              "to": "gridmet_drought",
+              "configuration": "characterization pilot",
+              "evidence": [
+                {
+                  "source": "climate_indices",
+                  "ref": "monocongo/climate_indices@a7235bf7",
+                  "file": "docs/research/earthengine-climate-engine-pilot.md",
+                  "line": "9-13",
+                  "quote": "Measure agreement between climate_indices and two provider products that use gridMET inputs."
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "a": "noaa_psl_eddi",
+          "b": "climate_engine",
+          "class": "unknown",
+          "direction": null,
+          "relations": [],
+          "questions": [
+            1,
+            3
+          ]
+        },
+        {
+          "a": "noaa_psl_eddi",
+          "b": "gridmet_drought",
+          "class": "unknown",
+          "direction": null,
+          "relations": [],
+          "questions": [
+            2,
+            3
+          ]
+        },
+        {
+          "a": "climate_engine",
+          "b": "gridmet_drought",
+          "class": "unknown",
+          "direction": null,
+          "relations": [],
+          "questions": [
+            1,
+            2
+          ]
+        }
+      ]
+    },
+    "PDSI, PHDI, PMDI, Z-Index": {
+      "implementations": [
+        "climate_indices",
+        "ncei_pdi_f",
+        "nclimdiv",
+        "jonking93_pdsi",
+        "wells_cpp",
+        "sibada_scpdsi"
+      ],
+      "pairs": [
+        {
+          "a": "climate_indices",
+          "b": "ncei_pdi_f",
+          "class": "shared numerical routine",
+          "direction": null,
+          "relations": [
+            {
+              "class": "shared numerical routine",
+              "from": null,
+              "to": null,
+              "configuration": "same NCDC Palmer program family by both sources' own statements, identity unconfirmed (question 4)",
+              "evidence": [
+                {
+                  "source": "climate_indices",
+                  "ref": "monocongo/climate_indices@224ef6bc (2017-06-21)",
+                  "file": "commit message",
+                  "line": null,
+                  "quote": "first draft of function to reproduce the water balance code in pdinew.f"
+                },
+                {
+                  "source": "climate_indices",
+                  "ref": "monocongo/climate_indices@0b15ec8c (2017-07-28)",
+                  "file": "commit message",
+                  "line": null,
+                  "quote": "updates to function signatures, new translation of pdinew.f, more tests"
+                },
+                {
+                  "source": "climate_indices",
+                  "ref": "monocongo/climate_indices@c3b2d165 (2017-09-07)",
+                  "file": "commit message",
+                  "line": null,
+                  "quote": "new version which matches to the original pdinew.f results >99%"
+                },
+                {
+                  "source": "climate_indices",
+                  "ref": "monocongo/climate_indices@a7235bf7",
+                  "file": "src/climate_indices/drought/_palmer_pdi.py",
+                  "line": "1",
+                  "quote": "NCEI pdi.f-lineage Palmer spell recursion for the standard PDSI family."
+                },
+                {
+                  "source": "ncei_pdi_f",
+                  "ref": "pdi.f sha256 e0c58ccb (2013-04-03)",
+                  "file": "pdi.f",
+                  "line": "13-16",
+                  "quote": "It is a modified version of the program in use at the National Climatic Data Center ... Code taken from the old version is in upper case"
+                }
+              ],
+              "routine": "NCDC Palmer Fortran"
+            }
+          ]
+        },
+        {
+          "a": "climate_indices",
+          "b": "nclimdiv",
+          "class": "validated against",
+          "direction": {
+            "from": "climate_indices",
+            "to": "nclimdiv"
+          },
+          "relations": [
+            {
+              "class": "validated against",
+              "from": "climate_indices",
+              "to": "nclimdiv",
+              "configuration": null,
+              "evidence": [
+                {
+                  "source": "climate_indices",
+                  "ref": "monocongo/climate_indices@a7235bf7",
+                  "file": "tests/test_nclimdiv_reference.py",
+                  "line": "1-5",
+                  "quote": "Palmer-family comparisons against NOAA nClimDiv. ... against the operational NOAA NCEI nClimDiv reference arrays"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "a": "climate_indices",
+          "b": "jonking93_pdsi",
+          "class": "independent",
+          "direction": null,
+          "relations": []
+        },
+        {
+          "a": "climate_indices",
+          "b": "wells_cpp",
+          "class": "shared numerical routine",
+          "direction": null,
+          "relations": [
+            {
+              "class": "shared numerical routine",
+              "from": null,
+              "to": null,
+              "configuration": "same NCDC Palmer program family by both sources' own statements, identity unconfirmed (question 4)",
+              "evidence": [
+                {
+                  "source": "climate_indices",
+                  "ref": "monocongo/climate_indices@0b15ec8c (2017-07-28)",
+                  "file": "commit message",
+                  "line": null,
+                  "quote": "updates to function signatures, new translation of pdinew.f, more tests"
+                },
+                {
+                  "source": "wells_cpp",
+                  "ref": "greenleaf.unl.edu scPDSI.zip sha256 52ceeb42 (scpdsi.cpp 2007-05-18)",
+                  "file": "scPDSI/src/scpdsi.cpp",
+                  "line": "33-41",
+                  "quote": "Most recently translated to C++ from FORTRAN ... Based mostly on the source code of pdsi.f, a FORTRAN program that calculates monthly PDSI values. The source code came from NCDC, originally written by Tom Karl, and revised by Roger Winchell, Alan McNab, and Richard Heim."
+                }
+              ],
+              "routine": "NCDC Palmer Fortran"
+            }
+          ]
+        },
+        {
+          "a": "climate_indices",
+          "b": "sibada_scpdsi",
+          "class": "validated against",
+          "direction": {
+            "from": "climate_indices",
+            "to": "sibada_scpdsi"
+          },
+          "relations": [
+            {
+              "class": "validated against",
+              "from": "climate_indices",
+              "to": "sibada_scpdsi",
+              "configuration": "the oracle harness run in standard-PDSI mode reproduces the library's Z-Index",
+              "evidence": [
+                {
+                  "source": "climate_indices",
+                  "ref": "monocongo/climate_indices@a7235bf7",
+                  "file": "tests/fixture/palmer/provenance.json",
+                  "line": "15",
+                  "quote": "SCPDSI GENERATION ... produced by the Sibada/scPDSI reference C++ (Wells, Goddard & Hayes) ... HARNESS VALIDATION: running the same binary in standard-PDSI mode reproduces the committed zindex.npy for all 344 divisions"
+                }
+              ]
+            },
+            {
+              "class": "shared numerical routine",
+              "from": null,
+              "to": null,
+              "configuration": "same NCDC Palmer program family by both sources' own statements, identity unconfirmed (question 4)",
+              "evidence": [
+                {
+                  "source": "climate_indices",
+                  "ref": "monocongo/climate_indices@0b15ec8c (2017-07-28)",
+                  "file": "commit message",
+                  "line": null,
+                  "quote": "updates to function signatures, new translation of pdinew.f, more tests"
+                },
+                {
+                  "source": "sibada_scpdsi",
+                  "ref": "Sibada/scPDSI@10f8c3b2",
+                  "file": "DESCRIPTION",
+                  "line": "16-17",
+                  "quote": "The function to calculate PDSI is based on the C++ source codes developed by Nathan Wells, Steve Goddard and Michael J. Hayes"
+                },
+                {
+                  "source": "wells_cpp",
+                  "ref": "greenleaf.unl.edu scPDSI.zip sha256 52ceeb42 (scpdsi.cpp 2007-05-18)",
+                  "file": "scPDSI/src/scpdsi.cpp",
+                  "line": "33-41",
+                  "quote": "Most recently translated to C++ from FORTRAN ... Based mostly on the source code of pdsi.f, a FORTRAN program that calculates monthly PDSI values. The source code came from NCDC, originally written by Tom Karl, and revised by Roger Winchell, Alan McNab, and Richard Heim."
+                }
+              ],
+              "routine": "NCDC Palmer Fortran"
+            }
+          ]
+        },
+        {
+          "a": "ncei_pdi_f",
+          "b": "nclimdiv",
+          "class": "unknown",
+          "direction": null,
+          "relations": [],
+          "questions": [
+            4
+          ],
+          "notes": [
+            {
+              "note": "pdi.f is NCEI's public version of its Palmer program, \"not an exact copy\" of what it runs; question 4.",
+              "evidence": [
+                {
+                  "source": "ncei_pdi_f",
+                  "ref": "pdi.f sha256 e0c58ccb (2013-04-03)",
+                  "file": "pdi.f",
+                  "line": "13-16",
+                  "quote": "It is a modified version of the program in use at the National Climatic Data Center ... Code taken from the old version is in upper case"
+                },
+                {
+                  "source": "ncei_pdi_f",
+                  "ref": "https://www.drought.gov/data-maps-tools/drought-indices-fortran-spi-pdsi",
+                  "accessed": "2026-11-20",
+                  "quote": "This code is not an exact copy of what is run on NCEI's internal servers, but represents general use version approved for public release."
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "a": "ncei_pdi_f",
+          "b": "jonking93_pdsi",
+          "class": "independent",
+          "direction": null,
+          "relations": []
+        },
+        {
+          "a": "ncei_pdi_f",
+          "b": "wells_cpp",
+          "class": "shared numerical routine",
+          "direction": null,
+          "relations": [
+            {
+              "class": "shared numerical routine",
+              "from": null,
+              "to": null,
+              "configuration": "same NCDC Palmer program family by both sources' own statements, identity unconfirmed (question 4)",
+              "evidence": [
+                {
+                  "source": "ncei_pdi_f",
+                  "ref": "pdi.f sha256 e0c58ccb (2013-04-03)",
+                  "file": "pdi.f",
+                  "line": "13-16",
+                  "quote": "It is a modified version of the program in use at the National Climatic Data Center ... Code taken from the old version is in upper case"
+                },
+                {
+                  "source": "wells_cpp",
+                  "ref": "greenleaf.unl.edu scPDSI.zip sha256 52ceeb42 (scpdsi.cpp 2007-05-18)",
+                  "file": "scPDSI/src/scpdsi.cpp",
+                  "line": "33-41",
+                  "quote": "Most recently translated to C++ from FORTRAN ... Based mostly on the source code of pdsi.f, a FORTRAN program that calculates monthly PDSI values. The source code came from NCDC, originally written by Tom Karl, and revised by Roger Winchell, Alan McNab, and Richard Heim."
+                }
+              ],
+              "routine": "NCDC Palmer Fortran"
+            }
+          ]
+        },
+        {
+          "a": "ncei_pdi_f",
+          "b": "sibada_scpdsi",
+          "class": "shared numerical routine",
+          "direction": null,
+          "relations": [
+            {
+              "class": "shared numerical routine",
+              "from": null,
+              "to": null,
+              "configuration": "same NCDC Palmer program family by both sources' own statements, identity unconfirmed (question 4)",
+              "evidence": [
+                {
+                  "source": "ncei_pdi_f",
+                  "ref": "pdi.f sha256 e0c58ccb (2013-04-03)",
+                  "file": "pdi.f",
+                  "line": "13-16",
+                  "quote": "It is a modified version of the program in use at the National Climatic Data Center ... Code taken from the old version is in upper case"
+                },
+                {
+                  "source": "sibada_scpdsi",
+                  "ref": "Sibada/scPDSI@10f8c3b2",
+                  "file": "DESCRIPTION",
+                  "line": "16-17",
+                  "quote": "The function to calculate PDSI is based on the C++ source codes developed by Nathan Wells, Steve Goddard and Michael J. Hayes"
+                },
+                {
+                  "source": "wells_cpp",
+                  "ref": "greenleaf.unl.edu scPDSI.zip sha256 52ceeb42 (scpdsi.cpp 2007-05-18)",
+                  "file": "scPDSI/src/scpdsi.cpp",
+                  "line": "33-41",
+                  "quote": "Most recently translated to C++ from FORTRAN ... Based mostly on the source code of pdsi.f, a FORTRAN program that calculates monthly PDSI values. The source code came from NCDC, originally written by Tom Karl, and revised by Roger Winchell, Alan McNab, and Richard Heim."
+                }
+              ],
+              "routine": "NCDC Palmer Fortran"
+            }
+          ]
+        },
+        {
+          "a": "nclimdiv",
+          "b": "jonking93_pdsi",
+          "class": "unknown",
+          "direction": null,
+          "relations": [],
+          "questions": [
+            4
+          ]
+        },
+        {
+          "a": "nclimdiv",
+          "b": "wells_cpp",
+          "class": "unknown",
+          "direction": null,
+          "relations": [],
+          "questions": [
+            4
+          ]
+        },
+        {
+          "a": "nclimdiv",
+          "b": "sibada_scpdsi",
+          "class": "unknown",
+          "direction": null,
+          "relations": [],
+          "questions": [
+            4
+          ]
+        },
+        {
+          "a": "jonking93_pdsi",
+          "b": "wells_cpp",
+          "class": "independent",
+          "direction": null,
+          "relations": []
+        },
+        {
+          "a": "jonking93_pdsi",
+          "b": "sibada_scpdsi",
+          "class": "independent",
+          "direction": null,
+          "relations": []
+        },
+        {
+          "a": "wells_cpp",
+          "b": "sibada_scpdsi",
+          "class": "derived",
+          "direction": {
+            "from": "sibada_scpdsi",
+            "to": "wells_cpp"
+          },
+          "relations": [
+            {
+              "class": "derived",
+              "from": "sibada_scpdsi",
+              "to": "wells_cpp",
+              "configuration": null,
+              "evidence": [
+                {
+                  "source": "sibada_scpdsi",
+                  "ref": "Sibada/scPDSI@10f8c3b2",
+                  "file": "DESCRIPTION",
+                  "line": "16-17",
+                  "quote": "The function to calculate PDSI is based on the C++ source codes developed by Nathan Wells, Steve Goddard and Michael J. Hayes"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "scPDSI": {
+      "implementations": [
+        "climate_indices",
+        "wells_cpp",
+        "sibada_scpdsi",
+        "ktripa_scpdsi"
+      ],
+      "pairs": [
+        {
+          "a": "climate_indices",
+          "b": "wells_cpp",
+          "class": "derived",
+          "direction": {
+            "from": "climate_indices",
+            "to": "wells_cpp"
+          },
+          "relations": [
+            {
+              "class": "derived",
+              "from": "climate_indices",
+              "to": "wells_cpp",
+              "configuration": "the design names the Wells C++ as distributed in Sibada/scPDSI",
+              "evidence": [
+                {
+                  "source": "climate_indices",
+                  "ref": "monocongo/climate_indices@d0a3a401 (2026-08-08; file removed from main by 2ee0f18b)",
+                  "file": "docs/superpowers/specs/2026-08-07-scpdsi-epic-design.md",
+                  "line": "12",
+                  "quote": "Traced directly from the Wells, Goddard & Hayes reference C++ implementation (Sibada/scPDSI on GitHub, GPLv3 — used here for algorithm reference only; see \"Licensing\" below for why no GPL source enters this repository), specifically Rext_PDSI_mon(sc=true) and the functions it calls"
+                },
+                {
+                  "source": "climate_indices",
+                  "ref": "monocongo/climate_indices@a7235bf7",
+                  "file": "src/climate_indices/drought/self_calibration.py",
+                  "line": "8",
+                  "quote": "Every function here is a faithful port of the reference algorithm"
+                },
+                {
+                  "source": "climate_indices",
+                  "ref": "monocongo/climate_indices@a7235bf7",
+                  "file": "src/climate_indices/drought/self_calibration.py",
+                  "line": "89",
+                  "quote": "Ports the reference implementation's kthLargest()"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "a": "climate_indices",
+          "b": "sibada_scpdsi",
+          "class": "derived",
+          "direction": {
+            "from": "climate_indices",
+            "to": "sibada_scpdsi"
+          },
+          "relations": [
+            {
+              "class": "derived",
+              "from": "climate_indices",
+              "to": "sibada_scpdsi",
+              "configuration": null,
+              "evidence": [
+                {
+                  "source": "climate_indices",
+                  "ref": "monocongo/climate_indices@d0a3a401 (2026-08-08; file removed from main by 2ee0f18b)",
+                  "file": "docs/superpowers/specs/2026-08-07-scpdsi-epic-design.md",
+                  "line": "12",
+                  "quote": "Traced directly from the Wells, Goddard & Hayes reference C++ implementation (Sibada/scPDSI on GitHub, GPLv3 — used here for algorithm reference only; see \"Licensing\" below for why no GPL source enters this repository), specifically Rext_PDSI_mon(sc=true) and the functions it calls"
+                },
+                {
+                  "source": "climate_indices",
+                  "ref": "monocongo/climate_indices@a7235bf7",
+                  "file": "src/climate_indices/drought/self_calibration.py",
+                  "line": "8",
+                  "quote": "Every function here is a faithful port of the reference algorithm"
+                },
+                {
+                  "source": "climate_indices",
+                  "ref": "monocongo/climate_indices@a7235bf7",
+                  "file": "src/climate_indices/drought/self_calibration.py",
+                  "line": "89",
+                  "quote": "Ports the reference implementation's kthLargest()"
+                },
+                {
+                  "source": "sibada_scpdsi",
+                  "ref": "Sibada/scPDSI@10f8c3b2",
+                  "file": "src/pdsi.cpp",
+                  "line": "4569",
+                  "quote": "number llist::kthLargest(int k) {"
+                },
+                {
+                  "source": "climate_indices",
+                  "ref": "monocongo/climate_indices@a7235bf7",
+                  "file": "tests/fixture/palmer/provenance.json",
+                  "line": "15",
+                  "quote": "SCPDSI GENERATION ... produced by the Sibada/scPDSI reference C++ (Wells, Goddard & Hayes) ... HARNESS VALIDATION: running the same binary in standard-PDSI mode reproduces the committed zindex.npy for all 344 divisions"
+                }
+              ]
+            },
+            {
+              "class": "validated against",
+              "from": "climate_indices",
+              "to": "sibada_scpdsi",
+              "configuration": "scPDSI oracle fixture",
+              "evidence": [
+                {
+                  "source": "climate_indices",
+                  "ref": "monocongo/climate_indices@a7235bf7",
+                  "file": "tests/fixture/palmer/provenance.json",
+                  "line": "15",
+                  "quote": "SCPDSI GENERATION ... produced by the Sibada/scPDSI reference C++ (Wells, Goddard & Hayes) ... HARNESS VALIDATION: running the same binary in standard-PDSI mode reproduces the committed zindex.npy for all 344 divisions"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "a": "climate_indices",
+          "b": "ktripa_scpdsi",
+          "class": "independent",
+          "direction": null,
+          "relations": []
+        },
+        {
+          "a": "wells_cpp",
+          "b": "sibada_scpdsi",
+          "class": "derived",
+          "direction": {
+            "from": "sibada_scpdsi",
+            "to": "wells_cpp"
+          },
+          "relations": [
+            {
+              "class": "derived",
+              "from": "sibada_scpdsi",
+              "to": "wells_cpp",
+              "configuration": null,
+              "evidence": [
+                {
+                  "source": "sibada_scpdsi",
+                  "ref": "Sibada/scPDSI@10f8c3b2",
+                  "file": "DESCRIPTION",
+                  "line": "16-17",
+                  "quote": "The function to calculate PDSI is based on the C++ source codes developed by Nathan Wells, Steve Goddard and Michael J. Hayes"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "a": "wells_cpp",
+          "b": "ktripa_scpdsi",
+          "class": "independent",
+          "direction": null,
+          "relations": []
+        },
+        {
+          "a": "sibada_scpdsi",
+          "b": "ktripa_scpdsi",
+          "class": "independent",
+          "direction": null,
+          "relations": []
+        }
+      ]
+    }
+  },
+  "summary": {
+    "derived": 6,
+    "validated against": 22,
+    "shared numerical routine": 34,
+    "independent": 65,
+    "unknown": 50
+  }
+}
