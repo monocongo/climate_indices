@@ -1,7 +1,7 @@
 # <id>: notes
 
 Copy to `palmer/notes/<id>.md` (or the family's `notes/` folder). Page numbers are
-the printed ones, as in `docs/algorithm_refs/palmer-provenance.md`. Record only what
+the printed ones, as in `docs/algorithm_refs/palmer-provenance.md` (added by PR #1659). Record only what
 the source says; leave a section empty rather than guess.
 
 ## Citation and how to obtain it

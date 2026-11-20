@@ -1,6 +1,8 @@
 # Manifest of reference papers and code. One entry per source; the id is the file stem
 # everywhere (this file, file names, palmer-provenance.md, ticket comments).
 # Use only facts already in the repo or verified from a rights page; null means "not known".
+# docs/algorithm_refs/palmer-provenance.md (every opened_in below) is added by PR #1659; until it
+# merges the path is a forward reference.
 #
 #   id               <first-author>-<year> for papers, a short slug for code.
 #   kind             paper | code | data | data-doc

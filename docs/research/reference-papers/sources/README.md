@@ -52,6 +52,9 @@ Cite the id, point at `palmer/notes/<id>.md` when it exists, and name the proven
 rows or D-items the work is for. Example: "Using `heddinghaus-sabol-1991`, check
 provenance row 22 and D2; record the page in its notes file."
 
+`docs/algorithm_refs/palmer-provenance.md` (rows and D-items) is added by PR #1659; until it
+merges, those references point at a file not yet on `main`.
+
 ## Status
 
 <!-- Regenerate from sources.yaml: id, kind, status, committable. -->
