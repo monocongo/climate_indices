@@ -2,7 +2,7 @@
 
 **Ticket:** REFIMPL-29, [#1631](https://github.com/monocongo/climate_indices/issues/1631). **Map:** [#1602](https://github.com/monocongo/climate_indices/issues/1602).
 **Pinned version:** `46481c48c79e878eb50ce3398ba062fd3a1ff38c` (`origin/main`, 2026-11-18).
-**Status:** complete. Everything down to "Deviations" was committed before any analysis; the deviations were committed before the runs they affect; "Results" was written afterwards. Reproduce with `uv run python scripts/characterize_palmer_recursion_divergence.py` (about 15 minutes) and `uv run python scripts/find_palmer_minimal_sequences.py` (about 2 minutes); the committed JSON files are their outputs.
+**Status:** complete. Everything down to "Deviations" was committed before any analysis; the deviations were committed before the runs they affect, except D3, which records a post-run correction found in review; "Results" was written afterwards. Reproduce with `uv run python scripts/characterize_palmer_recursion_divergence.py` (about 10 minutes) and `uv run python scripts/find_palmer_minimal_sequences.py` (about 4 minutes); the committed JSON files are their outputs. Re-running both scripts reproduced the committed files byte for byte.
 
 ## Question
 
@@ -81,7 +81,7 @@ A failed hypothesis is reported as failed. No threshold is changed after the fir
 1. This commit.
 2. `scripts/characterize_palmer_recursion_divergence.py` runs both recursions without modifying either module. It writes `palmer-recursion-divergence-results.json`, deterministically, with no random numbers.
 3. For each observed class, a greedy-deletion shrink of a real episode finds the shortest synthetic Z sequence that still first diverges in that class. Each is traced to a line in both modules.
-4. `tests/test_palmer_recursion_divergence.py` pins both outputs on each minimal sequence.
+4. `tests/test_palmer_recursion_divergence.py` pins both outputs on each reduced sequence.
 5. The textual analysis compares each class with Palmer (1965) and Wells, Goddard, and Hayes (2004).
 
 ## Out of scope
@@ -111,7 +111,7 @@ Each is neutralized by editing a copy of `_palmer_pdi.py` *in memory* so that it
 - **residual**: the full harmonization still leaves it. The tie and backtracking classes live here: they are the exact-zero tie-breaks and the deferred-month resolution, which this study does not harmonize. A residual episode is then examined by hand, and anything that cannot be named is **unclassified**.
 - **floating-point**: unchanged from the pre-registration (P-fp, P-fp2).
 
-H2 passes if there are no unclassified episodes; H3, H4 and H5 are unchanged. "Logic difference" now means an episode with a mechanism, interaction or residual attribution that survives P-fp and P-fp2. The synthetic minimal sequences are found per mechanism by greedy deletion on a real episode that the mechanism alone removes.
+H2 passes if there are no unclassified episodes; H3, H4 and H5 are unchanged. "Logic difference" now means an episode with a mechanism, interaction or residual attribution that survives P-fp and P-fp2. The synthetic sequences are found per mechanism by greedy deletion on a real episode that the mechanism alone removes; rounding follows the deletion fixed point, so they are reduced rather than proven minimal.
 
 ### D2. Two further mechanisms and a leave-one-out attribution rule (after the four-mechanism factorial)
 
@@ -120,7 +120,7 @@ The 16-subset factorial over {E, T, A, Tol} ran once, before this entry. It left
 | Mechanism | `pdi.f` (`_palmer_pdi.py`) | Wells (`_palmer_wells.py`) | Maps to class |
 | --- | --- | --- | --- |
 | **C** candidate carried at establishment | `_statement_200` recomputes `px2` only where X1 was not promoted (`active & ~branch1`), so `px2` restarts from zero after an X1 promotion | `_candidate_values` recomputes X2 every month, and `_establish_spell` zeroes only the promoted candidate | tie between candidates |
-| **F** end-of-record flush | `_finish_up` rewrites the slots `0..k8max-1` (the longest deferral window ever) from the tentative `x` array | no equivalent step | backtracking |
+| **F** end-of-record flush | `_finish_up` rewrites the slots `0..k8max-1` (the most recent deferral run's length) from the tentative `x` array | no equivalent step | backtracking |
 
 The 64-subset factorial over six mechanisms would take about 40 minutes, so the attribution rule is changed to *counterfactual necessity*:
 
@@ -130,6 +130,10 @@ The 64-subset factorial over six mechanisms would take about 40 minutes, so the 
 - If the full harmonization leaves the episode, the label is **residual**. The study is complete for configuration P only if no episode is residual.
 
 The four-mechanism factorial is kept in the report as an exploratory result, labelled as such. The pre-registered hypotheses H1 to H5 and their thresholds are unchanged. Configuration F (fitted factors) is characterized by its headline rates only: its attribution needs a further mechanism (Wells' `dryc` cross coefficient) and is not run here.
+
+### D3. The H3 statistic measured months, not episodes (recorded after the first run)
+
+The pre-registered H3 statistic divided the number of episodes that disappear under P-fp or P-fp2 by the number of disagreeing months, so the units did not match. The script now sums the removed episodes' lengths and divides by the disagreeing months. Both definitions give 0 on this fixture, so the H2 to H5 outcomes and every reported number are unchanged; only the process record changes. This entry was written after the first run, when the mismatch was found in review, and it is recorded here to keep the pre-registration trail complete.
 
 ### Other change before the first commit
 
@@ -145,7 +149,7 @@ Everything below is for configuration **P** (Palmer's national factors) unless s
 | --- | --- | --- |
 | H1 reproduces the provenance figures | **pass** | 33,373 of 528,384 months disagree (6.316%), maximum \|difference\| 8.135 PDSI units. The provenance figures were measured with the Wells C++; the Python port reproduces them |
 | H2 every episode in a named class | **pass** | 3,832 episodes, 0 residual after harmonizing E, T, A, C, F, Tol (D2) |
-| H3 floating point negligible | **pass** | 0 episodes disappear under P-fp or P-fp2. The two weighting-fraction forms differ by 1 ulp (`0.8970000000000001` against `0.897`) and move PDSI by up to 5e-15, but flip no branch on any division |
+| H3 floating point negligible | **pass** | 0 episodes disappear under P-fp or P-fp2. The two weighting-fraction forms differ by 1 ulp (`0.8970000000000001` against `0.897`) and move PDSI by up to 5e-15, but flip no branch on any division. Both figures were observed during the run; the results JSON does not carry them |
 | H4 `pdi.f` closer to nClimDiv | **pass** | closer on 29,249 of 33,373 disagreeing months (87.6%), no ties. The provenance file says 88% for the C++ |
 | H5 agreement inside established spells | **fail** | 9,990 of 248,033 months (4.03%) disagree even after three months of the same established spell with \|X3\| > 1.5 in both machines, against a threshold of 0.5%. Disagreement is not confined to spell boundaries. Which classes produce it was not attributed |
 
@@ -155,7 +159,7 @@ The largest disagreement (8.135 units, division 0501, October 1915) belongs to c
 
 An episode's label is the set of mechanisms that must all be harmonized for it to vanish (D2). No episode needed Tol: leaving only Tol out of the full harmonization leaves 0 disagreeing months, so the 1e-5 tolerances in the Wells recursion are not needed to remove any disagreement above 1e-9. Whether they change output values below that threshold was not tested. All classes below are logic differences; the floating-point class is empty.
 
-| Class | Episodes | Months | Largest \|difference\| (division, month) | Minimal sequence (active months) |
+| Class | Episodes | Months | Largest \|difference\| (division, month) | Reduced sequence (active months) |
 | --- | ---: | ---: | --- | ---: |
 | E | 3,415 | 30,212 | 3.516 (3009, 1899-12) | 5 |
 | E+T | 85 | 1,008 | 1.704 (0304, 1943-05) | 4 |
@@ -171,7 +175,7 @@ An episode's label is the set of mechanisms that must all be harmonized for it t
 | E+T+C | 3 | 99 | 0.673 (1901, 1971-12) | 19 |
 | overdetermined (E+A, E+F, A+F) | 6 | 20 | n/a | not sought |
 
-Months in any class containing a mechanism: E 96.6%, A 3.9%, T 3.4%, C 2.1%, F 0.6% (overdetermined episodes excluded). Class E accounts for 90.5% of all disagreeing months, and harmonizing E alone cuts the 33,373 disagreeing months to 3,012 (30,361 fewer, 91.0%); the other mechanisms matter mostly in combination with it. Each sequence is locally minimal under greedy deletion (no single month can be removed without losing the class), not proven shortest. Every sequence is pinned in `tests/test_palmer_recursion_divergence.py`, one test per class. Sequences for `E+A`, `E+A+C` and `E+T+C` hold unrounded values because rounding them loses the class: they sit on a branch boundary.
+Months in any class containing a mechanism: E 96.6%, A 3.9%, T 3.4%, C 2.1%, F 0.6% (overdetermined episodes excluded). Class E accounts for 90.5% of all disagreeing months, and harmonizing E alone cuts the 33,373 disagreeing months to 3,012 (30,361 fewer, 91.0%); the other mechanisms matter mostly in combination with it. Each sequence is reduced by greedy deletion and then rounded for readability, not proven shortest. Rounding runs after the deletion fixed point, so it can make a month redundant again: a single-month deletion still preserves the class in five of the twelve pinned sequences (`A+C`, `C`, `E+F`, `E+T+A`, `E+T+C`), so the reduced lengths are not proven minimal. Every sequence is pinned in `tests/test_palmer_recursion_divergence.py`, one test per measured sequence; the `overdetermined` class has no sequence. Sequences for `E+A`, `E+A+C` and `E+T+C` hold unrounded values because rounding them loses the class: they sit on a branch boundary.
 
 ### What each mechanism is, and what Palmer (1965) says
 
@@ -179,7 +183,7 @@ Line numbers are for `src/climate_indices/drought/` at the pinned commit. Palmer
 
 | Mechanism | `pdi.f` port | Wells port | Palmer (1965) | Determined by the text? |
 | --- | --- | --- | --- | --- |
-| **E** establishment threshold | promote at \|X\| >= 1 (`_palmer_pdi.py:375,386`) | at \|X\| >= 0.5 (`_palmer_wells.py:217,227`) | X3 is "reserved for indicating the severity of any wet spell or any drought which has become definitely established; i.e., X3 > 1.00 or X3 < -1.00" (PDF p. 38) | **Yes, for `pdi.f`.** The text supports 1.0. Whether Wells intends 0.5 could not be checked |
+| **E** establishment threshold | promote at \|X\| >= 1 (`_palmer_pdi.py:375,386`) | at \|X\| >= 0.5 (`_palmer_wells.py:217,227`) | X3 is "reserved for indicating the severity of any wet spell or any drought which has become definitely established; i.e., X3 > 1.00 or X3 < -1.00" (PDF p. 38) | **Partly.** The text supports a threshold magnitude of 1.0. The quoted `X3 > 1.00 or X3 < -1.00` is strict, while the port establishes at `>= 1`, so equality handling at exactly 1.00 is not determined by the quotation. Whether Wells intends 0.5 could not be checked |
 | **T** termination | a spell with \|X3\| <= 0.5 has ended (`_palmer_pdi.py:512`) | persists until the end probability reaches 100 (`:149-164`) | "as soon as the severity index reaches the 'near normal' category, which lies between -0.50 and +0.50, no drought exists" (p. 35) | **Yes, for `pdi.f`**, on that passage. The text does not say what to do when the probability and the \|X3\| <= 0.5 rule disagree |
 | **A** abatement trigger | fixed 0.15 (`_palmer_pdi.py:450,471,518`) | half the fitted slope, 0.1545 at national factors (`_palmer_wells.py:187`) | Setting X = 0.50 and ΔX = 0 in the index recurrence "one finds that Z = -0.15" and "Ue = Z + 0.15" (p. 35) | **No.** The printed 0.15 is the rounding of 0.309 × 0.5 = 0.1545. Both ports are consistent with the text; it does not say which to use. The 0.0045 gap produces the largest disagreement in the fixture |
 | **C** candidate carried | `px2` restarts from zero after an X1 promotion (`_palmer_pdi.py:384`) | X2 recomputed every month (`_palmer_wells.py:74-77`) | X1 and X2 "must be computed at every opportunity" while a spell runs; the worked example computes the opposite-sign index in the month a spell is established (p. 38) | **Open.** Weakly favours Wells: the text does not say what happens to X2 in the establishing month itself |
@@ -192,7 +196,7 @@ Palmer's Table 11 (p. 34) prints the class boundaries with gaps (for example "-.
 
 ### The end-of-record flush (class F)
 
-Class F covers 38 episodes alone, plus 9 more combined with E or A (47 in all): on these the `pdi.f` port overwrites months that backtracking had already resolved. `_finish_up` iterates over `k8max`, the longest deferral window anywhere in the record, but only the current window `k8` can still be open. The slots beyond `k8` hold months from an earlier window, and the loop rewrites them with their tentative value. The 48 episodes that remain when only F is left unharmonized all start between months 1515 and 1535 of the 1,536-month record (the last 21 months). Whether the Fortran does the same is not known, and whether it affects the nClimDiv comparison was not tested. This is logged in the ledger as a possible defect for the maintainer to decide; this study changes nothing.
+Class F covers 38 episodes alone, plus 9 more combined with E or A (47 in all): on these the `pdi.f` port overwrites months that backtracking had already resolved. `_finish_up` iterates over `k8max`, which `_statement_220` overwrites with the current `k8` whenever a deferral starts, so it holds the most recent deferral run's length rather than the longest run in the record. At the end of the record the current window `k8` has usually closed, so the loop rewrites slots that belong to an earlier, already-resolved window with their tentative values. In the pinned `C` sequence the run reached 8 deferred months but the final `k8max` is 1, so the flush processes one slot. The 48 episodes that remain when only F is left unharmonized all start between months 1515 and 1535 of the 1,536-month record (the last 21 months); that start-month range was observed during the run and is not in the results JSON. Whether the Fortran does the same is not known, and whether it affects the nClimDiv comparison was not tested. This is logged in the ledger as a possible defect for the maintainer to decide; this study changes nothing.
 
 ### Persistence and category
 
