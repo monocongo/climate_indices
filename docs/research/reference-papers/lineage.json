@@ -4316,7 +4316,7 @@
               "class": "derived",
               "from": "climate_indices",
               "to": "sibada_scpdsi",
-              "configuration": "also validated against it (oracle fixture)",
+              "configuration": null,
               "evidence": [
                 {
                   "source": "climate_indices",
@@ -4346,6 +4346,21 @@
                   "line": "4569",
                   "quote": "number llist::kthLargest(int k) {"
                 },
+                {
+                  "source": "climate_indices",
+                  "ref": "monocongo/climate_indices@a7235bf7",
+                  "file": "tests/fixture/palmer/provenance.json",
+                  "line": "15",
+                  "quote": "SCPDSI GENERATION ... produced by the Sibada/scPDSI reference C++ (Wells, Goddard & Hayes) ... HARNESS VALIDATION: running the same binary in standard-PDSI mode reproduces the committed zindex.npy for all 344 divisions"
+                }
+              ]
+            },
+            {
+              "class": "validated against",
+              "from": "climate_indices",
+              "to": "sibada_scpdsi",
+              "configuration": "scPDSI oracle fixture",
+              "evidence": [
                 {
                   "source": "climate_indices",
                   "ref": "monocongo/climate_indices@a7235bf7",

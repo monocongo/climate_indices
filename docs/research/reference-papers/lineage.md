@@ -284,7 +284,7 @@ The other 4 of 15 pairs are *independent*.
 | Pair | Class | Relation found |
 | --- | --- | --- |
 | climate_indices / Wells, Goddard and Hayes C++ | *derived* | *derived* (climate_indices → Wells, Goddard and Hayes C++; the design names the Wells C++ as distributed in Sibada/scPDSI) |
-| climate_indices / Sibada/scPDSI | *derived* | *derived* (climate_indices → Sibada/scPDSI; also validated against it (oracle fixture)) |
+| climate_indices / Sibada/scPDSI | *derived* | *derived* (climate_indices → Sibada/scPDSI)<br>*validated against* (climate_indices → Sibada/scPDSI; scPDSI oracle fixture) |
 | Wells, Goddard and Hayes C++ / Sibada/scPDSI | *derived* | *derived* (Sibada/scPDSI → Wells, Goddard and Hayes C++) |
 
 The other 3 of 6 pairs are *independent*.
