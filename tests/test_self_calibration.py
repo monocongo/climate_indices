@@ -1,6 +1,6 @@
 """Unit tests for the scPDSI self-calibration statistics module.
 
-Expected values are hand-derived from the Wells, Goddard & Wilhite (2004)
+Expected values are hand-derived from the Wells, Goddard & Hayes (2004)
 reference algorithm as implemented in the reference C++ (used for algorithm
 reference only). Each test's comment shows the derivation.
 """
