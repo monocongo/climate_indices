@@ -47,38 +47,51 @@ Pairs are every combination of the implementations listed for an index. PET is s
 | PET, Hargreaves | `climate_indices`, `xclim` (`HG85`), `pyet`, `PyETo`, R `Evapotranspiration`, R `SPEI` |
 | PET, FAO-56 Penman-Monteith | `climate_indices`, `xclim` (`FAO_PM98`), `pyet`, `PyETo`, R `Evapotranspiration`, R `SPEI` |
 | EDDI and non-parametric | `climate_indices`, NOAA PSL EDDI, Climate Engine API, Earth Engine `GRIDMET/DROUGHT` |
-| PDSI, PHDI, PMDI, Z-Index | `climate_indices` (`pdsi`), NCEI `pdi.f`, nClimDiv, `JonKing93/pdsi` |
+| PDSI, PHDI, PMDI, Z-Index | `climate_indices` (`pdsi`), NCEI `pdi.f`, nClimDiv, `JonKing93/pdsi`, Wells, Goddard and Hayes C++, `Sibada/scPDSI` |
 | scPDSI | `climate_indices` (`scpdsi`), Wells, Goddard and Hayes C++, `Sibada/scPDSI`, `ktripa/scpdsi-tools` |
 
 `precip-index` is excluded from the studies (REFIMPL-03) and is recorded only as lineage evidence for the question of which packages derive from `climate_indices`.
 
-**Amendment after the method commit.** R `SPEI` was added to the three PET rows because REFIMPL-21 ([#1623](https://github.com/monocongo/climate_indices/issues/1623)) lists its `thornthwaite`, `hargreaves`, and `penman` functions. The classes and the evidence standard are unchanged.
+### Amendments after the method commit
 
-**How the method was applied.** NCEI climdiv SPI, nClimDiv, and SPEIbase are products, but their publishers name the code behind them: NCEI publishes `spi.f` and `pdi.f` as the "general use version" of its operational code, and spei.csic.es says SPEIbase v2.11 was computed with R `SPEI` 1.8.1. That code was read in place of the products. The Climate Engine API, Earth Engine `GRIDMET/DROUGHT`, and NOAA PSL EDDI name a method but no code, so their pairs stay *unknown* unless this repository compared against them.
+Each change below was made after comparator sources had been read, and is listed here so that it can be judged as such.
+
+1. **R `SPEI` added to the three PET rows.** REFIMPL-21 ([#1623](https://github.com/monocongo/climate_indices/issues/1623)) lists its `thornthwaite`, `hargreaves`, and `penman` functions.
+2. **The Wells C++ and `Sibada/scPDSI` added to the standard Palmer row.** Both compute standard PDSI as well as scPDSI. Without them, the row cannot hold the shared NCDC ancestry in finding 2, which REFIMPL-31 ([#1633](https://github.com/monocongo/climate_indices/issues/1633)) needs for its comparison across lineages.
+3. **"A common port" is read as "ports of one code base".** Two implementations that each translate the same upstream code, such as Hosking's L-moment Fortran, share a numerical routine even if neither calls the other's translation. Every such relation says whether the pair uses the *same dependency* or *separate ports of the same Fortran*, so a reader can apply the narrower reading instead.
+4. **Notes.** A statement about another implementation that fits no class, such as "loosely based on", is recorded as a note on the pair and does not change its class.
+
+### How the method was applied
+
+- **Products.** spei.csic.es names the code behind SPEIbase v2.11 (R `SPEI` 1.8.1), so that package was read in its place. NCEI publishes `spi.f` and `pdi.f` but says they are "not an exact copy" of what it runs, so NCEI climdiv SPI and nClimDiv stay unread. Their pairs are *unknown* unless this repository compared against them, and what the public Fortran shows is recorded in notes.
+- **Configurations.** A pair takes the strongest class found in any configuration, and each relation names its configuration. The study tickets use the configurations in which the L-moment relations hold. REFIMPL-17 ([#1619](https://github.com/monocongo/climate_indices/issues/1619)) runs the library's Pearson III path, and REFIMPL-19 ([#1621](https://github.com/monocongo/climate_indices/issues/1621)) runs log-logistic, Pearson III, and GEV fits and R `SPEI`'s three fitting methods. A gamma-only SPI comparison is different: there the library's Thom fit shares no code with any L-moment package. Filter on the `configuration` field before treating a gamma agreement as shared code.
+- **Python and Rust.** The library's Rust kernels are ports of its own Python code, checked by one parity harness ("One parity registry and harness shared by every ported Rust kernel", `tests/parity_registry.py`:1). Here the two paths are one implementation. Their numerical agreement belongs to REFIMPL-34 ([#1636](https://github.com/monocongo/climate_indices/issues/1636)).
+- **Vocabulary.** These classes describe code ancestry. They are not the evidence statuses in `VALIDATION.md`, and none of them changes a status.
 
 ## Result
 
-The eight indices give 168 pairs: 12 *derived*, 20 *validated against*, 30 *shared numerical routine*, 69 *independent*, and 37 *unknown*. Every *unknown* pair involves one of the three providers whose code is not public.
+There are 177 pairs over eight indices. Every *unknown* pair involves a provider or product whose code is not public: the Climate Engine API, Earth Engine `GRIDMET/DROUGHT`, NOAA PSL EDDI, NCEI climdiv SPI, or nClimDiv.
 
 | Index | Pairs | derived | validated against | shared numerical routine | independent | unknown |
 | --- | --- | --- | --- | --- | --- | --- |
-| SPI | 78 | 2 | 9 | 19 | 27 | 21 |
-| SPEI | 36 | 2 | 6 | 11 | 4 | 13 |
-| PET, Thornthwaite | 6 | 1 | 0 | 0 | 5 | 0 |
-| PET, Hargreaves | 15 | 1 | 1 | 0 | 13 | 0 |
-| PET, FAO-56 Penman-Monteith | 15 | 0 | 1 | 0 | 14 | 0 |
+| SPI | 78 | 0 | 9 | 16 | 23 | 30 |
+| SPEI | 36 | 0 | 6 | 13 | 4 | 13 |
+| PET Thornthwaite | 6 | 1 | 0 | 0 | 5 | 0 |
+| PET Hargreaves | 15 | 1 | 1 | 0 | 13 | 0 |
+| PET FAO-56 Penman-Monteith | 15 | 0 | 1 | 0 | 14 | 0 |
 | EDDI and non-parametric | 6 | 0 | 3 | 0 | 0 | 3 |
-| PDSI, PHDI, PMDI, Z-Index | 6 | 3 | 0 | 0 | 3 | 0 |
+| PDSI, PHDI, PMDI, Z-Index | 15 | 1 | 2 | 4 | 4 | 4 |
 | scPDSI | 6 | 3 | 0 | 0 | 3 | 0 |
+| **All** | **177** | **6** | **22** | **33** | **66** | **50** |
 
 ### Findings
 
-1. **One L-moment code base sits under most parameter fits.** J. R. M. Hosking's Fortran L-moment routines (IBM Research Report RC20525) reach the comparison by four routes: R `lmom`, Hosking's own package, which R `SPEI` calls for its default PWM fits and R `SEI` for `method = "lmoment"`; Python `lmoments3`, a translation of `lmoments.f`, which `standard_precip` uses for `fit_type = "lmom"` and `xclim` for `method = "PWM"`; `climate_indices.lmoments`, a translation of `SAMLMR`, the Pearson III routine, and `PELGLO`; and the upper-case routines inside NCEI's `spi.f` and NCL's Pearson III path. In an L-moment configuration, agreement between any two of these is agreement of one estimator's code. The six-decimal match between R `SPEI` `ub-pwm` and `standard_precip` `lmom` recorded in `comparators.md` is consistent with this, and `standard_precip` also says it is "loosely based on" R `SPEI`.
-2. **The two Palmer recursions share an NCDC ancestor.** The Wells, Goddard and Hayes C++ says it is "based mostly on the source code of pdsi.f", a Fortran program from NCDC (`scPDSI/src/scpdsi.cpp`:39-41), and `pdi.f` says it is "a modified version of the program in use at the National Climatic Data Center" (`pdi.f`:13-16). The `pdi.f` and Wells lineages that REFIMPL-29 compared are therefore branches of one NCDC Fortran program, not independent implementations. Their 6.3% disagreement measures the Wells modifications. Neither source says whether Wells's `pdsi.f` and the "old version" in `pdi.f` are the same file (question 4). Within each Palmer row, `climate_indices` is *derived* from its reference: `pdsi` from the `pdi.f` lineage, and `scpdsi` from the Wells C++ through `Sibada/scPDSI`. `JonKing93/pdsi` ("based on a script written by Dave Meko", `README.md`:75) and `ktripa/scpdsi-tools` ("Self-calibration follows Wells et al. (2004); the Palmer water balance and recursion follow Palmer (1965)", `scpdsi_tools.py`:14-15) state no code ancestry. They are the only *independent* Palmer comparators.
-3. **NCEI climdiv SPI is not independent of the library or of NCL.** The library's Pearson III path and NCEI's `spi.f` both use Hosking's routines, and a 2018 commit says the library's earlier Pearson code "was originally translated from NCDC global SPI". NCL's Pearson III path (`opt@spi_type = 3`) embeds the NCDC `SPIPE3` code, under Ned Guttman's header, so NCL and the NCEI product are *derived*. This narrows the "plausible but not airtight" independence recorded in `tests/fixture/ncei_spi/provenance.json`: the operational SPI and the library share a parameter-estimation routine.
-4. **Thom's approximation is shared as a formula, not as code.** `climate_indices`, `xclim` (`APP`), `climatekit`, the NDMC SPI Generator, and NCL's gamma path all compute Thom's (1958) closed form. None cites another's code, so under the method this is not lineage. The NDMC and NCL gamma paths do share code, but not with the library: their comment blocks are identical, including the misspelling "Abromowitz" and "Thanks to kenny@cs.uiuc.edu", so their inverse-normal and incomplete-gamma routines come from one source that neither names (question 6). `climatekit` says its Thom fit is "consistent with the SPEI R package" (`R/drought.R`:444-446). R `SPEI` fits gamma with `lmom::pelgam` on PWM L-moments (`R/spei.R`:665-690), not with Thom's approximation, so that statement is a documentation claim, not lineage.
-5. **`xclim` was tuned to `climate_indices`.** Its tests take gamma `APP` reference values from the library, its SPI docstring says the library's results can be reproduced, and its changelog records that the SPEI offset was changed "to better reproduce results in the reference library". Its log-logistic SPEI reference values come from R `SPEI`. Agreement between `xclim` and either package is *validated against*, not independent.
-6. **PET.** The library's `eto` module (Thornthwaite and Hargreaves) is *derived* from `PyETo`. The module credits PyETo, the initial 2017 commit carried the same credit, and the Hargreaves docstring sentence matches PyETo's word for word. `pm_eto` (added 2026) carries no such credit. `pyet` tests its Hargreaves and FAO-56 values against R `Evapotranspiration`. No other PET pair has a stated relation. `xclim`'s PET tests use values with no stated source.
+1. **One L-moment code base sits under most parameter fits.** J. R. M. Hosking's Fortran L-moment routines (IBM Research Report RC20525) reach the comparison by four routes. R `lmom`, Hosking's own package, is called by R `SPEI` for its default PWM fits and by R `SEI` for `method = "lmoment"`. Python `lmoments3`, a translation of `lmoments.f`, is used by `standard_precip` (`fit_type = "lmom"`) and by `xclim` (`method = "PWM"`). `climate_indices.lmoments` is the library's own translation of `SAMLMR`, the Pearson III routine, and `PELGLO`. NCL's Pearson III path embeds the routines in Fortran. Pairs that share a dependency, such as R `SPEI` and R `SEI`, run the same code. Other pairs run separate ports of the same Fortran, and their agreement is expected rather than independent. The six-decimal match between R `SPEI` `ub-pwm` and `standard_precip` `lmom` in `comparators.md` is consistent with this.
+2. **The Palmer recursions share an NCDC ancestor.** The library's standard `pdsi` was translated from NCDC's `pdinew.f` ("new translation of pdinew.f", commit `0b15ec8c`). `pdi.f` is "a modified version of the program in use at the National Climatic Data Center" (`pdi.f`:13-16). The Wells, Goddard and Hayes C++ is "based mostly on the source code of pdsi.f", a Fortran program from NCDC (`scPDSI/src/scpdsi.cpp`:39-41). The `pdi.f` and Wells lineages that REFIMPL-29 compared are therefore branches of NCDC's Fortran, not independent implementations. Their 6.3% disagreement measures how far the two branches diverged. The sources do not say whether `pdinew.f`, `pdi.f`, and Wells's `pdsi.f` are the same program (question 4). The library's `scpdsi` is *derived*: its design says it was "traced directly from the Wells, Goddard & Hayes reference C++ implementation (`Sibada/scPDSI` ...)". Whether that tracing was a clean-room reimplementation is a licensing question for REFIMPL-27 ([#1629](https://github.com/monocongo/climate_indices/issues/1629)). `JonKing93/pdsi` ("based on a script written by Dave Meko", `README.md`:75) and `ktripa/scpdsi-tools` (follows Palmer 1965 and Wells et al. 2004, `scpdsi_tools.py`:14-15) state no code ancestry. They are the only *independent* Palmer comparators.
+3. **NCEI climdiv SPI: its operational code is not public, but its public Fortran is not independent.** The library is *validated against* the product. NCEI's public `spi.f` (Ned Guttman, 1998) carries Hosking's routines in upper case, as the library's `lmoments.py` translates them, and NCL's Pearson III path embeds the same NCDC code under the same header. A 2018 commit also says the library's earlier Pearson code was "originally translated from NCDC global SPI". Whether that program is `spi.f` is not stated (question 7), and whether the operational product runs `spi.f` is question 4. Until those are answered, every pair with the product is *unknown* or *validated against*. The "plausible but not airtight" independence recorded in `tests/fixture/ncei_spi/provenance.json` still stands, with this shared ancestry as a reason to doubt it.
+4. **Thom's approximation is shared as a formula, and once as code.** `climate_indices`, `xclim` (`APP`), `climatekit`, the NDMC SPI Generator, and NCL's gamma path all compute Thom's (1958) closed form. None cites another's code, so for most pairs this is not lineage. The NDMC and NCL gamma fit routines are the exception: their comments match line for line, including the misspelling "gamma paarameters" and "Bogus data array but do something reasonable". So their parameter estimator comes from one source, which neither names (question 6). `climatekit` calls its Thom fit "consistent with the SPEI R package" (`R/drought.R`:444-446). R `SPEI` fits gamma with `lmom::pelgam`, so that statement is recorded as a note, not lineage.
+5. **`xclim` was tuned to `climate_indices`.** Its tests take gamma `APP` reference values from the library. Its SPI docstring says the library's results can be reproduced. Its changelog records that the SPEI offset was changed "to better reproduce results in the reference library". Its log-logistic SPEI reference values come from R `SPEI`.
+6. **PET.** The library's `eto` module (Thornthwaite and Hargreaves) is *derived* from `PyETo`. The module credits PyETo (`eto.py`:5-6), the initial 2017 commit carried the same credit, and the PET literature fixture names PyETo as the project `eto` "derives its implementation from". `pm_eto` (added 2026) carries no such credit. `pyet` tests its Hargreaves and FAO-56 values against R `Evapotranspiration`. No other PET pair has a stated relation.
 7. **This repository's own comparisons.** The library's tests or research documents compare its output with R `SPEI`, SPEIbase, R `SEI`, R `SCI`, NCEI climdiv SPI, NOAA PSL EDDI, nClimDiv, `Sibada/scPDSI`, and both providers. A comparison does not mean the library was changed to match. It does mean that agreement on those pairs is not independent confirmation.
 
 ### Leads checked
@@ -86,114 +99,122 @@ The eight indices give 168 pairs: 12 *derived*, 20 *validated against*, 30 *shar
 | Lead (ticket or research notes) | Verdict |
 | --- | --- |
 | `xclim` reproduces `climate_indices` with `APP` and `floc = 0`, and changed its SPEI offset to match | Confirmed: *validated against* |
-| `climate_indices.lmoments.fit_glo` ports the `lmom` `PELGLO` routine that R `SPEI` uses | Confirmed: *shared numerical routine*, and the library is *validated against* R `SPEI` |
-| `climate_indices.eto` derives from `PyETo` | Confirmed for Thornthwaite and Hargreaves; not for `pm_eto` |
-| Standard Palmer follows `pdi.f`, scPDSI follows Wells, `Sibada/scPDSI` wraps the Wells C++ | Confirmed, but the Wells C++ itself derives from NCDC Fortran (finding 2) |
-| NCEI climdiv SPI's independence is "plausible but not airtight" | Narrowed: it shares Hosking's routines with the library, and the library's pre-2018 Pearson code was translated from NCDC (finding 3) |
+| `climate_indices.lmoments.fit_glo` ports the `lmom` `PELGLO` routine that R `SPEI` uses | Confirmed. The pair is a *shared numerical routine* (separate ports), and the library is *validated against* R `SPEI` |
+| `climate_indices.eto` derives from `PyETo` | Confirmed for Thornthwaite and Hargreaves. Not stated for `pm_eto` |
+| Standard Palmer follows `pdi.f`, scPDSI follows Wells, `Sibada/scPDSI` wraps the Wells C++ | Confirmed, with two qualifications. The library translated NCDC's `pdinew.f`, and the Wells C++ also descends from NCDC Fortran (finding 2) |
+| NCEI climdiv SPI's independence is "plausible but not airtight" | Still open. The public `spi.f` shares Hosking's routines with the library, but the operational code is unread (finding 3) |
 | `precip-index` is built on `climate_indices` | Confirmed: its `README.md`, line 42 at `1c2ef1c3`, says "Built upon the foundation of climate-indices" |
-| Other included packages derive from `climate_indices` | None found. `xclim` and `spei` compare against it, but no included package states that it derives from it |
-| The NDMC program uses the library's Thom approximation (a lineage question in `comparators.md`) | A shared formula, not shared code. The NDMC program shares code with NCL instead (finding 4) |
-| R `SPEI` `ub-pwm` and `standard_precip` `lmom` coincide to six decimals | Consistent with shared Hosking-derived routines (finding 1) |
+| Other included packages derive from `climate_indices` | None found. `xclim` and `spei` compare against it, but none states that it derives from it |
+| The NDMC program uses the library's Thom approximation (a lineage question in `comparators.md`) | A shared formula, not shared code. The NDMC program shares its gamma fit code with NCL instead (finding 4) |
+| R `SPEI` `ub-pwm` and `standard_precip` `lmom` coincide to six decimals | Consistent with separate ports of Hosking's routines (finding 1) |
 | Provenance of the repository's Thornthwaite PET fixture (`pet_thornthwaite.npy`) | Not resolved. The earliest trace is `5e87424c` (2018-12-11), which moved arrays out of a `tests/fixtures.py` whose content was stripped from history (question 7) |
+
+`climatekit` is not in the SPEI row: its `ck_spei` was not examined for REFIMPL-03, and no study ticket lists it. Its `NEWS.md` (lines 12-13 at 0.2.3) says its log-logistic fit now uses the generalised logistic form "as the SPEI package does". That should be classified if `climatekit` SPEI joins a study.
 
 ## Pairs by index
 
-Each table lists the pairs that are not *independent*. An arrow points from the implementation that derives from, or validates against, the other. Citations for every relation are in [Evidence](#evidence) and in `lineage.json`.
+Each table lists the pairs that are not *independent*, plus *independent* pairs that carry a note. An arrow points from the implementation that derives from, or validates against, the other. Citations for every relation are in [Evidence](#evidence) and in `lineage.json`.
 
 ### SPI
 
 | Pair | Class | Relation found |
 | --- | --- | --- |
-| climate_indices / xclim | *validated against* | *validated against* (xclim → climate_indices: test reference values for gamma APP); *shared numerical routine* (Hosking L-moment routines: climate_indices Pearson III, log-logistic and GEV fits; xclim method = "PWM" with an lmoments3 distribution) |
-| climate_indices / spei (Vonk) | *validated against* | *validated against* (spei (Vonk) → climate_indices: documentation only; the comparison code is commented out at v0.8.3) |
-| climate_indices / standard_precip | *shared numerical routine* | *shared numerical routine* (Hosking L-moment routines: climate_indices Pearson III, log-logistic and GEV fits; standard_precip fit_type = "lmom") |
-| climate_indices / R SPEI | *shared numerical routine* | *shared numerical routine* (Hosking L-moment routines: climate_indices Pearson III, log-logistic and GEV fits; R SPEI pp-pwm and ub-pwm fits (default)) |
-| climate_indices / R SCI | *validated against* | *validated against* (climate_indices → R SCI: zero placement) |
-| climate_indices / R SEI | *validated against* | *validated against* (climate_indices → R SEI: zero placement); *shared numerical routine* (Hosking L-moment routines: climate_indices Pearson III, log-logistic and GEV fits; R SEI method = "lmoment") |
-| climate_indices / NCL dim_spi_n | *shared numerical routine* | *shared numerical routine* (Hosking L-moment routines: climate_indices Pearson III, log-logistic and GEV fits; NCL dim_spi_n Pearson III path (opt@spi_type = 3)) |
-| climate_indices / Climate Engine API | *validated against* | *validated against* (climate_indices → Climate Engine API: characterization pilot) |
-| climate_indices / Earth Engine GRIDMET/DROUGHT | *validated against* | *validated against* (climate_indices → Earth Engine GRIDMET/DROUGHT: characterization pilot) |
-| climate_indices / NCEI climdiv SPI | *validated against* | *validated against* (climate_indices → NCEI climdiv SPI: Pearson III); *shared numerical routine* (Hosking L-moment routines: climate_indices Pearson III, log-logistic and GEV fits; NCEI climdiv SPI Pearson III (public spi.f)) |
-| xclim / spei (Vonk) | *shared numerical routine* | *shared numerical routine* (maximum likelihood: scipy.stats rv_continuous.fit) |
-| xclim / standard_precip | *shared numerical routine* | *shared numerical routine* (maximum likelihood: scipy.stats); *shared numerical routine* (Hosking L-moment routines: xclim method = "PWM" with an lmoments3 distribution; standard_precip fit_type = "lmom") |
-| xclim / R SPEI | *shared numerical routine* | *shared numerical routine* (Hosking L-moment routines: xclim method = "PWM" with an lmoments3 distribution; R SPEI pp-pwm and ub-pwm fits (default)) |
-| xclim / R SEI | *shared numerical routine* | *shared numerical routine* (Hosking L-moment routines: xclim method = "PWM" with an lmoments3 distribution; R SEI method = "lmoment") |
-| xclim / NCL dim_spi_n | *shared numerical routine* | *shared numerical routine* (Hosking L-moment routines: xclim method = "PWM" with an lmoments3 distribution; NCL dim_spi_n Pearson III path (opt@spi_type = 3)) |
-| xclim / Climate Engine API | *unknown* | code not public |
-| xclim / Earth Engine GRIDMET/DROUGHT | *unknown* | code not public |
-| xclim / NCEI climdiv SPI | *shared numerical routine* | *shared numerical routine* (Hosking L-moment routines: xclim method = "PWM" with an lmoments3 distribution; NCEI climdiv SPI Pearson III (public spi.f)) |
-| spei (Vonk) / standard_precip | *validated against* | *validated against* (spei (Vonk) → standard_precip: documentation notebook); *shared numerical routine* (maximum likelihood: scipy.stats) |
-| spei (Vonk) / R SPEI | *validated against* | *validated against* (spei (Vonk) → R SPEI: documentation notebook) |
-| spei (Vonk) / Climate Engine API | *unknown* | code not public |
-| spei (Vonk) / Earth Engine GRIDMET/DROUGHT | *unknown* | code not public |
-| standard_precip / R SPEI | *derived* | *derived* (standard_precip → R SPEI: stated as "loosely based on"); *shared numerical routine* (Hosking L-moment routines: standard_precip fit_type = "lmom"; R SPEI pp-pwm and ub-pwm fits (default)) |
-| standard_precip / R SEI | *shared numerical routine* | *shared numerical routine* (Hosking L-moment routines: standard_precip fit_type = "lmom"; R SEI method = "lmoment") |
-| standard_precip / NCL dim_spi_n | *shared numerical routine* | *shared numerical routine* (Hosking L-moment routines: standard_precip fit_type = "lmom"; NCL dim_spi_n Pearson III path (opt@spi_type = 3)) |
-| standard_precip / Climate Engine API | *unknown* | code not public |
-| standard_precip / Earth Engine GRIDMET/DROUGHT | *unknown* | code not public |
-| standard_precip / NCEI climdiv SPI | *shared numerical routine* | *shared numerical routine* (Hosking L-moment routines: standard_precip fit_type = "lmom"; NCEI climdiv SPI Pearson III (public spi.f)) |
-| R SPEI / R SEI | *shared numerical routine* | *shared numerical routine* (Hosking L-moment routines: R SPEI pp-pwm and ub-pwm fits (default); R SEI method = "lmoment") |
-| R SPEI / NCL dim_spi_n | *shared numerical routine* | *shared numerical routine* (Hosking L-moment routines: R SPEI pp-pwm and ub-pwm fits (default); NCL dim_spi_n Pearson III path (opt@spi_type = 3)) |
-| R SPEI / Climate Engine API | *unknown* | code not public |
-| R SPEI / Earth Engine GRIDMET/DROUGHT | *unknown* | code not public |
-| R SPEI / NCEI climdiv SPI | *shared numerical routine* | *shared numerical routine* (Hosking L-moment routines: R SPEI pp-pwm and ub-pwm fits (default); NCEI climdiv SPI Pearson III (public spi.f)) |
-| R SCI / R SEI | *shared numerical routine* | *shared numerical routine* (maximum likelihood: fitdistrplus) |
-| R SCI / Climate Engine API | *unknown* | code not public |
-| R SCI / Earth Engine GRIDMET/DROUGHT | *unknown* | code not public |
-| R SEI / NCL dim_spi_n | *shared numerical routine* | *shared numerical routine* (Hosking L-moment routines: R SEI method = "lmoment"; NCL dim_spi_n Pearson III path (opt@spi_type = 3)) |
-| R SEI / Climate Engine API | *unknown* | code not public |
-| R SEI / Earth Engine GRIDMET/DROUGHT | *unknown* | code not public |
-| R SEI / NCEI climdiv SPI | *shared numerical routine* | *shared numerical routine* (Hosking L-moment routines: R SEI method = "lmoment"; NCEI climdiv SPI Pearson III (public spi.f)) |
-| R climatekit / Climate Engine API | *unknown* | code not public |
-| R climatekit / Earth Engine GRIDMET/DROUGHT | *unknown* | code not public |
-| NDMC SPI Generator / NCL dim_spi_n | *shared numerical routine* | *shared numerical routine* (gamma path: identical comments, including the misspelling "Abromowitz", show a common source for the inverse normal and incomplete gamma code) |
-| NDMC SPI Generator / Climate Engine API | *unknown* | code not public |
-| NDMC SPI Generator / Earth Engine GRIDMET/DROUGHT | *unknown* | code not public |
-| NCL dim_spi_n / Climate Engine API | *unknown* | code not public |
-| NCL dim_spi_n / Earth Engine GRIDMET/DROUGHT | *unknown* | code not public |
-| NCL dim_spi_n / NCEI climdiv SPI | *derived* | *derived* (NCL dim_spi_n → NCEI climdiv SPI: Pearson III path (opt@spi_type = 3); via NCEI's public spi.f, which NCEI says is not an exact copy of its operational code); *shared numerical routine* (Hosking L-moment routines: NCL dim_spi_n Pearson III path (opt@spi_type = 3); NCEI climdiv SPI Pearson III (public spi.f)) |
-| Climate Engine API / Earth Engine GRIDMET/DROUGHT | *unknown* | code not public |
-| Climate Engine API / NCEI climdiv SPI | *unknown* | code not public |
-| Earth Engine GRIDMET/DROUGHT / NCEI climdiv SPI | *unknown* | code not public |
+| climate_indices / xclim | *validated against* | *validated against* (xclim → climate_indices; test reference values for gamma APP)<br>*shared numerical routine* (Hosking L-moment routines (IBM RC20525); separate ports of the same Fortran: climate_indices Pearson III, log-logistic and GEV fits, all from its SAMLMR translation (own translation (lmoments.py)); xclim method = "PWM" with an lmoments3 distribution (lmoments3 dependency)) |
+| climate_indices / spei (Vonk) | *validated against* | *validated against* (spei (Vonk) → climate_indices; documentation only; the comparison code is commented out at v0.8.3) |
+| climate_indices / standard_precip | *shared numerical routine* | *shared numerical routine* (Hosking L-moment routines (IBM RC20525); separate ports of the same Fortran: climate_indices Pearson III, log-logistic and GEV fits, all from its SAMLMR translation (own translation (lmoments.py)); standard_precip fit_type = "lmom" (lmoments3 dependency)) |
+| climate_indices / R SPEI | *shared numerical routine* | *shared numerical routine* (Hosking L-moment routines (IBM RC20525); separate ports of the same Fortran: climate_indices Pearson III, log-logistic and GEV fits, all from its SAMLMR translation (own translation (lmoments.py)); R SPEI pp-pwm and ub-pwm fits (default) (lmom dependency)) |
+| climate_indices / R SCI | *validated against* | *validated against* (climate_indices → R SCI; zero placement) |
+| climate_indices / R SEI | *validated against* | *validated against* (climate_indices → R SEI; zero placement)<br>*shared numerical routine* (Hosking L-moment routines (IBM RC20525); separate ports of the same Fortran: climate_indices Pearson III, log-logistic and GEV fits, all from its SAMLMR translation (own translation (lmoments.py)); R SEI method = "lmoment" (lmom dependency)) |
+| climate_indices / NCL dim_spi_n | *shared numerical routine* | *shared numerical routine* (Hosking L-moment routines (IBM RC20525); separate ports of the same Fortran: climate_indices Pearson III, log-logistic and GEV fits, all from its SAMLMR translation (own translation (lmoments.py)); NCL dim_spi_n Pearson III path (opt@spi_type = 3) (embedded Fortran (NCDC spi code))) |
+| climate_indices / Climate Engine API | *validated against* | *validated against* (climate_indices → Climate Engine API; characterization pilot) |
+| climate_indices / Earth Engine GRIDMET/DROUGHT | *validated against* | *validated against* (climate_indices → Earth Engine GRIDMET/DROUGHT; characterization pilot) |
+| climate_indices / NCEI climdiv SPI | *validated against* | *validated against* (climate_indices → NCEI climdiv SPI; Pearson III)<br>note: The library's pre-2018 Pearson III code was "originally translated from NCDC global SPI"; NCEI's public spi.f carries Hosking's routines, as the library's lmoments.py does. |
+| xclim / spei (Vonk) | *shared numerical routine* | *shared numerical routine* (scipy.stats rv_continuous.fit; maximum likelihood) |
+| xclim / standard_precip | *shared numerical routine* | *shared numerical routine* (scipy.stats rv_continuous.fit; maximum likelihood)<br>*shared numerical routine* (Hosking L-moment routines (IBM RC20525); same dependency: xclim method = "PWM" with an lmoments3 distribution (lmoments3 dependency); standard_precip fit_type = "lmom" (lmoments3 dependency)) |
+| xclim / R SPEI | *shared numerical routine* | *shared numerical routine* (Hosking L-moment routines (IBM RC20525); separate ports of the same Fortran: xclim method = "PWM" with an lmoments3 distribution (lmoments3 dependency); R SPEI pp-pwm and ub-pwm fits (default) (lmom dependency)) |
+| xclim / R SEI | *shared numerical routine* | *shared numerical routine* (Hosking L-moment routines (IBM RC20525); separate ports of the same Fortran: xclim method = "PWM" with an lmoments3 distribution (lmoments3 dependency); R SEI method = "lmoment" (lmom dependency)) |
+| xclim / NCL dim_spi_n | *shared numerical routine* | *shared numerical routine* (Hosking L-moment routines (IBM RC20525); separate ports of the same Fortran: xclim method = "PWM" with an lmoments3 distribution (lmoments3 dependency); NCL dim_spi_n Pearson III path (opt@spi_type = 3) (embedded Fortran (NCDC spi code))) |
+| xclim / Climate Engine API | *unknown* | code not public; question 1 |
+| xclim / Earth Engine GRIDMET/DROUGHT | *unknown* | code not public; question 2 |
+| xclim / NCEI climdiv SPI | *unknown* | code not public; question 4 |
+| spei (Vonk) / standard_precip | *validated against* | *validated against* (spei (Vonk) → standard_precip; documentation notebook)<br>*shared numerical routine* (scipy.stats rv_continuous.fit; maximum likelihood) |
+| spei (Vonk) / R SPEI | *validated against* | *validated against* (spei (Vonk) → R SPEI; documentation notebook; the comparison is textual) |
+| spei (Vonk) / Climate Engine API | *unknown* | code not public; question 1 |
+| spei (Vonk) / Earth Engine GRIDMET/DROUGHT | *unknown* | code not public; question 2 |
+| spei (Vonk) / NCEI climdiv SPI | *unknown* | code not public; question 4 |
+| standard_precip / R SPEI | *shared numerical routine* | *shared numerical routine* (Hosking L-moment routines (IBM RC20525); separate ports of the same Fortran: standard_precip fit_type = "lmom" (lmoments3 dependency); R SPEI pp-pwm and ub-pwm fits (default) (lmom dependency))<br>note: standard_precip says its functions are "loosely based on" R SPEI; that names a design source, not a code port. |
+| standard_precip / R SEI | *shared numerical routine* | *shared numerical routine* (Hosking L-moment routines (IBM RC20525); separate ports of the same Fortran: standard_precip fit_type = "lmom" (lmoments3 dependency); R SEI method = "lmoment" (lmom dependency)) |
+| standard_precip / NCL dim_spi_n | *shared numerical routine* | *shared numerical routine* (Hosking L-moment routines (IBM RC20525); separate ports of the same Fortran: standard_precip fit_type = "lmom" (lmoments3 dependency); NCL dim_spi_n Pearson III path (opt@spi_type = 3) (embedded Fortran (NCDC spi code))) |
+| standard_precip / Climate Engine API | *unknown* | code not public; question 1 |
+| standard_precip / Earth Engine GRIDMET/DROUGHT | *unknown* | code not public; question 2 |
+| standard_precip / NCEI climdiv SPI | *unknown* | code not public; question 4 |
+| R SPEI / R SCI | *independent* | note: Both depend on lmomco: R SPEI for PWM-to-L-moment conversion and fallback fits, R SCI only for maximum-likelihood starting values, which do not set the value. |
+| R SPEI / R SEI | *shared numerical routine* | *shared numerical routine* (Hosking L-moment routines (IBM RC20525); same dependency: R SPEI pp-pwm and ub-pwm fits (default) (lmom dependency); R SEI method = "lmoment" (lmom dependency)) |
+| R SPEI / R climatekit | *independent* | note: climatekit calls its Thom fit "consistent with the SPEI R package" without comparing output; R SPEI fits gamma with lmom::pelgam, not Thom's approximation. |
+| R SPEI / NCL dim_spi_n | *shared numerical routine* | *shared numerical routine* (Hosking L-moment routines (IBM RC20525); separate ports of the same Fortran: R SPEI pp-pwm and ub-pwm fits (default) (lmom dependency); NCL dim_spi_n Pearson III path (opt@spi_type = 3) (embedded Fortran (NCDC spi code))) |
+| R SPEI / Climate Engine API | *unknown* | code not public; question 1 |
+| R SPEI / Earth Engine GRIDMET/DROUGHT | *unknown* | code not public; question 2 |
+| R SPEI / NCEI climdiv SPI | *unknown* | code not public; question 4 |
+| R SCI / R SEI | *shared numerical routine* | *shared numerical routine* (fitdistrplus; maximum likelihood) |
+| R SCI / Climate Engine API | *unknown* | code not public; question 1 |
+| R SCI / Earth Engine GRIDMET/DROUGHT | *unknown* | code not public; question 2 |
+| R SCI / NCEI climdiv SPI | *unknown* | code not public; question 4 |
+| R SEI / NCL dim_spi_n | *shared numerical routine* | *shared numerical routine* (Hosking L-moment routines (IBM RC20525); separate ports of the same Fortran: R SEI method = "lmoment" (lmom dependency); NCL dim_spi_n Pearson III path (opt@spi_type = 3) (embedded Fortran (NCDC spi code))) |
+| R SEI / Climate Engine API | *unknown* | code not public; question 1 |
+| R SEI / Earth Engine GRIDMET/DROUGHT | *unknown* | code not public; question 2 |
+| R SEI / NCEI climdiv SPI | *unknown* | code not public; question 4 |
+| R climatekit / Climate Engine API | *unknown* | code not public; question 1 |
+| R climatekit / Earth Engine GRIDMET/DROUGHT | *unknown* | code not public; question 2 |
+| R climatekit / NCEI climdiv SPI | *unknown* | code not public; question 4 |
+| NDMC SPI Generator / NCL dim_spi_n | *shared numerical routine* | *shared numerical routine* (unnamed common source of the gamma fit; gamma path: identical comments in the gamma fit routine, including the misspelling "paarameters") |
+| NDMC SPI Generator / Climate Engine API | *unknown* | code not public; question 1 |
+| NDMC SPI Generator / Earth Engine GRIDMET/DROUGHT | *unknown* | code not public; question 2 |
+| NDMC SPI Generator / NCEI climdiv SPI | *unknown* | code not public; question 4 |
+| NCL dim_spi_n / Climate Engine API | *unknown* | code not public; question 1 |
+| NCL dim_spi_n / Earth Engine GRIDMET/DROUGHT | *unknown* | code not public; question 2 |
+| NCL dim_spi_n / NCEI climdiv SPI | *unknown* | code not public; question 4<br>note: NCL's Pearson III path embeds the NCDC SPI code that NCEI publishes as spi.f; whether the operational product runs that code is question 4. |
+| Climate Engine API / Earth Engine GRIDMET/DROUGHT | *unknown* | code not public; question 1, 2 |
+| Climate Engine API / NCEI climdiv SPI | *unknown* | code not public; question 1, 4 |
+| Earth Engine GRIDMET/DROUGHT / NCEI climdiv SPI | *unknown* | code not public; question 2, 4 |
 
-The other 27 of 78 pairs are *independent*.
+The other 21 of 78 pairs are *independent*.
 
 ### SPEI
 
 | Pair | Class | Relation found |
 | --- | --- | --- |
-| climate_indices / xclim | *validated against* | *validated against* (xclim → climate_indices: offset changed to reproduce climate_indices); *shared numerical routine* (Hosking L-moment routines: climate_indices Pearson III, log-logistic and GEV fits; xclim method = "PWM" with an lmoments3 distribution) |
-| climate_indices / standard_precip | *shared numerical routine* | *shared numerical routine* (Hosking L-moment routines: climate_indices Pearson III, log-logistic and GEV fits; standard_precip fit_type = "lmom") |
-| climate_indices / R SPEI | *validated against* | *validated against* (climate_indices → R SPEI: log-logistic); *shared numerical routine* (Hosking L-moment routines: climate_indices Pearson III, log-logistic and GEV fits; R SPEI pp-pwm and ub-pwm fits (default)) |
-| climate_indices / R SEI | *shared numerical routine* | *shared numerical routine* (Hosking L-moment routines: climate_indices Pearson III, log-logistic and GEV fits; R SEI method = "lmoment") |
-| climate_indices / Climate Engine API | *validated against* | *validated against* (climate_indices → Climate Engine API: characterization pilot) |
-| climate_indices / Earth Engine GRIDMET/DROUGHT | *validated against* | *validated against* (climate_indices → Earth Engine GRIDMET/DROUGHT: characterization pilot) |
-| climate_indices / SPEIbase v2.11 | *validated against* | *validated against* (climate_indices → SPEIbase v2.11: plausibility check); *shared numerical routine* (Hosking L-moment routines: climate_indices Pearson III, log-logistic and GEV fits; SPEIbase v2.11 ub-pwm log-logistic, through R SPEI) |
-| xclim / spei (Vonk) | *shared numerical routine* | *shared numerical routine* (maximum likelihood: scipy.stats rv_continuous.fit) |
-| xclim / standard_precip | *shared numerical routine* | *shared numerical routine* (maximum likelihood: scipy.stats); *shared numerical routine* (Hosking L-moment routines: xclim method = "PWM" with an lmoments3 distribution; standard_precip fit_type = "lmom") |
-| xclim / R SPEI | *validated against* | *validated against* (xclim → R SPEI: fisk ML); *shared numerical routine* (Hosking L-moment routines: xclim method = "PWM" with an lmoments3 distribution; R SPEI pp-pwm and ub-pwm fits (default)) |
-| xclim / R SEI | *shared numerical routine* | *shared numerical routine* (Hosking L-moment routines: xclim method = "PWM" with an lmoments3 distribution; R SEI method = "lmoment") |
-| xclim / Climate Engine API | *unknown* | code not public |
-| xclim / Earth Engine GRIDMET/DROUGHT | *unknown* | code not public |
-| xclim / SPEIbase v2.11 | *shared numerical routine* | *shared numerical routine* (Hosking L-moment routines: xclim method = "PWM" with an lmoments3 distribution; SPEIbase v2.11 ub-pwm log-logistic, through R SPEI) |
-| spei (Vonk) / standard_precip | *shared numerical routine* | *shared numerical routine* (maximum likelihood: scipy.stats) |
-| spei (Vonk) / Climate Engine API | *unknown* | code not public |
-| spei (Vonk) / Earth Engine GRIDMET/DROUGHT | *unknown* | code not public |
-| standard_precip / R SPEI | *derived* | *derived* (standard_precip → R SPEI: stated as "loosely based on"); *shared numerical routine* (Hosking L-moment routines: standard_precip fit_type = "lmom"; R SPEI pp-pwm and ub-pwm fits (default)) |
-| standard_precip / R SEI | *shared numerical routine* | *shared numerical routine* (Hosking L-moment routines: standard_precip fit_type = "lmom"; R SEI method = "lmoment") |
-| standard_precip / Climate Engine API | *unknown* | code not public |
-| standard_precip / Earth Engine GRIDMET/DROUGHT | *unknown* | code not public |
-| standard_precip / SPEIbase v2.11 | *shared numerical routine* | *shared numerical routine* (Hosking L-moment routines: standard_precip fit_type = "lmom"; SPEIbase v2.11 ub-pwm log-logistic, through R SPEI) |
-| R SPEI / R SEI | *shared numerical routine* | *shared numerical routine* (Hosking L-moment routines: R SPEI pp-pwm and ub-pwm fits (default); R SEI method = "lmoment") |
-| R SPEI / Climate Engine API | *unknown* | code not public |
-| R SPEI / Earth Engine GRIDMET/DROUGHT | *unknown* | code not public |
-| R SPEI / SPEIbase v2.11 | *derived* | *derived* (SPEIbase v2.11 → R SPEI: SPEIbase is computed with the package); *shared numerical routine* (Hosking L-moment routines: R SPEI pp-pwm and ub-pwm fits (default); SPEIbase v2.11 ub-pwm log-logistic, through R SPEI) |
-| R SEI / Climate Engine API | *unknown* | code not public |
-| R SEI / Earth Engine GRIDMET/DROUGHT | *unknown* | code not public |
-| R SEI / SPEIbase v2.11 | *shared numerical routine* | *shared numerical routine* (Hosking L-moment routines: R SEI method = "lmoment"; SPEIbase v2.11 ub-pwm log-logistic, through R SPEI) |
-| Climate Engine API / Earth Engine GRIDMET/DROUGHT | *unknown* | code not public |
-| Climate Engine API / SPEIbase v2.11 | *unknown* | code not public |
-| Earth Engine GRIDMET/DROUGHT / SPEIbase v2.11 | *unknown* | code not public |
+| climate_indices / xclim | *validated against* | *validated against* (xclim → climate_indices; offset changed to reproduce climate_indices)<br>*shared numerical routine* (Hosking L-moment routines (IBM RC20525); separate ports of the same Fortran: climate_indices Pearson III, log-logistic and GEV fits, all from its SAMLMR translation (own translation (lmoments.py)); xclim method = "PWM" with an lmoments3 distribution (lmoments3 dependency)) |
+| climate_indices / standard_precip | *shared numerical routine* | *shared numerical routine* (Hosking L-moment routines (IBM RC20525); separate ports of the same Fortran: climate_indices Pearson III, log-logistic and GEV fits, all from its SAMLMR translation (own translation (lmoments.py)); standard_precip fit_type = "lmom" (lmoments3 dependency)) |
+| climate_indices / R SPEI | *validated against* | *validated against* (climate_indices → R SPEI; log-logistic)<br>*shared numerical routine* (Hosking L-moment routines (IBM RC20525); separate ports of the same Fortran: climate_indices Pearson III, log-logistic and GEV fits, all from its SAMLMR translation (own translation (lmoments.py)); R SPEI pp-pwm and ub-pwm fits (default) (lmom dependency)) |
+| climate_indices / R SEI | *shared numerical routine* | *shared numerical routine* (Hosking L-moment routines (IBM RC20525); separate ports of the same Fortran: climate_indices Pearson III, log-logistic and GEV fits, all from its SAMLMR translation (own translation (lmoments.py)); R SEI method = "lmoment" (lmom dependency)) |
+| climate_indices / Climate Engine API | *validated against* | *validated against* (climate_indices → Climate Engine API; characterization pilot) |
+| climate_indices / Earth Engine GRIDMET/DROUGHT | *validated against* | *validated against* (climate_indices → Earth Engine GRIDMET/DROUGHT; characterization pilot) |
+| climate_indices / SPEIbase v2.11 | *validated against* | *validated against* (climate_indices → SPEIbase v2.11; input-matched log-logistic comparison)<br>*shared numerical routine* (Hosking L-moment routines (IBM RC20525); separate ports of the same Fortran: climate_indices Pearson III, log-logistic and GEV fits, all from its SAMLMR translation (own translation (lmoments.py)); SPEIbase v2.11 ub-pwm log-logistic (lmom dependency, through R SPEI)) |
+| xclim / spei (Vonk) | *shared numerical routine* | *shared numerical routine* (scipy.stats rv_continuous.fit; maximum likelihood) |
+| xclim / standard_precip | *shared numerical routine* | *shared numerical routine* (scipy.stats rv_continuous.fit; maximum likelihood)<br>*shared numerical routine* (Hosking L-moment routines (IBM RC20525); same dependency: xclim method = "PWM" with an lmoments3 distribution (lmoments3 dependency); standard_precip fit_type = "lmom" (lmoments3 dependency)) |
+| xclim / R SPEI | *validated against* | *validated against* (xclim → R SPEI; fisk ML test reference values)<br>*shared numerical routine* (Hosking L-moment routines (IBM RC20525); separate ports of the same Fortran: xclim method = "PWM" with an lmoments3 distribution (lmoments3 dependency); R SPEI pp-pwm and ub-pwm fits (default) (lmom dependency)) |
+| xclim / R SEI | *shared numerical routine* | *shared numerical routine* (Hosking L-moment routines (IBM RC20525); separate ports of the same Fortran: xclim method = "PWM" with an lmoments3 distribution (lmoments3 dependency); R SEI method = "lmoment" (lmom dependency)) |
+| xclim / Climate Engine API | *unknown* | code not public; question 1 |
+| xclim / Earth Engine GRIDMET/DROUGHT | *unknown* | code not public; question 2 |
+| xclim / SPEIbase v2.11 | *shared numerical routine* | *shared numerical routine* (Hosking L-moment routines (IBM RC20525); separate ports of the same Fortran: xclim method = "PWM" with an lmoments3 distribution (lmoments3 dependency); SPEIbase v2.11 ub-pwm log-logistic (lmom dependency, through R SPEI)) |
+| spei (Vonk) / standard_precip | *shared numerical routine* | *shared numerical routine* (scipy.stats rv_continuous.fit; maximum likelihood) |
+| spei (Vonk) / Climate Engine API | *unknown* | code not public; question 1 |
+| spei (Vonk) / Earth Engine GRIDMET/DROUGHT | *unknown* | code not public; question 2 |
+| standard_precip / R SPEI | *shared numerical routine* | *shared numerical routine* (Hosking L-moment routines (IBM RC20525); separate ports of the same Fortran: standard_precip fit_type = "lmom" (lmoments3 dependency); R SPEI pp-pwm and ub-pwm fits (default) (lmom dependency))<br>note: standard_precip says its functions are "loosely based on" R SPEI; that names a design source, not a code port. |
+| standard_precip / R SEI | *shared numerical routine* | *shared numerical routine* (Hosking L-moment routines (IBM RC20525); separate ports of the same Fortran: standard_precip fit_type = "lmom" (lmoments3 dependency); R SEI method = "lmoment" (lmom dependency)) |
+| standard_precip / Climate Engine API | *unknown* | code not public; question 1 |
+| standard_precip / Earth Engine GRIDMET/DROUGHT | *unknown* | code not public; question 2 |
+| standard_precip / SPEIbase v2.11 | *shared numerical routine* | *shared numerical routine* (Hosking L-moment routines (IBM RC20525); separate ports of the same Fortran: standard_precip fit_type = "lmom" (lmoments3 dependency); SPEIbase v2.11 ub-pwm log-logistic (lmom dependency, through R SPEI)) |
+| R SPEI / R SEI | *shared numerical routine* | *shared numerical routine* (Hosking L-moment routines (IBM RC20525); same dependency: R SPEI pp-pwm and ub-pwm fits (default) (lmom dependency); R SEI method = "lmoment" (lmom dependency)) |
+| R SPEI / Climate Engine API | *unknown* | code not public; question 1 |
+| R SPEI / Earth Engine GRIDMET/DROUGHT | *unknown* | code not public; question 2 |
+| R SPEI / SPEIbase v2.11 | *shared numerical routine* | *shared numerical routine* (R SPEI 1.8.1 spei() (whole computation); SPEIbase is computed with the package (ub-pwm log-logistic))<br>*shared numerical routine* (Hosking L-moment routines (IBM RC20525); same dependency: R SPEI pp-pwm and ub-pwm fits (default) (lmom dependency); SPEIbase v2.11 ub-pwm log-logistic (lmom dependency, through R SPEI)) |
+| R SEI / Climate Engine API | *unknown* | code not public; question 1 |
+| R SEI / Earth Engine GRIDMET/DROUGHT | *unknown* | code not public; question 2 |
+| R SEI / SPEIbase v2.11 | *shared numerical routine* | *shared numerical routine* (Hosking L-moment routines (IBM RC20525); same dependency: R SEI method = "lmoment" (lmom dependency); SPEIbase v2.11 ub-pwm log-logistic (lmom dependency, through R SPEI)) |
+| Climate Engine API / Earth Engine GRIDMET/DROUGHT | *unknown* | code not public; question 1, 2 |
+| Climate Engine API / SPEIbase v2.11 | *unknown* | code not public; question 1 |
+| Earth Engine GRIDMET/DROUGHT / SPEIbase v2.11 | *unknown* | code not public; question 2 |
 
 The other 4 of 36 pairs are *independent*.
 
@@ -227,11 +248,11 @@ The other 14 of 15 pairs are *independent*.
 | Pair | Class | Relation found |
 | --- | --- | --- |
 | climate_indices / NOAA PSL EDDI | *validated against* | *validated against* (climate_indices → NOAA PSL EDDI) |
-| climate_indices / Climate Engine API | *validated against* | *validated against* (climate_indices → Climate Engine API: characterization pilot) |
-| climate_indices / Earth Engine GRIDMET/DROUGHT | *validated against* | *validated against* (climate_indices → Earth Engine GRIDMET/DROUGHT: characterization pilot) |
-| NOAA PSL EDDI / Climate Engine API | *unknown* | code not public |
-| NOAA PSL EDDI / Earth Engine GRIDMET/DROUGHT | *unknown* | code not public |
-| Climate Engine API / Earth Engine GRIDMET/DROUGHT | *unknown* | code not public |
+| climate_indices / Climate Engine API | *validated against* | *validated against* (climate_indices → Climate Engine API; characterization pilot) |
+| climate_indices / Earth Engine GRIDMET/DROUGHT | *validated against* | *validated against* (climate_indices → Earth Engine GRIDMET/DROUGHT; characterization pilot) |
+| NOAA PSL EDDI / Climate Engine API | *unknown* | code not public; question 1, 3 |
+| NOAA PSL EDDI / Earth Engine GRIDMET/DROUGHT | *unknown* | code not public; question 2, 3 |
+| Climate Engine API / Earth Engine GRIDMET/DROUGHT | *unknown* | code not public; question 1, 2 |
 
 No pair is *independent*.
 
@@ -239,33 +260,41 @@ No pair is *independent*.
 
 | Pair | Class | Relation found |
 | --- | --- | --- |
-| climate_indices / NCEI pdi.f | *derived* | *derived* (climate_indices → NCEI pdi.f) |
-| climate_indices / nClimDiv (NCEI) | *derived* | *derived* (climate_indices → nClimDiv (NCEI): through the NCEI Fortran lineage; also validated against nClimDiv) |
-| NCEI pdi.f / nClimDiv (NCEI) | *derived* | *derived* (NCEI pdi.f → nClimDiv (NCEI): pdi.f is a modified public version of NCDC's operational program; the operational code is not public) |
+| climate_indices / NCEI pdi.f | *shared numerical routine* | *shared numerical routine* (NCDC Palmer Fortran; both carry NCDC Palmer Fortran: the library translated NCDC's pdinew.f, and pdi.f is a modified NCDC program) |
+| climate_indices / nClimDiv (NCEI) | *validated against* | *validated against* (climate_indices → nClimDiv (NCEI)) |
+| climate_indices / Wells, Goddard and Hayes C++ | *shared numerical routine* | *shared numerical routine* (NCDC Palmer Fortran; both carry NCDC Palmer Fortran: the library translated NCDC's pdinew.f, and the Wells C++ is based mostly on NCDC's pdsi.f) |
+| climate_indices / Sibada/scPDSI | *validated against* | *validated against* (climate_indices → Sibada/scPDSI; the oracle harness run in standard-PDSI mode reproduces the library's Z-Index)<br>*shared numerical routine* (NCDC Palmer Fortran; through the Wells C++, which is based mostly on NCDC's pdsi.f) |
+| NCEI pdi.f / nClimDiv (NCEI) | *unknown* | code not public; question 4<br>note: pdi.f is NCEI's public version of its Palmer program, "not an exact copy" of what it runs; question 4. |
+| NCEI pdi.f / Wells, Goddard and Hayes C++ | *shared numerical routine* | *shared numerical routine* (NCDC Palmer Fortran; both are modified versions of NCDC Palmer Fortran) |
+| NCEI pdi.f / Sibada/scPDSI | *shared numerical routine* | *shared numerical routine* (NCDC Palmer Fortran; through the Wells C++) |
+| nClimDiv (NCEI) / JonKing93/pdsi | *unknown* | code not public; question 4 |
+| nClimDiv (NCEI) / Wells, Goddard and Hayes C++ | *unknown* | code not public; question 4 |
+| nClimDiv (NCEI) / Sibada/scPDSI | *unknown* | code not public; question 4 |
+| Wells, Goddard and Hayes C++ / Sibada/scPDSI | *derived* | *derived* (Sibada/scPDSI → Wells, Goddard and Hayes C++) |
 
-The other 3 of 6 pairs are *independent*.
+The other 4 of 15 pairs are *independent*.
 
 ### scPDSI
 
 | Pair | Class | Relation found |
 | --- | --- | --- |
-| climate_indices / Wells, Goddard and Hayes C++ | *derived* | *derived* (climate_indices → Wells, Goddard and Hayes C++: through Sibada/scPDSI) |
-| climate_indices / Sibada/scPDSI | *derived* | *derived* (climate_indices → Sibada/scPDSI: also validated against it (oracle fixture)) |
+| climate_indices / Wells, Goddard and Hayes C++ | *derived* | *derived* (climate_indices → Wells, Goddard and Hayes C++; the design names the Wells C++ as distributed in Sibada/scPDSI) |
+| climate_indices / Sibada/scPDSI | *derived* | *derived* (climate_indices → Sibada/scPDSI; also validated against it (oracle fixture)) |
 | Wells, Goddard and Hayes C++ / Sibada/scPDSI | *derived* | *derived* (Sibada/scPDSI → Wells, Goddard and Hayes C++) |
 
 The other 3 of 6 pairs are *independent*.
 
 ## Questions for REFIMPL-06
 
-These questions cover every *unknown* pair, plus the residual questions behind some classified ones. They are for REFIMPL-06 ([#1608](https://github.com/monocongo/climate_indices/issues/1608)), except question 7, which is for the maintainer.
+These questions cover every *unknown* pair, plus the residual questions behind some classified ones. Each *unknown* pair in `lineage.json` lists the questions that cover it. They are for REFIMPL-06 ([#1608](https://github.com/monocongo/climate_indices/issues/1608)), except question 7, which is for the maintainer.
 
-1. **Climate Engine API.** Which code computes `standard_index` SPI, SPEI, and EDDI, and does it share code with Earth Engine `GRIDMET/DROUGHT` or NOAA PSL EDDI? It covers 20 *unknown* pairs.
-2. **Earth Engine `GRIDMET/DROUGHT`** (producer: University of California Merced). Which code produces it, and which plotting-position formula does it use? The catalog says only that "plotting positions are used". It covers 20 *unknown* pairs, 3 of them shared with question 1.
-3. **NOAA PSL EDDI.** Is the operational code available, and do the Climate Engine or `GRIDMET/DROUGHT` EDDI use it? Hobbins et al. (2016) lists J. L. Huntington and C. Morton among its authors (`src/climate_indices/cf_metadata_registry.py`:327). The research notes cite Huntington et al. (2017) for Climate Engine, a reference REFIMPL-05 has yet to verify. It covers the 2 *unknown* pairs between PSL and the providers.
-4. **NCEI.** Does the operational climdiv SPI run `spi.f`'s `SPIPE3` code, and does operational nClimDiv run the `pdi.f` lineage? Is the `pdsi.f` that the Wells C++ was based on the same NCDC program as the "old version" in `pdi.f`?
-5. **Dave Meko** (via `JonKing93/pdsi`). Was the MATLAB PDSI script written from NCDC Fortran? A yes would change the `JonKing93/pdsi` pairs from *independent* to *derived*.
-6. **NDMC and NCAR.** What is the common source of the NDMC SPI Generator's and NCL's gamma code?
-7. **Maintainer.** What was the "NCDC global SPI" code that commit `d106d578` replaced, and do the Hosking translations in `lmoments.py`, which predate that commit, come from it? Where did `tests/fixture/pet_thornthwaite.npy` come from?
+1. **Climate Engine API.** Which code computes `standard_index` SPI, SPEI, and EDDI? Does it share code with Earth Engine `GRIDMET/DROUGHT` or NOAA PSL EDDI? (20 *unknown* pairs.)
+2. **Earth Engine `GRIDMET/DROUGHT`** (producer: University of California Merced). Which code produces it, and which plotting-position formula does it use? The catalog says only that "plotting positions are used". (20 *unknown* pairs, 3 shared with question 1.)
+3. **NOAA PSL EDDI.** Is the operational code available, and do the Climate Engine or `GRIDMET/DROUGHT` EDDI use it? Hobbins et al. (2016) lists J. L. Huntington and C. Morton among its authors (`src/climate_indices/cf_metadata_registry.py`:327). The research notes cite Huntington et al. (2017) for Climate Engine, a reference REFIMPL-05 has yet to verify. (2 *unknown* pairs, both shared with question 1 or 2.)
+4. **NCEI.** Does the operational climdiv SPI run the `SPIPE3` code in the public `spi.f`, and does operational nClimDiv run the `pdi.f` lineage? Are `pdinew.f` (which the library translated in 2017), `pdi.f`, and the `pdsi.f` that the Wells C++ was based on the same NCDC program? (15 *unknown* pairs.)
+5. **Dave Meko** (via `JonKing93/pdsi`). Was the MATLAB PDSI script written from NCDC Fortran? A yes would change the `JonKing93/pdsi` pairs from *independent* to *shared numerical routine*.
+6. **NDMC and NCAR.** What is the common source of the gamma fit code in the NDMC SPI Generator and NCL?
+7. **Maintainer.** Commit `d106d578` (2018) replaced Pearson III code "originally translated from NCDC global SPI". What was that program? The `SAMLMR` and Pearson III translations were already in `compute.py` at the initial commit (2017) and moved to `lmoments.py` in 2019: do they come from it? Where did `tests/fixture/pet_thornthwaite.npy` come from?
 
 ## Figure specification for REFIMPL-40
 
@@ -273,74 +302,79 @@ For REFIMPL-40 ([#1642](https://github.com/monocongo/climate_indices/issues/1642
 
 - **Data.** `lineage.json` only. No edge is drawn by hand.
 - **Layout.** One panel per index, or five grouped panels: SPI and SPEI; PET; EDDI; standard Palmer; scPDSI.
-- **Nodes.** One per implementation in the index's `implementations` list. Shape shows the kind (package, program, product, service). Implementations with `source_read: false` get a dashed outline.
-- **Edges.** One per entry in `pairs[].relations`. *Derived*: solid arrow from `from` to `to`. *Validated against*: dashed arrow from `from` to `to`. *Shared numerical routine*: undirected dotted line, labelled with the routine (Hosking L-moments, SciPy maximum likelihood, `fitdistrplus`, the NDMC and NCL gamma source). *Independent* and *unknown* pairs get no edge.
-- **Ancestors.** Optional context nodes, not implementations: Hosking's `lmoments.f` and the NCDC Palmer Fortran, so that the shared ancestry in findings 1 and 2 is visible.
+- **Nodes.** One per implementation in the index's `implementations` list, shaped by `kind` (`package`, `program`, `product`, `service`). Implementations with `source_read: false` get a dashed outline.
+- **Edges.** One per entry in `pairs[].relations`. *Derived*: solid arrow from `from` to `to`. *Validated against*: dashed arrow from `from` to `to`. *Shared numerical routine*: undirected dotted line labelled with `routine`. *Independent* and *unknown* pairs get no edge. `pairs[].direction` gives the arrow for the pair's own class.
+- **Ancestors.** The two entries in `ancestors` (Hosking's L-moment routines and the NCDC Palmer Fortran) are optional context nodes, not implementations, joined to their `descendants`.
 
 ## Limits
 
 - **What "read" means.** At each pin, the search covered origin statements (README, DESCRIPTION, CITATION, changelog, module headers), imports and declared dependencies, every mention of another comparator by name in source, tests, and documentation, and author lists. It was not a line-by-line audit. Copying that leaves no textual trace would be missed. *Independent* means that these searches found no relation.
-- **Products.** For NCEI climdiv SPI, nClimDiv, and SPEIbase, the published code stands in for the operational code. NCEI says its public code "is not an exact copy" of what it runs.
+- **Quotes.** Quotes are short attribution lines, cut with "..." and with Markdown formatting dropped. No comparator code is reproduced.
 - **Palmer pins.** These come from REFIMPL-30 ([#1632](https://github.com/monocongo/climate_indices/issues/1632)), whose pull request ([#1660](https://github.com/monocongo/climate_indices/pull/1660)) is still open. The original Wells C++ is `scPDSI.zip` from `greenleaf.unl.edu` (sha256 `52ceeb42...`; `scpdsi.cpp` dated 2007-05-18). REFIMPL-30's table records it as not obtained.
 - **Authorship.** Shared authors were recorded where package metadata shows them. No pair is classified on authorship alone.
 
 ## Sources read
 
-| Implementation | Pinned source | Source read |
-| --- | --- | --- |
-| climate_indices | monocongo/climate_indices@a7235bf7 | yes |
-| xclim | xclim 1.0.0 sdist | yes |
-| spei (Vonk) | spei 0.8.3 sdist; repository tag v0.8.3 (8276b0c9) | yes |
-| standard_precip | standard-precip 2.0.0 sdist | yes |
-| R SPEI | SPEI 1.8.1 CRAN tarball | yes |
-| R SCI | SCI 1.0-3 CRAN tarball | yes |
-| R SEI | SEI 0.2.0 CRAN tarball | yes |
-| R climatekit | climatekit 0.2.3 CRAN tarball | yes |
-| NDMC SPI Generator | SPIgenerator.zip sha256 ce8f37bc (1.7.6.0) | yes |
-| NCL dim_spi_n | NCAR/ncl tag 6.6.2 (ni/src/lib/nfpfort/spid.f, spi3.f) | yes |
-| Climate Engine API | live service; code not public | no: code not public |
-| Earth Engine GRIDMET/DROUGHT | live collection; code not public | no: code not public |
-| NCEI climdiv SPI | product; operational code not public; NCEI's public general-use spi.f (sha256 bd7bb8ab) read in its place | yes |
-| SPEIbase v2.11 | product; spei.csic.es names R SPEI 1.8.1 as the code, read in its place | yes |
-| PyETo | woodcrafty/PyETo@79ddd88d | yes |
-| pyet | pyet 1.5.0 sdist | yes |
-| R Evapotranspiration | Evapotranspiration 1.16 CRAN tarball | yes |
-| NOAA PSL EDDI | product; code not public | no: code not public |
-| NCEI pdi.f | pdi.f sha256 e0c58ccb (2013-04-03) | yes |
-| nClimDiv (NCEI) | product; operational code not public; NCEI's public general-use pdi.f read in its place | yes |
-| JonKing93/pdsi | JonKing93/pdsi@9a636117 | yes |
-| Wells, Goddard and Hayes C++ | greenleaf.unl.edu scPDSI.zip sha256 52ceeb42 (scpdsi.cpp 2007-05-18) | yes |
-| Sibada/scPDSI | Sibada/scPDSI@10f8c3b2 | yes |
-| ktripa/scpdsi-tools | ktripa/scpdsi-tools@c73b22c8 | yes |
+| Implementation | Kind | Pinned source | Source read |
+| --- | --- | --- | --- |
+| climate_indices | package | monocongo/climate_indices@a7235bf7 | yes |
+| xclim | package | xclim 1.0.0 sdist | yes |
+| spei (Vonk) | package | spei 0.8.3 sdist; repository tag v0.8.3 (8276b0c9) | yes |
+| standard_precip | package | standard-precip 2.0.0 sdist | yes |
+| R SPEI | package | SPEI 1.8.1 CRAN tarball | yes |
+| R SCI | package | SCI 1.0-3 CRAN tarball | yes |
+| R SEI | package | SEI 0.2.0 CRAN tarball | yes |
+| R climatekit | package | climatekit 0.2.3 CRAN tarball | yes |
+| NDMC SPI Generator | program | SPIgenerator.zip sha256 ce8f37bc (1.7.6.0) | yes |
+| NCL dim_spi_n | program | NCAR/ncl tag 6.6.2 (ni/src/lib/nfpfort/spid.f, spi3.f) | yes |
+| Climate Engine API | service | live service; code not public | no: code not public |
+| Earth Engine GRIDMET/DROUGHT | service | live collection; code not public | no: code not public |
+| NCEI climdiv SPI | product | operational code not public; NCEI's public spi.f (sha256 bd7bb8ab) is "not an exact copy" | no: code not public |
+| SPEIbase v2.11 | product | spei.csic.es names R SPEI 1.8.1 as the code; that package was read | yes |
+| PyETo | package | woodcrafty/PyETo@79ddd88d | yes |
+| pyet | package | pyet 1.5.0 sdist | yes |
+| R Evapotranspiration | package | Evapotranspiration 1.16 CRAN tarball | yes |
+| NOAA PSL EDDI | product | code not public | no: code not public |
+| NCEI pdi.f | program | pdi.f sha256 e0c58ccb (2013-04-03) | yes |
+| nClimDiv (NCEI) | product | operational code not public; NCEI's public pdi.f is "not an exact copy" | no: code not public |
+| JonKing93/pdsi | package | JonKing93/pdsi@9a636117 | yes |
+| Wells, Goddard and Hayes C++ | program | greenleaf.unl.edu scPDSI.zip sha256 52ceeb42 (scpdsi.cpp 2007-05-18) | yes |
+| Sibada/scPDSI | package | Sibada/scPDSI@10f8c3b2 | yes |
+| ktripa/scpdsi-tools | package | ktripa/scpdsi-tools@c73b22c8 | yes |
 
 ## Evidence
 
-Every citation behind a relation, grouped by the implementation it comes from. `lineage.json` holds the same entries per pair.
+Every citation behind a relation, note, stated origin, or ancestor, grouped by the implementation it comes from. `lineage.json` holds the same entries.
 
 **climate_indices**
 
+- monocongo/climate_indices@0b15ec8c (2017-07-28), `commit message`: "updates to function signatures, new translation of pdinew.f, more tests"
 - monocongo/climate_indices@224ef6bc (2017-06-21), `commit message`: "first draft of function to reproduce the water balance code in pdinew.f"
 - monocongo/climate_indices@6dde1a55 (2018-10-03), `commit message`: "initial code for Hargreaves, with previous Thornthwaite folded into same file"
 - monocongo/climate_indices@a7235bf7, `docs/research/earthengine-climate-engine-pilot.md`:9-13: "Measure agreement between climate_indices and two provider products that use gridMET inputs."
 - monocongo/climate_indices@a7235bf7, `src/climate_indices/drought/_palmer_pdi.py`:1: "NCEI pdi.f-lineage Palmer spell recursion for the standard PDSI family."
 - monocongo/climate_indices@a7235bf7, `src/climate_indices/drought/eto.py`:5-6: "Derived from original code found in PyETo: https://github.com/woodcrafty/PyETo"
 - monocongo/climate_indices@a7235bf7, `src/climate_indices/drought/eto.py`:558: "Based on equation 52 in Allen et al (1998)."
-- monocongo/climate_indices@a7235bf7, `src/climate_indices/drought/indices.py`:277-278: "This matches the NOAA PSL Fortran reference implementation used in the original EDDI code."
 - monocongo/climate_indices@a7235bf7, `src/climate_indices/drought/self_calibration.py`:8: "Every function here is a faithful port of the reference algorithm"
 - monocongo/climate_indices@a7235bf7, `src/climate_indices/drought/self_calibration.py`:89: "Ports the reference implementation's kthLargest()"
 - monocongo/climate_indices@a7235bf7, `src/climate_indices/lmoments.py`:279: "This is a Python translation of the original Fortran subroutine SAMLMR()"
 - monocongo/climate_indices@a7235bf7, `src/climate_indices/lmoments.py`:363-364: "This is the distribution R's SPEI package fits as "log-Logistic" (lmom's PELGLO with unbiased-PWM L-moments), so it is what SPEIbase uses."
 - monocongo/climate_indices@a7235bf7, `src/climate_indices/lmoments.py`:381-383: "a Python translation of the PELGLO subroutine from J. R. M. Hosking's ... (IBM Research Report RC20525) as distributed in the R package lmom"
+- monocongo/climate_indices@a7235bf7, `src/climate_indices/lmoments.py`:601: "lmoments = _estimate_lmoments(timeseries, hint="")"
 - monocongo/climate_indices@a7235bf7, `src/climate_indices/lmoments.py`:65-70: "based on Fortran code written for inclusion in IBM Research Report RC20525 ... This is a Python translation of the original Fortran subroutine"
 - monocongo/climate_indices@a7235bf7, `tests/fixture/ncei_spi/provenance.json`:70: "External ground truth for climate_indices.indices.spi() with Distribution.pearson ... independence is plausible but not airtight"
-- monocongo/climate_indices@a7235bf7, `tests/fixture/nclimdiv/provenance.json`:2: "NOAA National Centers for Environmental Information (NCEI)"
 - monocongo/climate_indices@a7235bf7, `tests/fixture/noaa-eddi-1month/provenance.json`:2: "NOAA Physical Sciences Laboratory (PSL)"
-- monocongo/climate_indices@a7235bf7, `tests/fixture/palmer/provenance.json`:15: "SCPDSI GENERATION ... produced by the Sibada/scPDSI reference C++ (Wells, Goddard & Hayes)"
-- monocongo/climate_indices@a7235bf7, `tests/fixture/pet_literature/provenance.json`:3: "https://github.com/woodcrafty/PyETo/blob/master/tests/test_thornthwaite.py, .../tests/test_fao.py"
+- monocongo/climate_indices@a7235bf7, `tests/fixture/palmer/provenance.json`:15: "SCPDSI GENERATION ... produced by the Sibada/scPDSI reference C++ (Wells, Goddard & Hayes) ... HARNESS VALIDATION: running the same binary in standard-PDSI mode reproduces the committed zindex.npy for all 344 divisions"
+- monocongo/climate_indices@a7235bf7, `tests/fixture/pet_literature/provenance.json`:5: "the upstream project climate_indices.eto derives its implementation from"
 - monocongo/climate_indices@a7235bf7, `tests/fixture/spei_loglogistic/provenance.json`:2: "R SPEI package (CRAN)"
 - monocongo/climate_indices@a7235bf7, `tests/fixture/speibase/provenance.json`:123: "PLAUSIBILITY CHECK ONLY, NOT EXTERNAL NUMERICAL VALIDATION."
 - monocongo/climate_indices@a7235bf7, `tests/fixture/zero_handling/provenance.json`:2: "R SEI and SCI packages"
+- monocongo/climate_indices@a7235bf7, `tests/test_nclimdiv_reference.py`:1-5: "Palmer-family comparisons against NOAA nClimDiv. ... against the operational NOAA NCEI nClimDiv reference arrays"
+- monocongo/climate_indices@a7235bf7, `tests/test_noaa_eddi_reference.py`:3-4: "Validates the library's EDDI implementation against pre-computed EDDI values from the NOAA Physical Sciences Laboratory (PSL)."
+- monocongo/climate_indices@a7235bf7, `tests/test_speibase_like_for_like.py`:1: "Like-for-like SPEI comparison against the CSIC SPEIbase v2.11 grids."
+- monocongo/climate_indices@c3b2d165 (2017-09-07), `commit message`: "new version which matches to the original pdinew.f results >99%"
 - monocongo/climate_indices@cccf6ff9 (initial commit, 2017-06-13), `thornthwaite.py`:7: "Derived from original code found here: https://github.com/woodcrafty/PyETo"
+- monocongo/climate_indices@d0a3a401 (2026-08-08; file removed from main by 2ee0f18b), `docs/superpowers/specs/2026-08-07-scpdsi-epic-design.md`:12: "Traced directly from the Wells, Goddard & Hayes reference C++ implementation (Sibada/scPDSI on GitHub, GPLv3 — used here for algorithm reference only"
 - monocongo/climate_indices@d106d578 (2018-10-28), `commit message`: "new code for Pearson distribution fitting, replacing previous code that was originally translated from NCDC global SPI"
 
 **xclim**
@@ -354,7 +388,7 @@ Every citation behind a relation, grouped by the implementation it comes from. `
 **spei (Vonk)**
 
 - spei 0.8.3 sdist; repository tag v0.8.3 (8276b0c9), `docs/examples/example04_package_comparison.ipynb`:cells 0, 7-8, 15-16: "Current comparisons include: standard_precip (Python), climate_indices (Python), pastas (Python), SPEI (R)"
-- spei 0.8.3 sdist; repository tag v0.8.3 (8276b0c9), `docs/examples/example04_package_comparison.ipynb`:cells 12-13: "sr = importr("SPEI") ... spir_res = sr.spi(prec_rsum.values, scale=3)"
+- spei 0.8.3 sdist; repository tag v0.8.3 (8276b0c9), `docs/examples/example04_package_comparison.ipynb`:cells 13, 16: "spir_res = sr.spi(prec_rsum.values, scale=3) ... The SPEI R package also has a similar result but seems to vary a bit more."
 - spei 0.8.3 sdist; repository tag v0.8.3 (8276b0c9), `docs/examples/example04_package_comparison.ipynb`:cells 9-11: "Previously there was a significant difference beteween the SPEI and climate_indices package ... (comparison code commented out)"
 - spei 0.8.3 sdist; repository tag v0.8.3 (8276b0c9), `src/spei/dist.py`:95: "fit_tuple = dist.fit("
 
@@ -380,14 +414,18 @@ Every citation behind a relation, grouped by the implementation it comes from. `
 - SEI 0.2.0 CRAN tarball, `R/fit_dist.R`:267: "fit <- try(fitdistrplus::fitdist(data = data, distr = dist, method = method, ...))"
 - SEI 0.2.0 CRAN tarball, `R/fit_dist.R`:291-308: "samp_mom <- lmom::samlmu(data) ... params <- lmom::pelgam(samp_mom)"
 
+**R climatekit**
+
+- climatekit 0.2.3 CRAN tarball, `R/drought.R`:444-446: "Uses Maximum Likelihood Estimation via Thom's (1958) approximation, as specified by the WMO User Guide (WMO-No. 1090) and consistent with the SPEI R package."
+
 **NDMC SPI Generator**
 
-- SPIgenerator.zip sha256 ce8f37bc (1.7.6.0), `code/spi_dll/gammadistributionestimatedprobabilities.cs`:32-34, 186-189: "input prob; return z. See Abromowitz and Stegun _Handbook of Mathematical Functions_, p. 933 ... Reference: Press, Flannery, Teukolsky, and Vetterling, _Numerical Recipes_, pp. 160-163 ... Thanks to kenny@cs.uiuc.edu"
+- SPIgenerator.zip sha256 ce8f37bc (1.7.6.0), `code/spi_dll/gammadistributionestimatedprobabilities.cs`:85, 124, 132, 140: "gamma - gamma paarameters ... Bogus Data array but do something reasonable ... They were all zeroes. ... Use MLE"
 
 **NCL dim_spi_n**
 
 - NCAR/ncl tag 6.6.2 (ni/src/lib/nfpfort/spid.f, spi3.f), `ni/src/lib/nfpfort/spi3.f`:42, 69-74: "NCDC code ... This program used the program of John Kleist, Colorado State Univ. ... The subroutines and functions in upper case came from Jon Hosking, IBM. Ned Guttman"
-- NCAR/ncl tag 6.6.2 (ni/src/lib/nfpfort/spid.f, spi3.f), `ni/src/lib/nfpfort/spid.f`:125, 324-327: "See Abromowitz and Stegun _Handbook of Mathematical Functions_, p. 933 ... Reference: Press, Flannery, Teukolsky, and Vetterling, _Numerical Recipes_, pp. 160-163 ... Thanks to kenny@cs.uiuc.edu"
+- NCAR/ncl tag 6.6.2 (ni/src/lib/nfpfort/spid.f, spi3.f), `ni/src/lib/nfpfort/spid.f`:163, 197, 205, 213: "gamma - gamma paarameters ... Bogus data array but do something reasonable ... They were all zeroes. ... Use MLE"
 
 **NCEI climdiv SPI**
 
@@ -396,6 +434,7 @@ Every citation behind a relation, grouped by the implementation it comes from. `
 **SPEIbase v2.11**
 
 - <https://spei.csic.es/database.html> (accessed 2026-11-20): "SPEIbase v2.11: 1) the CRU TS 4.09 dataset ... 2) Using SPEI package version 1.8.1."
+- <https://spei.csic.es/database.html> (accessed 2026-11-20): "Unbiased probability weighted moments (ub-pwm) method has been used for fitting the log-Logistic distribution"
 
 **PyETo**
 
@@ -411,7 +450,19 @@ Every citation behind a relation, grouped by the implementation it comes from. `
 - <https://www.drought.gov/data-maps-tools/drought-indices-fortran-spi-pdsi> (accessed 2026-11-20): "This code is not an exact copy of what is run on NCEI's internal servers, but represents general use version approved for public release."
 - pdi.f sha256 e0c58ccb (2013-04-03), `pdi.f`:13-16: "It is a modified version of the program in use at the National Climatic Data Center ... Code taken from the old version is in upper case"
 
+**JonKing93/pdsi**
+
+- JonKing93/pdsi@9a636117, `README.md`:75: "This PDSI function is based on a script written by Dave Meko."
+
+**Wells, Goddard and Hayes C++**
+
+- greenleaf.unl.edu scPDSI.zip sha256 52ceeb42 (scpdsi.cpp 2007-05-18), `scPDSI/src/scpdsi.cpp`:33-41: "Most recently translated to C++ from FORTRAN ... Based mostly on the source code of pdsi.f, a FORTRAN program that calculates monthly PDSI values. The source code came from NCDC, originally written by Tom Karl, and revised by Roger Winchell, Alan McNab, and Richard Heim."
+
 **Sibada/scPDSI**
 
 - Sibada/scPDSI@10f8c3b2, `DESCRIPTION`:16-17: "The function to calculate PDSI is based on the C++ source codes developed by Nathan Wells, Steve Goddard and Michael J. Hayes"
 - Sibada/scPDSI@10f8c3b2, `src/pdsi.cpp`:4569: "number llist::kthLargest(int k) {"
+
+**ktripa/scpdsi-tools**
+
+- ktripa/scpdsi-tools@c73b22c8, `scpdsi_tools.py`:14-15: "Self-calibration follows Wells et al. (2004); the Palmer water balance and recursion follow Palmer (1965)."
