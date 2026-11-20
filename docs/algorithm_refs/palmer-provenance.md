@@ -7,8 +7,9 @@ the validation status is in {doc}`palmer` and `VALIDATION.md`.
 
 Line numbers are at commit `46481c48`; function names are the stable handle.
 `pdi.f` and `scpdsi.cpp` line numbers refer to the files whose SHA-256 digests
-are listed, with URLs and access dates, in
-`docs/research/reference-papers/sources.md`.
+are listed, with URLs, in `docs/research/reference-papers/pdi-f-fidelity.md`.
+Source ids are in the manifest
+`docs/research/reference-papers/sources/sources.yaml`.
 
 ## How to read the table
 
