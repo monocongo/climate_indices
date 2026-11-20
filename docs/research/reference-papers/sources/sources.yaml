@@ -4,7 +4,8 @@
 # docs/algorithm_refs/palmer-provenance.md (every opened_in below) is added by PR #1659; until it
 # merges the path is a forward reference.
 #
-#   id               <first-author>-<year> for papers, a short slug for code.
+#   id               <surnames>-<year> for papers: one or two authors, all surnames (heddinghaus-sabol-1991);
+#                    three or more, the first author's (wells-2004). A short slug for code.
 #   kind             paper | code | data | data-doc
 #   family           palmer | spi | spei | pet | other
 #   citation         Full citation, only what the repo already carries: palmer-provenance.md's source

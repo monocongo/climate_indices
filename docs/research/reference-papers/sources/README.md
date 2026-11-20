@@ -24,8 +24,9 @@ agent clones cannot fetch LFS objects.
 ## Ids
 
 The id is the file stem everywhere: the manifest, file names, `palmer-provenance.md`
-and ticket comments. Papers: `<first-author>-<year>` (`palmer-1965`,
-`heddinghaus-sabol-1991`). Code: a short slug (`ncei-pdi-f`, `sibada-scpdsi-0.1.3`).
+and ticket comments. Papers: `<surnames>-<year>`, all surnames for one or two authors
+(`palmer-1965`, `heddinghaus-sabol-1991`), the first author's for three or more
+(`wells-2004`). Code: a short slug (`ncei-pdi-f`, `sibada-scpdsi-0.1.3`).
 
 ## What may be committed
 
