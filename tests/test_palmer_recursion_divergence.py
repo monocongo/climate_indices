@@ -1,8 +1,10 @@
-"""Pin both Palmer recursions on minimal Z-Index sequences that make them disagree (REFIMPL-29, #1631).
+"""Pin both Palmer recursions on reduced Z-Index sequences that make them disagree (REFIMPL-29, #1631).
 
-Each case is a minimal reproducing sequence for one divergence class, found by
+Each case is a reduced reproducing sequence for one divergence class, found by
 ``scripts/find_palmer_minimal_sequences.py`` and described in
-``docs/research/reference-papers/palmer-recursion-divergence.md``.  The class name is the set
+``docs/research/reference-papers/palmer-recursion-divergence.md``.  The generator rounds its
+sequences after greedy deletion reaches a fixed point, so a case can keep a month that is
+removable without losing the class: the sequences are reduced, not proven minimal.  The class name is the set
 of code-level differences (E establishment threshold, T termination at |X3| <= 0.5, A abatement
 trigger, C candidate carried at establishment, F end-of-record flush) that must all be
 harmonized for the disagreement to disappear.
@@ -14,12 +16,35 @@ updated, not relaxed, if either recursion is deliberately changed.  Sequences ar
 with zeros to whole years, which both recursions treat as no-ops.
 """
 
+import importlib.util
+import json
+from functools import lru_cache
+from pathlib import Path
+from types import ModuleType
+
 import numpy as np
 import pytest
 
 from climate_indices.drought import _palmer_pdi, _palmer_wells
 from climate_indices.drought._palmer_duration import DurationFactors
 from climate_indices.drought._palmer_pdi import PdiDurationFactors
+
+ROOT = Path(__file__).resolve().parents[1]
+SEQUENCES = ROOT / "docs" / "research" / "reference-papers" / "palmer-recursion-divergence-sequences.json"
+
+
+@lru_cache(maxsize=1)
+def _load_finder() -> ModuleType:
+    """Load the sibling generator script without adding ``scripts/`` to ``sys.path``."""
+    spec = importlib.util.spec_from_file_location(
+        "find_palmer_minimal_sequences", ROOT / "scripts" / "find_palmer_minimal_sequences.py"
+    )
+    if spec is None or spec.loader is None:
+        raise ImportError("cannot load scripts/find_palmer_minimal_sequences.py")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
 
 # class -> (active Z sequence, {month index in the padded series: (pdi.f PDSI, Wells PDSI)})
 _CASES = {
@@ -186,7 +211,7 @@ def _run(active: list[float]) -> tuple[np.ndarray, np.ndarray]:
 
 
 @pytest.mark.parametrize("label", sorted(_CASES))
-def test_minimal_sequence_pins_both_recursions(label: str) -> None:
+def test_reduced_sequence_pins_both_recursions(label: str) -> None:
     active, expected = _CASES[label]
     pdi, wells = _run(active)
 
@@ -195,3 +220,22 @@ def test_minimal_sequence_pins_both_recursions(label: str) -> None:
     for index, (pdi_value, wells_value) in expected.items():
         assert pdi[index] == pytest.approx(pdi_value, abs=1e-8)
         assert wells[index] == pytest.approx(wells_value, abs=1e-8)
+
+
+@pytest.mark.parametrize("label", sorted(_CASES))
+def test_sequence_still_reproduces_its_class(label: str) -> None:
+    """The study's own classifier must still return the class the case is named for."""
+    active, _ = _CASES[label]
+    assert _load_finder().label_of(active) == label
+
+
+def test_sequences_match_the_committed_json() -> None:
+    """The hand-copied literals must equal the generator's committed output."""
+    document = json.loads(SEQUENCES.read_text())
+    for label, (active, expected) in _CASES.items():
+        record = document[label]
+        assert active == pytest.approx(record["z"], abs=1e-12)
+        assert sorted(expected)[0] == record["first_differing_index"]
+        for index, (pdi_value, wells_value) in expected.items():
+            assert pdi_value == pytest.approx(record["pdi_pdsi"][index], abs=1e-6)
+            assert wells_value == pytest.approx(record["wells_pdsi"][index], abs=1e-6)

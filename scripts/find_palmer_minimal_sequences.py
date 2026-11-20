@@ -1,9 +1,10 @@
-"""Find a minimal Z-Index sequence that reproduces each divergence class (REFIMPL-29, #1631).
+"""Find a reduced Z-Index sequence that reproduces each divergence class (REFIMPL-29, #1631).
 
 For each attribution label in ``palmer-recursion-divergence-results.json`` a window of a real
-division's Z series is shrunk by greedy deletion until no single month can be removed without
-losing the class (locally minimal, not proven shortest), then its values are rounded for
-readability. A series *reproduces* a label when the pdi.f and Wells recursions disagree on it,
+division's Z series is shrunk by greedy deletion to a fixed point, then its values are rounded
+for readability. Rounding runs after the fixed point, so a rounded sequence can keep a month
+that is removable without losing the class: the output is reduced, not proven minimal. A series
+*reproduces* a label when the pdi.f and Wells recursions disagree on it,
 and every baseline episode, labelled over its own span exactly as the study labels episodes,
 carries that label with no variant disagreement outside the baseline episodes.
 Series are left-padded with zeros to whole years, which both recursions treat as no-ops.
@@ -14,22 +15,31 @@ Run: ``uv run python scripts/find_palmer_minimal_sequences.py``; writes
 
 from __future__ import annotations
 
+import importlib.util
 import json
 import sys
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 
-sys.path.insert(0, str(Path(__file__).resolve().parent))
-import characterize_palmer_recursion_divergence as c  # noqa: E402
+_SPEC = importlib.util.spec_from_file_location(
+    "characterize_palmer_recursion_divergence",
+    Path(__file__).resolve().parent / "characterize_palmer_recursion_divergence.py",
+)
+if _SPEC is None or _SPEC.loader is None:
+    raise ImportError("cannot load the sibling characterization script")
+c = importlib.util.module_from_spec(_SPEC)
+sys.modules[_SPEC.name] = c
+_SPEC.loader.exec_module(c)
 
 RESULTS = c.ROOT / "docs" / "research" / "reference-papers" / "palmer-recursion-divergence-results.json"
 OUT = c.ROOT / "docs" / "research" / "reference-papers" / "palmer-recursion-divergence-sequences.json"
 
-_VARIANTS: dict[tuple[str, ...], object] = {}
+_VARIANTS: dict[tuple[str, ...], Any] = {}
 
 
-def _variant(mechs: tuple[str, ...]):  # noqa: ANN202
+def _variant(mechs: tuple[str, ...]) -> Any:
     if mechs not in _VARIANTS:
         _VARIANTS[mechs] = c.build_pdi_variant(mechs)
     return _VARIANTS[mechs]
@@ -44,7 +54,8 @@ def run_variant(z: np.ndarray, mechs: tuple[str, ...]) -> np.ndarray:
     pdi_f, _ = c.default_factors()
     module = _variant(mechs)
     factors = module.PdiDurationFactors(pdi_f.wetm, pdi_f.wetb, pdi_f.drym, pdi_f.dryb)
-    return module.calculate(z.reshape(-1, 12, 1), factors).pdsi.reshape(-1)
+    values: np.ndarray = module.calculate(z.reshape(-1, 12, 1), factors).pdsi.reshape(-1)
+    return values
 
 
 def label_of(active: list[float]) -> str | None:
@@ -59,7 +70,8 @@ def label_of(active: list[float]) -> str | None:
     wells = c._palmer_wells.calculate(z, factors=wells_f).pdsi
 
     def mask(mechs: tuple[str, ...]) -> np.ndarray:
-        return np.abs(run_variant(z, mechs) - wells) > c.DISAGREE
+        disagrees: np.ndarray = np.abs(run_variant(z, mechs) - wells) > c.DISAGREE
+        return disagrees
 
     base = mask(())
     if not base.any():
@@ -119,10 +131,13 @@ def seed_window(division: str, start: int, stop: int, target: str) -> list[float
 
 
 def main() -> None:
-    results_in = json.loads(RESULTS.read_text())
+    try:
+        results_in = json.loads(RESULTS.read_text())
+    except (OSError, ValueError) as error:
+        raise RuntimeError(f"cannot read the study results at {RESULTS}") from error
     examples = results_in["example_episodes_by_label"]
     _, wells_f = c.default_factors()
-    results: dict[str, dict] = {}
+    results: dict[str, dict[str, Any]] = {}
     for target, episodes_ in examples.items():
         if target == "residual" or target.startswith("overdetermined"):
             continue
@@ -152,9 +167,14 @@ def main() -> None:
             "wells_pdsi": [float(v) for v in wells],
         }
         print(target, len(seed), "->", len(active), flush=True)
+    if OUT.is_symlink():
+        raise SystemExit(f"refusing to write through a symlink: {OUT}")
     OUT.write_text(json.dumps(results, indent=1, sort_keys=True) + "\n")
     print(f"wrote {OUT}")
 
 
 if __name__ == "__main__":
+    if sys.argv[1:]:
+        print(f"usage: {Path(__file__).name}\nunknown arguments: {sys.argv[1:]}", file=sys.stderr)
+        raise SystemExit(2)
     main()

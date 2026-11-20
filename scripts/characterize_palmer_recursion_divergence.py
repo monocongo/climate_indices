@@ -8,20 +8,28 @@ Hypotheses, thresholds and class definitions are pre-registered in
 ``docs/research/reference-papers/palmer-recursion-divergence.md``.
 
 Run: ``uv run python scripts/characterize_palmer_recursion_divergence.py``
-(about 15 minutes; writes ``palmer-recursion-divergence-results.json``).
+(about 10 minutes; writes ``palmer-recursion-divergence-results.json``).
 ``... probe`` reruns the exploratory first-state-divergence probe quoted in deviation D1.
+Any other argument is rejected. The full run refuses to write when the studied modules
+differ from the pinned commit, and exits 1 when a pre-registered hypothesis fails.
 """
 
 from __future__ import annotations
 
 import json
+import shutil
+import subprocess
 import sys
 import types
+from collections.abc import Callable
 from dataclasses import replace
+from functools import lru_cache
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 
+import climate_indices
 from climate_indices.drought import _palmer_pdi, _palmer_wells
 from climate_indices.drought._palmer_duration import DurationFactors
 from climate_indices.drought._palmer_pdi import PdiDurationFactors
@@ -32,14 +40,46 @@ NCLIMDIV = ROOT / "tests" / "fixture" / "nclimdiv"
 START_YEAR = 1895
 DISAGREE = 1e-9
 THRESHOLDS = (1e-9, 0.01, 0.5, 1.0)
+PINNED_COMMIT = "46481c48c79e878eb50ce3398ba062fd3a1ff38c"
+STUDIED_SOURCES = (
+    "src/climate_indices/drought/_palmer_pdi.py",
+    "src/climate_indices/drought/_palmer_wells.py",
+    "src/climate_indices/drought/_palmer_duration.py",
+)
 
 
-def divisions() -> list[str]:
-    return json.loads((NCLIMDIV / "divisions.json").read_text())
+@lru_cache(maxsize=1)
+def divisions() -> tuple[str, ...]:
+    path = NCLIMDIV / "divisions.json"
+    try:
+        return tuple(json.loads(path.read_text()))
+    except (OSError, ValueError) as error:
+        raise RuntimeError(f"cannot read the division list at {path}") from error
 
 
 def load_z(division: str) -> np.ndarray:
-    return np.load(FIXTURE / division / "zindex.npy")
+    """Load a division's Z series, rejecting a name that resolves outside the fixture tree."""
+    if division not in divisions():
+        raise ValueError(f"unknown division {division!r}")
+    path = (FIXTURE / division / "zindex.npy").resolve()
+    if not path.is_relative_to(FIXTURE.resolve()):
+        raise ValueError(f"division {division!r} resolves outside the fixture tree")
+    array: np.ndarray = np.load(path)
+    return array
+
+
+def verify_pinned_sources() -> None:
+    """Refuse to record results when the studied modules differ from the pinned commit."""
+    git = shutil.which("git")
+    if git is None:
+        raise SystemExit("git is unavailable; cannot verify the studied sources against the pin")
+    for path in STUDIED_SOURCES:
+        # nosec B603 B607 - literal git arguments, no shell
+        proc = subprocess.run([git, "diff", "--quiet", PINNED_COMMIT, "--", path], cwd=ROOT)
+        if proc.returncode == 1:
+            raise SystemExit(f"{path} differs from the pinned commit {PINNED_COMMIT}; update the pin first")
+        if proc.returncode != 0:
+            raise SystemExit(f"cannot compare {path} with {PINNED_COMMIT} (git exit {proc.returncode})")
 
 
 def default_factors() -> tuple[PdiDurationFactors, DurationFactors]:
@@ -76,18 +116,23 @@ def episodes(mask: np.ndarray) -> list[tuple[int, int]]:
     return [(int(a), int(b)) for a, b in zip(edges[::2], edges[1::2], strict=True)]
 
 
-def headline(config: str) -> dict:
+def headline(config: str) -> dict[str, Any]:
     nclim = np.load(NCLIMDIV / "pdsi.npy")
+    divs = divisions()
+    if nclim.shape[0] != len(divs):
+        raise ValueError(f"nclimdiv pdsi has {nclim.shape[0]} rows but there are {len(divs)} divisions")
     n_months = 0
     counts = dict.fromkeys(THRESHOLDS, 0)
     max_abs = 0.0
     closer_pdi = closer_wells = ties = 0
     per_division: dict[str, float] = {}
-    for row, division in enumerate(divisions()):
+    for row, division in enumerate(divs):
         z = load_z(division)
         pdi_f, wells_f = default_factors() if config == "P" else fitted_factors(division)
         pdi_pdsi, wells, _ = run_both(z, pdi_f, wells_f)
         diff = np.abs(pdi_pdsi - wells.pdsi)
+        if nclim[row].size != diff.size:
+            raise ValueError(f"nclimdiv row {row} has {nclim[row].size} months but {division} has {diff.size}")
         n_months += diff.size
         for t in THRESHOLDS:
             counts[t] += int(np.sum(diff > t))
@@ -114,7 +159,7 @@ STATE_TOL = 1e-9
 _PDI_STATEMENTS = ("_statement_170", "_statement_180", "_statement_190", "_statement_200", "_statement_210")
 
 
-def trace_pdi(z: np.ndarray, factors: PdiDurationFactors):
+def trace_pdi(z: np.ndarray, factors: PdiDurationFactors) -> tuple[_palmer_pdi.PdiResult, list[dict[str, Any]]]:
     """Run pdi.f and record, per month, the pre-state, the post-state and the statements entered.
 
     The statement functions and ``_advance_month`` are wrapped for the duration of the
@@ -122,10 +167,10 @@ def trace_pdi(z: np.ndarray, factors: PdiDurationFactors):
     """
     originals = {name: getattr(_palmer_pdi, name) for name in (*_PDI_STATEMENTS, "_advance_month")}
     entered: list[str] = []
-    rows: list[dict] = []
+    rows: list[dict[str, Any]] = []
 
-    def make(name):
-        def wrapper(*args):
+    def make(name: str) -> Callable[..., Any]:
+        def wrapper(*args: Any) -> Any:
             active = args[-1]
             if bool(np.any(active)):
                 entered.append(name.removeprefix("_statement_"))
@@ -133,7 +178,7 @@ def trace_pdi(z: np.ndarray, factors: PdiDurationFactors):
 
         return wrapper
 
-    def advance(fac, state, year, month):
+    def advance(fac: Any, state: Any, year: int, month: int) -> None:
         entered.clear()
         pre = (float(state.pro[0]), float(state.x3[0]))
         originals["_advance_month"](fac, state, year, month)
@@ -151,10 +196,10 @@ def trace_pdi(z: np.ndarray, factors: PdiDurationFactors):
             }
         )
 
-    for name in _PDI_STATEMENTS:
-        setattr(_palmer_pdi, name, make(name))
-    _palmer_pdi._advance_month = advance
     try:
+        for name in _PDI_STATEMENTS:
+            setattr(_palmer_pdi, name, make(name))
+        _palmer_pdi._advance_month = advance  # type: ignore[assignment]
         result = run_pdi(z, factors)
     finally:
         for name, fn in originals.items():
@@ -162,7 +207,18 @@ def trace_pdi(z: np.ndarray, factors: PdiDurationFactors):
     return result, rows
 
 
-def trace_wells(z: np.ndarray, factors: DurationFactors):
+def _spell_is_open(x3: float) -> bool:
+    """True when ``x3`` marks an established spell.
+
+    ``0.0`` is the library's exact-zero sentinel, not a near-equality: both recursions
+    clear a spell by assigning ``0.0`` exactly. The rationale is in
+    ``docs/algorithm_refs/palmer.md`` ("Exact-zero comparisons"), so the comparison
+    stays exact and Sonar's S1244 rule is suppressed here.
+    """
+    return x3 != 0.0  # NOSONAR: 0.0 is an exact state sentinel, not a tolerance
+
+
+def trace_wells(z: np.ndarray, factors: DurationFactors) -> tuple[_palmer_wells.WellsResult, list[tuple[str, ...]]]:
     """Run Wells and record, per month, which decision arm ran."""
     orig_continue = _palmer_wells._continue_spell
     orig_abate = _palmer_wells._abatement_transition
@@ -170,31 +226,37 @@ def trace_wells(z: np.ndarray, factors: DurationFactors):
     arms: list[str] = []
     log: list[tuple[str, ...]] = []
 
-    def cont(state, z_value, fac, transition):
+    def cont(state: Any, z_value: float, fac: Any, transition: Any) -> Any:
         arms.clear()
-        if state.x3 == 0.0:
+        if not _spell_is_open(state.x3):
             arms.append("no-spell")
         out = orig_continue(state, z_value, fac, transition)
-        if state.x3 != 0.0 and not arms:
+        if _spell_is_open(state.x3) and not arms:
             arms.append("intensify")
         return out
 
-    def abate(*args, **kwargs):
+    def abate(*args: Any, **kwargs: Any) -> Any:
         out = orig_abate(*args, **kwargs)
-        arms.append("abate-fizzle" if out.selection == 3 else "abate-end" if out.spell_terminated else "abate-cont")
+        if out.selection == 3:
+            arm = "abate-fizzle"
+        elif out.spell_terminated:
+            arm = "abate-end"
+        else:
+            arm = "abate-cont"
+        arms.append(arm)
         return out
 
-    def establish(transition):
+    def establish(transition: Any) -> Any:
         out = orig_establish(transition)
-        if transition.x3 == 0.0:
+        if not _spell_is_open(transition.x3):
             arms.append(f"establish-sel{out.selection}")
         log.append(tuple(arms))
         return out
 
-    _palmer_wells._continue_spell = cont
-    _palmer_wells._abatement_transition = abate
-    _palmer_wells._establish_spell = establish
     try:
+        _palmer_wells._continue_spell = cont  # type: ignore[assignment]
+        _palmer_wells._abatement_transition = abate
+        _palmer_wells._establish_spell = establish
         result = _palmer_wells.calculate(z, factors=factors)
     finally:
         _palmer_wells._continue_spell = orig_continue
@@ -203,14 +265,15 @@ def trace_wells(z: np.ndarray, factors: DurationFactors):
     return result, log
 
 
-def state_mismatch(pdi_rows: list[dict], wells: _palmer_wells.WellsResult) -> np.ndarray:
+def state_mismatch(pdi_rows: list[dict[str, Any]], wells: _palmer_wells.WellsResult) -> np.ndarray:
     """True where the two machines' post-month (x1, x2, x3, probability) differ."""
     p = np.array([r["post"] for r in pdi_rows])
     w = np.column_stack([wells.x1, wells.x2, wells.x3, wells.probability])
-    return np.any(np.abs(p - w) > STATE_TOL, axis=1)
+    differs: np.ndarray = np.any(np.abs(p - w) > STATE_TOL, axis=1)
+    return differs
 
 
-def signatures(config: str = "P") -> dict:
+def signatures(config: str = "P") -> dict[str, Any]:
     out: dict[str, int] = {}
     n_state_eps = n_out_eps = no_state = 0
     for division in divisions():
@@ -223,7 +286,7 @@ def signatures(config: str = "P") -> dict:
         n_out_eps += len(episodes(omis))
         for s, _ in episodes(smis):
             n_state_eps += 1
-            key = f"pre_spell={prow[s]['pre_x3'] != 0.0} pdi={'/'.join(prow[s]['branch'])} wells={'/'.join(wlog[s])}"
+            key = f"pre_spell={_spell_is_open(prow[s]['pre_x3'])} pdi={'/'.join(prow[s]['branch'])} wells={'/'.join(wlog[s])}"
             out[key] = out.get(key, 0) + 1
         for s, e in episodes(omis):
             if not smis[max(0, s - 1) : e].any():
@@ -271,9 +334,28 @@ MECHANISMS: dict[str, list[tuple[str, str, int]]] = {
 MECH_NAMES = tuple(MECHANISMS)
 
 
+@lru_cache(maxsize=1)
+def _pdi_source() -> str:
+    """Read the ``_palmer_pdi`` source once so a mid-run edit cannot mix two versions.
+
+    Refuses a symlink and any file outside the module's own package directory.
+    """
+    spec = _palmer_pdi.__spec__
+    origin = spec.origin if spec is not None else None
+    if origin is None or not Path(origin).is_file():
+        raise RuntimeError(f"cannot read the _palmer_pdi source at {origin!r}")
+    path = Path(origin)
+    if path.is_symlink():
+        raise RuntimeError(f"refusing to read the _palmer_pdi source through the symlink {path}")
+    package = Path(climate_indices.__file__).resolve().parent
+    if not path.resolve().is_relative_to(package):
+        raise RuntimeError(f"the _palmer_pdi source at {path} is outside the package directory {package}")
+    return path.read_text()
+
+
 def build_pdi_variant(mechs: tuple[str, ...]) -> types.ModuleType:
     """An in-memory copy of ``_palmer_pdi`` with the named mechanisms switched to the Wells rule."""
-    source = Path(_palmer_pdi.__file__).read_text()
+    source = _pdi_source()
     for mech in mechs:
         for old, new, expected in MECHANISMS[mech]:
             if source.count(old) != expected:
@@ -284,7 +366,8 @@ def build_pdi_variant(mechs: tuple[str, ...]) -> types.ModuleType:
     module.__file__ = f"<{name}>"
     sys.modules[name] = module
     try:
-        exec(compile(source, module.__file__, "exec"), module.__dict__)  # noqa: S102  # nosec B102 - the library's own source, fixed edits
+        # pi-lens-ignore: no-compile-call -- the source is the installed module's own text with literal edits
+        exec(compile(source, module.__file__, "exec"), module.__dict__)  # nosec B102 - the library's own source, edited by literals
     finally:
         sys.modules.pop(name, None)
     return module
@@ -312,26 +395,35 @@ def episode_label(full: np.ndarray, loo: dict[str, np.ndarray], singles: dict[st
     return "overdetermined:" + "+".join(m for m in MECH_NAMES if not singles[m][s:e].any())
 
 
-def attribute(wells_cache: dict[str, np.ndarray], base: dict[str, np.ndarray]) -> dict:
-    """Leave-one-out attribution of every base episode (deviation D2).
-
-    An episode's necessary set is the mechanisms whose omission from the full
-    harmonization leaves the episode's span disagreeing.
-    """
-    full = variant_masks(MECH_NAMES, wells_cache)
-    singles = {m: variant_masks((m,), wells_cache) for m in MECH_NAMES}
-    loo = {m: variant_masks(tuple(x for x in MECH_NAMES if x != m), wells_cache) for m in MECH_NAMES}
+def _remaining_months(
+    base: dict[str, np.ndarray],
+    full: dict[str, np.ndarray],
+    singles: dict[str, dict[str, np.ndarray]],
+    loo: dict[str, dict[str, np.ndarray]],
+) -> dict[str, int]:
+    """Disagreeing months left by the base, full and leave-one-out harmonizations."""
     remaining = {
         "none": int(sum(m.sum() for m in base.values())),
         "all": int(sum(m.sum() for m in full.values())),
-        **{f"only {m}": int(sum(v.sum() for v in singles[m].values())) for m in MECH_NAMES},
-        **{f"all but {m}": int(sum(v.sum() for v in loo[m].values())) for m in MECH_NAMES},
     }
+    for mech in MECH_NAMES:
+        remaining[f"only {mech}"] = int(sum(v.sum() for v in singles[mech].values()))
+        remaining[f"all but {mech}"] = int(sum(v.sum() for v in loo[mech].values()))
+    return remaining
+
+
+def _label_episodes(
+    base: dict[str, np.ndarray],
+    full: dict[str, np.ndarray],
+    singles: dict[str, dict[str, np.ndarray]],
+    loo: dict[str, dict[str, np.ndarray]],
+) -> tuple[dict[str, int], dict[str, int], dict[str, list[tuple[int, int, str]]]]:
+    """Count base episodes and months per label and keep each episode's span."""
     labels: dict[str, int] = {}
     months: dict[str, int] = {}
     episode_labels: dict[str, list[tuple[int, int, str]]] = {}
     for division in divisions():
-        episode_labels[division] = []
+        per_division: list[tuple[int, int, str]] = []
         for s, e in episodes(base[division]):
             label = episode_label(
                 full[division],
@@ -340,11 +432,25 @@ def attribute(wells_cache: dict[str, np.ndarray], base: dict[str, np.ndarray]) -
                 s,
                 e,
             )
-            episode_labels[division].append((s, e, label))
+            per_division.append((s, e, label))
             labels[label] = labels.get(label, 0) + 1
             months[label] = months.get(label, 0) + (e - s)
+        episode_labels[division] = per_division
+    return labels, months, episode_labels
+
+
+def attribute(wells_cache: dict[str, np.ndarray], base: dict[str, np.ndarray]) -> dict[str, Any]:
+    """Leave-one-out attribution of every base episode (deviation D2).
+
+    An episode's necessary set is the mechanisms whose omission from the full
+    harmonization leaves the episode's span disagreeing.
+    """
+    full = variant_masks(MECH_NAMES, wells_cache)
+    singles = {m: variant_masks((m,), wells_cache) for m in MECH_NAMES}
+    loo = {m: variant_masks(tuple(x for x in MECH_NAMES if x != m), wells_cache) for m in MECH_NAMES}
+    labels, months, episode_labels = _label_episodes(base, full, singles, loo)
     return {
-        "remaining_disagreeing_months": remaining,
+        "remaining_disagreeing_months": _remaining_months(base, full, singles, loo),
         "episodes_by_label": dict(sorted(labels.items())),
         "months_by_label": dict(sorted(months.items())),
         "_episode_labels": episode_labels,
@@ -356,7 +462,8 @@ PALMER_EDGES = (0.5, 1.0, 2.0, 3.0, 4.0)
 
 def palmer_category(x: np.ndarray) -> np.ndarray:
     """Signed Palmer class: 0 near normal, +-1 incipient ... +-5 extreme (left-closed in magnitude)."""
-    return (np.sign(x) * np.digitize(np.abs(x), PALMER_EDGES)).astype(int)
+    categories: np.ndarray = (np.sign(x) * np.digitize(np.abs(x), PALMER_EDGES)).astype(int)
+    return categories
 
 
 def trace_pdi_x3(z: np.ndarray, factors: PdiDurationFactors) -> tuple[np.ndarray, np.ndarray]:
@@ -364,11 +471,11 @@ def trace_pdi_x3(z: np.ndarray, factors: PdiDurationFactors) -> tuple[np.ndarray
     original = _palmer_pdi._advance_month
     x3: list[float] = []
 
-    def advance(fac, state, year, month):  # noqa: ANN001, ANN202
+    def advance(fac: Any, state: Any, year: int, month: int) -> None:
         original(fac, state, year, month)
         x3.append(float(state.px3[year, month, 0]))
 
-    _palmer_pdi._advance_month = advance
+    _palmer_pdi._advance_month = advance  # type: ignore[assignment]
     try:
         result = run_pdi(z, factors)
     finally:
@@ -389,7 +496,7 @@ def histogram(lengths: list[int]) -> dict[str, int]:
     return {name: sum(lo <= n <= hi for n in lengths) for name, lo, hi in bins}
 
 
-def run_all() -> dict:
+def run_all() -> dict[str, Any]:
     divs = divisions()
     pdi_pdsi, wells_pdsi, base, x3_pairs = {}, {}, {}, {}
     for division in divs:
@@ -401,6 +508,7 @@ def run_all() -> dict:
         base[division] = np.abs(p - w.pdsi) > DISAGREE
         x3_pairs[division] = (x3_p, w.x3)
     n_months = sum(m.size for m in base.values())
+    n_series = next(iter(base.values())).size
 
     head_p = headline("P")
     head_f = headline("F")
@@ -423,7 +531,7 @@ def run_all() -> dict:
     episode_labels = attribution.pop("_episode_labels")
 
     lengths = [e - s for d in divs for s, e in episodes(base[d])]
-    examples: dict[str, list[list]] = {}
+    examples: dict[str, list[list[Any]]] = {}
     for d in divs:
         for s, e, label in episode_labels[d]:
             examples.setdefault(label, []).append([e - s, d, s, e])
@@ -431,7 +539,7 @@ def run_all() -> dict:
     by_decade: dict[str, list[int]] = {}
     by_season = np.zeros(12, dtype=int)
     cat_diff = 0
-    largest: dict[str, dict] = {}
+    largest: dict[str, dict[str, Any]] = {}
     for d in divs:
         idx = np.flatnonzero(base[d])
         for t in idx:
@@ -451,9 +559,9 @@ def run_all() -> dict:
                     "month": (s + k) % 12 + 1,
                 }
     decade_totals: dict[str, int] = {}
-    for t in range(1536):
-        decade_totals[str((START_YEAR + t // 12) // 10 * 10)] = decade_totals.get(
-            str((START_YEAR + t // 12) // 10 * 10), 0
+    for month in range(n_series):
+        decade_totals[str((START_YEAR + month // 12) // 10 * 10)] = decade_totals.get(
+            str((START_YEAR + month // 12) // 10 * 10), 0
         ) + len(divs)
     decade_rate = {k: round(v[0] / decade_totals[k], 6) for k, v in sorted(by_decade.items())}
 
@@ -461,14 +569,14 @@ def run_all() -> dict:
     h5_n = h5_bad = 0
     for d in divs:
         x3_p, x3_w = x3_pairs[d]
-        for t in range(3, 1536):
-            window_p, window_w = x3_p[t - 3 : t], x3_w[t - 3 : t]
+        for month in range(3, n_series):
+            window_p, window_w = x3_p[month - 3 : month], x3_w[month - 3 : month]
             same_sign = np.all(np.sign(window_p) == np.sign(window_w)) and np.all(
                 np.sign(window_p) == np.sign(window_p[0])
             )
             if same_sign and np.all(np.abs(window_p) > 1.5) and np.all(np.abs(window_w) > 1.5):
                 h5_n += 1
-                h5_bad += int(base[d][t])
+                h5_bad += int(base[d][month])
 
     closer = head_p["closer_to_nclimdiv"]
     decided = closer["pdi"] + closer["wells"]
@@ -516,19 +624,20 @@ def run_all() -> dict:
     }
 
 
-def _complement_fraction(m, b):  # noqa: ANN001, ANN202
+def _complement_fraction(m: float, b: float) -> float:
     """The Wells weighting-fraction form, ``1 - m / (m + b)``, for the P-fp run."""
     return 1.0 - m / (m + b)
 
 
 def division_form(wells: DurationFactors) -> DurationFactors:
     """Wells factors with the pdi.f division form ``b / (m + b)``, for the P-fp2 run."""
-    return replace(
+    divided: DurationFactors = replace(
         wells,
         wetc=wells.wetb / wells.wet_denominator,
         dryc=wells.wetb / (wells.drym + wells.wetb),
         dry_spell_c=wells.dryb / wells.dry_denominator,
     )
+    return divided
 
 
 def disagree_masks(variant: str) -> dict[str, np.ndarray]:
@@ -538,9 +647,9 @@ def disagree_masks(variant: str) -> dict[str, np.ndarray]:
     Wells the pdi.f division form.
     """
     original = _palmer_pdi._weighting_fraction
-    if variant == "fp":
-        _palmer_pdi._weighting_fraction = _complement_fraction
     try:
+        if variant == "fp":
+            _palmer_pdi._weighting_fraction = _complement_fraction  # type: ignore[assignment]
         masks = {}
         for division in divisions():
             pdi_f, wells_f = default_factors()
@@ -554,10 +663,22 @@ def disagree_masks(variant: str) -> dict[str, np.ndarray]:
 
 
 if __name__ == "__main__":
-    if sys.argv[1:] == ["probe"]:
+    arguments = sys.argv[1:]
+    if arguments == ["probe"]:
         r = signatures("P")
         print(r["n_out_episodes"], r["n_state_episodes"], r["out_without_state"])
+    elif arguments:
+        print(f"usage: {Path(__file__).name} [probe]\nunknown arguments: {arguments}", file=sys.stderr)
+        raise SystemExit(2)
     else:
+        verify_pinned_sources()
         out = ROOT / "docs" / "research" / "reference-papers" / "palmer-recursion-divergence-results.json"
-        out.write_text(json.dumps(run_all(), indent=1, sort_keys=True) + "\n")
+        if out.is_symlink():
+            raise SystemExit(f"refusing to write through a symlink: {out}")
+        results = run_all()
+        out.write_text(json.dumps(results, indent=1, sort_keys=True) + "\n")
         print(f"wrote {out}")
+        failed = [name for name, hypothesis in results["hypotheses"].items() if not hypothesis["pass"]]
+        if failed:
+            print(f"failed hypotheses: {', '.join(failed)}", file=sys.stderr)
+        raise SystemExit(1 if failed else 0)
