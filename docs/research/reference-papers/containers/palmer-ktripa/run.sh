@@ -11,5 +11,6 @@ UPSTREAM_SHA=c73b22c89218236e766fbf2895f2a16ebd8f366e   # ktripa/scpdsi-tools ma
 
 mkdir -p "$WORK"
 [[ -d "$WORK/upstream/.git" ]] || git clone -q https://github.com/ktripa/scpdsi-tools.git "$WORK/upstream"
-git -C "$WORK/upstream" checkout -q "$UPSTREAM_SHA"
+git -C "$WORK/upstream" reset --hard -q "$UPSTREAM_SHA"
+git -C "$WORK/upstream" clean -fdx -q
 uv run --project "$REPO" python -I "$HERE/run_all.py" "$WORK/upstream" "$REPO" "$WORK/out"

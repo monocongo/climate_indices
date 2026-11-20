@@ -2,7 +2,7 @@
 # REFIMPL-30: run JonKing93/pdsi (MATLAB, MIT) under GNU Octave on the 344 fixture divisions.
 # Upstream is cloned at run time at a pinned commit and mounted read-only; the container has no network.
 #
-# usage: run.sh <repo-root> <work-dir>      needs: git, docker, uv (or python3 with numpy)
+# usage: run.sh <repo-root> <work-dir>      needs: git, docker, uv
 set -euo pipefail
 REPO=$(cd "$1" && pwd)
 WORK=$(mkdir -p "$2" && cd "$2" && pwd)
@@ -13,7 +13,8 @@ IMAGE=gnuoctave/octave@sha256:100d394c57b86469748d26ddafcf73a1074338a66dabcababe
 
 mkdir -p "$WORK/data" "$WORK/out"
 [[ -d "$WORK/upstream/.git" ]] || git clone -q https://github.com/JonKing93/pdsi.git "$WORK/upstream"
-git -C "$WORK/upstream" checkout -q "$UPSTREAM_SHA"
+git -C "$WORK/upstream" reset --hard -q "$UPSTREAM_SHA"
+git -C "$WORK/upstream" clean -fdx -q
 uv run --project "$REPO" python -I "$HERE/prep.py" "$REPO" "$WORK/data"
 docker run --rm --platform linux/amd64 --network none \
   -v "$WORK/upstream:/work/upstream:ro" -v "$WORK/data:/work/data:ro" -v "$WORK/out:/work/out" \

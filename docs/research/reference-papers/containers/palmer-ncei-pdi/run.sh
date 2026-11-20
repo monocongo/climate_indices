@@ -3,7 +3,7 @@
 # Nothing from upstream is committed; this fetches it, verifies the pinned checksums, patches
 # only the documented parameter statement in a scratch copy, compiles and runs.
 #
-# usage: run.sh <repo-root> <work-dir>      needs: curl, gfortran, uv (or python3 with numpy)
+# usage: run.sh <repo-root> <work-dir>      needs: curl, gfortran, uv
 set -euo pipefail
 REPO=$(cd "$1" && pwd)
 WORK=$(mkdir -p "$2" && cd "$2" && pwd)
