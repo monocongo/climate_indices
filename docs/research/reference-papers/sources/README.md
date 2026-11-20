@@ -40,6 +40,8 @@ decides, every entry is `pending` or `no`, and files stay under `local/` or `ext
 - Downloaded files are untrusted: one new directory each, hash it, never execute or
   compile it, and pass paths as arguments.
 
+Default pytest discovery searches only `tests/` to avoid importing downloaded reference code.
+
 ## Add a source
 
 1. Add an entry to `sources.yaml`. Fill only what the repo or a rights page states; leave the rest `null`.
