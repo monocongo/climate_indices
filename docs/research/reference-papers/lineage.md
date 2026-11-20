@@ -294,7 +294,7 @@ The other 3 of 6 pairs are *independent*.
 These questions cover every *unknown* pair, plus the residual questions behind some classified ones. Each *unknown* pair in `lineage.json` lists the questions that cover it. They are for REFIMPL-06 ([#1608](https://github.com/monocongo/climate_indices/issues/1608)), except question 7, which is for the maintainer.
 
 1. **Climate Engine API.** Which code computes `standard_index` SPI, SPEI, and EDDI? Does it share code with Earth Engine `GRIDMET/DROUGHT` or NOAA PSL EDDI? (20 *unknown* pairs.)
-2. **Earth Engine `GRIDMET/DROUGHT`** (producer: University of California Merced). Which code produces it, and which plotting-position formula does it use? The catalog says only that "plotting positions are used". (20 *unknown* pairs, 3 shared with question 1.)
+2. **Earth Engine `GRIDMET/DROUGHT`** (producer: University of California Merced). Which code produces it, and which plotting-position formula does it use? The catalog page (accessed 2026-11-20; see Evidence) says only that "plotting positions are used to obtain probabilities which are transformed to indices". (20 *unknown* pairs, 3 shared with question 1.)
 3. **NOAA PSL EDDI.** Is the operational code available, and do the Climate Engine or `GRIDMET/DROUGHT` EDDI use it? Hobbins et al. (2016) lists J. L. Huntington and C. Morton among its authors (`src/climate_indices/cf_metadata_registry.py`:327). The research notes cite Huntington et al. (2017) for Climate Engine, a reference REFIMPL-05 has yet to verify. (2 *unknown* pairs, both shared with question 1 or 2.)
 4. **NCEI.** Does the operational climdiv SPI run the `SPIPE3` code in the public `spi.f`, and does operational nClimDiv run the `pdi.f` lineage? Are `pdinew.f` (which the library translated in 2017), `pdi.f`, and the `pdsi.f` that the Wells C++ was based on the same NCDC program? (15 *unknown* pairs.)
 5. **Dave Meko** (via `JonKing93/pdsi`). Was the MATLAB PDSI script written from NCDC Fortran? A yes would change a `JonKing93/pdsi` pair from *independent* to *shared numerical routine* only where the other implementation is shown to use the same routine. It would not settle which routine operational nClimDiv runs, so the `JonKing93/pdsi` / nClimDiv pair stays *unknown* under question 4.
@@ -333,7 +333,7 @@ For REFIMPL-40 ([#1642](https://github.com/monocongo/climate_indices/issues/1642
 | NDMC SPI Generator | program | SPIgenerator.zip sha256 ce8f37bc (1.7.6.0) | yes |
 | NCL dim_spi_n | program | NCAR/ncl tag 6.6.2 (ni/src/lib/nfpfort/spid.f, spi3.f) | yes |
 | Climate Engine API | service | live service; code not public | no: code not public |
-| Earth Engine GRIDMET/DROUGHT | service | live collection; code not public | no: code not public |
+| Earth Engine GRIDMET/DROUGHT | service | live collection; code not public; catalog page <https://developers.google.com/earth-engine/datasets/catalog/GRIDMET_DROUGHT> (accessed 2026-11-20) | no: code not public |
 | NCEI climdiv SPI | product | operational code not public; NCEI's public spi.f (sha256 bd7bb8ab) is "not an exact copy" | no: code not public |
 | SPEIbase v2.11 | product | spei.csic.es names R SPEI 1.8.1 as the code; that package was read | yes |
 | PyETo | package | woodcrafty/PyETo@79ddd88d | yes |
@@ -440,6 +440,10 @@ Every citation behind a relation, note, stated origin, ancestor, or statement in
 
 - NCAR/ncl tag 6.6.2 (ni/src/lib/nfpfort/spid.f, spi3.f), `ni/src/lib/nfpfort/spi3.f`:42, 69-74: "NCDC code ... This program used the program of John Kleist, Colorado State Univ. ... The subroutines and functions in upper case came from Jon Hosking, IBM. Ned Guttman"
 - NCAR/ncl tag 6.6.2 (ni/src/lib/nfpfort/spid.f, spi3.f), `ni/src/lib/nfpfort/spid.f`:163, 197, 205, 213, 218-219: "gamma - gamma paarameters ... Bogus data array but do something reasonable ... They were all zeroes. ... Use MLE ... alpha = log(av) - sumlog / nact ... gamm  = (1.0d0 + sqrt(1.0d0 + 4.0d0*alpha/ 3.0d0)) /(4.0d0*alpha)"
+
+**Earth Engine GRIDMET/DROUGHT**
+
+- <https://developers.google.com/earth-engine/datasets/catalog/GRIDMET_DROUGHT> (accessed 2026-11-20): "where plotting positions are used to obtain probabilities which are transformed to indices"
 
 **NCEI climdiv SPI**
 

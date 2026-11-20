@@ -91,7 +91,14 @@
       "kind": "service",
       "ref": "live collection; code not public",
       "source_read": false,
-      "origin": []
+      "origin": [
+        {
+          "source": "gridmet_drought",
+          "ref": "https://developers.google.com/earth-engine/datasets/catalog/GRIDMET_DROUGHT",
+          "accessed": "2026-11-20",
+          "quote": "where plotting positions are used to obtain probabilities which are transformed to indices"
+        }
+      ]
     },
     "ncei_climdiv_spi": {
       "name": "NCEI climdiv SPI",
