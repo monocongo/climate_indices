@@ -309,7 +309,7 @@ For REFIMPL-40 ([#1642](https://github.com/monocongo/climate_indices/issues/1642
 - **Layout.** One panel per index, or five grouped panels: SPI and SPEI; PET; EDDI; standard Palmer; scPDSI.
 - **Nodes.** One per implementation in the index's `implementations` list, shaped by `kind` (`package`, `program`, `product`, `service`). Implementations with `source_read: false` get a dashed outline.
 - **Edges.** One per entry in `pairs[].relations`. *Derived*: solid arrow from `from` to `to`. *Validated against*: dashed arrow from `from` to `to`. *Shared numerical routine*: undirected dotted line labelled with `routine`. *Independent* and *unknown* pairs get no edge. `pairs[].direction` gives the arrow for the pair's own class.
-- **Ancestors.** The two entries in `ancestors` (Hosking's L-moment routines and the NCDC Palmer Fortran) are optional context nodes, not implementations, joined to their `descendants`.
+- **Ancestors.** The two entries in `ancestors` (Hosking's L-moment routines and the NCDC Palmer Fortran) are optional context nodes, not implementations. Scope them to each panel: draw an ancestor in an index's panel only if a pair in that index has a relation whose `routine` equals the ancestor's `name`, and join it only to the implementations (`a` and `b`) of those pairs. The `descendants` list spans every index, so it must not be used to draw edges, or the Hosking routines would appear in the PET panels.
 
 ## Limits
 
