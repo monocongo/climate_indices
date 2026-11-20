@@ -14,7 +14,17 @@
 # `containers:` entries, which are relative to this file's directory.
 schema_version: 1
 surveyed: 2026-11-18
-platform_tested: macOS arm64 (Darwin 27.2.0)   # Linux headless run only for the containers section below
+platform_tested: macOS arm64 (Darwin 27.2.0)   # survey; the Linux runs are in linux_smoke below
+linux_smoke:
+  run: 2026-11-20
+  dockerfile: containers/linux-smoke/Dockerfile
+  base_image: rocker/r-ver:4.6.2   # tag only; digest not recorded
+  python: 3.12.16
+  r: 4.6.2
+  platforms: [linux/arm64, linux/amd64 (emulated)]
+  values_reproduced: 19 of 19 at the recorded decimals on both platforms
+  note: calls recreated from comparators.md, not recovered; see its "Linux confirmation" section
+  r_resolved_linux: {SPEI: "1.8.1", SCI: "1.0-3", SEI: "0.2.0", Evapotranspiration: "1.16", climatekit: "0.2.3", lmom: "3.3", lmomco: "2.5.8", TLMoments: "0.7.5.3", fitdistrplus: "1.2-6", gamlss: "5.5-5", flexsurv: "2.3.2", zoo: "1.9-1", xts: "0.14.3", goftest: "1.2-3", checkmate: "2.3.4"}
 runtimes:
   python: 3.12.13        # one `uv venv` per package, uv 0.13.9
   r: 4.6.2

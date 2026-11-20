@@ -36,6 +36,9 @@ RUN set -eu; \
     rm -f /tmp/*.tar.gz
 
 # R: a private library. The CRAN tarballs are hash-checked, then installed with their dependencies.
+# TAR=internal makes R unpack with its own untar: GNU tar fails to create nested directories
+# (`Cannot mkdir: Function not implemented`) on the climatekit tarball under linux/amd64
+# emulation on Apple silicon. Plain `ubuntu:26.04` reproduces it, so it is not a package fault.
 ENV R_LIBS=/opt/rlib
 RUN set -eu; mkdir -p /opt/rlib; \
     cran() { fetch.sh "https://cran.r-project.org/src/contrib/$1" "$2" "/tmp/$1"; }; \
@@ -44,7 +47,7 @@ RUN set -eu; mkdir -p /opt/rlib; \
     cran SEI_0.2.0.tar.gz 55ac099c9d0794e61c792c30dc340de655d05875fdd6e15c82b887c097900c93; \
     cran Evapotranspiration_1.16.tar.gz 2550a842196941f1e6c40be5e61ee480aab96d13b8828154980a7207844bbe55; \
     cran climatekit_0.2.3.tar.gz f3bdc9f8425c35c51174a011606d810083f4b87e81e2df13d7229b6e3e023531; \
-    Rscript -e 'install.packages("remotes"); for (f in Sys.glob("/tmp/*.tar.gz")) remotes::install_local(f, upgrade = "never", dependencies = NA)'; \
+    TAR=internal Rscript -e 'install.packages("remotes"); for (f in Sys.glob("/tmp/*.tar.gz")) remotes::install_local(f, upgrade = "never", dependencies = NA)'; \
     rm -f /tmp/*.tar.gz
 
 COPY inputs.py smoke_py.py smoke_r.R expected.tsv run.sh /smoke/
