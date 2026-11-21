@@ -1,6 +1,7 @@
 # Linux confirmation of the Python and R comparators (follow-up to REFIMPL-03, issue 1605).
-# Pins and sha256 values come from ../../comparators.lock.yaml. The build fails if a downloaded
-# sdist or CRAN tarball does not match its recorded sha256. CRAN dependencies are not pinned:
+# Pins and sha256 values come from ../../comparators.lock.yaml; tests/test_comparators_lock.py
+# checks they still agree. The build fails if a downloaded sdist or CRAN tarball does not match
+# its recorded sha256. Neither the Python transitive dependencies nor the CRAN ones are pinned:
 # the versions the image resolves are printed by run.sh and recorded in comparators.md.
 #
 #   docker build -t refimpl-linux-smoke docs/research/reference-papers/containers/linux-smoke
@@ -18,18 +19,18 @@ RUN apt-get update \
 
 COPY fetch.sh /usr/local/bin/fetch.sh
 
-# Python: one Python 3.12 venv per package. PyETo is pinned by commit (not on PyPI).
+# Python: one Python 3.12.16 venv per package. PyETo is pinned by commit (not on PyPI).
 ENV UV_PYTHON_INSTALL_DIR=/opt/python
 RUN set -eu; \
     fetch() { fetch.sh "$1" "$2" "/tmp/$3"; }; \
-    inst() { uv venv --python 3.12 "/opt/venvs/$1"; uv pip install --python "/opt/venvs/$1/bin/python" "/tmp/$2"; }; \
+    inst() { uv venv --python 3.12.16 "/opt/venvs/$1"; uv pip install --python "/opt/venvs/$1/bin/python" "/tmp/$2"; }; \
     mkdir -p /opt/venvs; \
     fetch https://files.pythonhosted.org/packages/source/x/xclim/xclim-1.0.0.tar.gz e06477defa0ce9bb599e426ff129c3f729bceae856c38cccdd1b69aeccf1c3d6 xclim-1.0.0.tar.gz; \
     fetch https://files.pythonhosted.org/packages/source/s/spei/spei-0.8.3.tar.gz 502214088d77e2fcbae515747bff411577b843b2a8ed4fb82e9bef3e30ecc82f spei-0.8.3.tar.gz; \
     fetch https://files.pythonhosted.org/packages/source/s/standard-precip/standard_precip-2.0.0.tar.gz 6a1f65c093568248a093d9ef14e76d62dade6dee6064a381b9f044980f0ce323 standard_precip-2.0.0.tar.gz; \
     fetch https://files.pythonhosted.org/packages/source/p/pyet/pyet-1.5.0.tar.gz 81bedbc592df50f83e917dd76b5d239516c150bae060c39c536169c57042888b pyet-1.5.0.tar.gz; \
     inst xclim xclim-1.0.0.tar.gz; inst spei spei-0.8.3.tar.gz; inst standard_precip standard_precip-2.0.0.tar.gz; inst pyet pyet-1.5.0.tar.gz; \
-    uv venv --python 3.12 /opt/venvs/pyeto; uv pip install --only-binary :all: --python /opt/venvs/pyeto/bin/python numpy==2.5.5 pandas==3.1.1; \
+    uv venv --python 3.12.16 /opt/venvs/pyeto; uv pip install --only-binary :all: --python /opt/venvs/pyeto/bin/python numpy==2.5.5 pandas==3.1.1; \
     git clone https://github.com/woodcrafty/PyETo /opt/PyETo; \
     git -C /opt/PyETo checkout --quiet 79ddd88d727c7ebdad0ce26e220528d2921b66ea; \
     test "$(git -C /opt/PyETo rev-parse HEAD)" = 79ddd88d727c7ebdad0ce26e220528d2921b66ea; \
