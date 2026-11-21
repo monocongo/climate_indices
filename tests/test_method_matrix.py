@@ -88,6 +88,21 @@ def test_absent_is_required_only_without_triples(schema: dict[str, Any], matrix:
         jsonschema.validate(broken, schema)
 
 
+def test_schema_requires_every_axis_and_a_non_empty_alignment(schema: dict[str, Any], matrix: dict[str, Any]) -> None:
+    broken = _copy(matrix)
+    broken["axes"] = broken["axes"][:-1]
+    with pytest.raises(jsonschema.ValidationError):
+        jsonschema.validate(broken, schema)
+    broken = _copy(matrix)
+    broken["aligned_configurations"][0]["positions"] = {}
+    with pytest.raises(jsonschema.ValidationError):
+        jsonschema.validate(broken, schema)
+    broken = _copy(matrix)
+    broken["aligned_configurations"][0]["implementations"] = []
+    with pytest.raises(jsonschema.ValidationError):
+        jsonschema.validate(broken, schema)
+
+
 def test_axes_match_schema_enum(schema: dict[str, Any], matrix: dict[str, Any]) -> None:
     """The renderer uses doc["axes"] as table order; the schema must agree with it and with every entry."""
     assert matrix["axes"] == schema["$defs"]["axis_id"]["enum"]
@@ -102,6 +117,12 @@ def test_renderer_rejects_inconsistent_references(renderer: ModuleType, matrix: 
 
     broken = _copy(matrix)
     broken["aligned_configurations"][0]["family"] = "no_such_family"
+    with pytest.raises(SystemExit):
+        renderer.check_references(broken)
+
+    broken = _copy(matrix)
+    config = next(c for c in broken["aligned_configurations"] if c["family"] == "spei")
+    config["implementations"].append({"implementation": "r_sci", "how": "not an entry of this family"})
     with pytest.raises(SystemExit):
         renderer.check_references(broken)
 
@@ -170,6 +191,17 @@ def test_generated_sections_cover_data_families(renderer: ModuleType, matrix: di
     text = (RESEARCH / "method-matrix.md").read_text(encoding="utf-8")
     assert set(re.findall(r"<!-- BEGIN GENERATED: (\w+) -->", text)) == set(renderer.sections(matrix))
     assert "`dim_spi_n`" in text and "`dim_spi_n(p,`" not in text
+
+
+def test_marker_check_rejects_overlapping_or_orphaned_sections(renderer: ModuleType) -> None:
+    pair = {k: (renderer.BEGIN.format(key=k), renderer.END.format(key=k)) for k in "abc"}
+    renderer.check_markers(f"{pair['a'][0]}x{pair['a'][1]}{pair['b'][0]}y{pair['b'][1]}", ["a", "b"])
+    nested = f"{pair['a'][0]}{pair['b'][0]}y{pair['b'][1]}x{pair['a'][1]}"
+    orphan = f"{pair['a'][0]}x{pair['a'][1]}{pair['c'][0]}z{pair['c'][1]}"
+    missing = f"{pair['a'][0]}x{pair['a'][1]}"
+    for text in (nested, orphan, missing):
+        with pytest.raises(SystemExit):
+            renderer.check_markers(text, ["a", "b"])
 
 
 def test_splice_rejects_misordered_or_duplicate_markers(renderer: ModuleType) -> None:

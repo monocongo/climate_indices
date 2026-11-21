@@ -12,7 +12,8 @@
     "axes": {
       "description": "The axes, in table order. Every entry cell carries every axis.",
       "type": "array",
-      "minItems": 1,
+      "minItems": 12,
+      "maxItems": 12,
       "uniqueItems": true,
       "items": {"$ref": "#/$defs/axis_id"}
     },
@@ -155,12 +156,14 @@
         "positions": {
           "type": "object",
           "description": "The axis positions every listed implementation is set to.",
+          "minProperties": 1,
           "propertyNames": {"$ref": "#/$defs/axis_id"},
           "additionalProperties": {"type": "string"}
         },
         "implementations": {
           "type": "array",
           "description": "Implementations that can be set to the positions, each with the call that does it.",
+          "minItems": 1,
           "items": {
             "type": "object",
             "required": ["implementation", "how"],

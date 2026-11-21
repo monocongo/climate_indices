@@ -9,6 +9,7 @@ The text between the BEGIN and END markers of method-matrix.md is generated; edi
 from __future__ import annotations
 
 import json
+import re
 import sys
 from pathlib import Path
 from typing import Any
@@ -136,6 +137,23 @@ def sections(doc: dict[str, Any]) -> dict[str, str]:
     return out
 
 
+def check_markers(text: str, keys: list[str]) -> None:
+    """Every generated section has one ordered marker pair, none overlaps another, and none is orphaned."""
+    found = set(re.findall(r"<!-- BEGIN GENERATED: (\w+) -->", text))
+    if found != set(keys):
+        raise SystemExit(f"method-matrix.md generates {sorted(found)}, but the document defines {sorted(keys)}")
+    spans = []
+    for key in keys:
+        begin, end = BEGIN.format(key=key), END.format(key=key)
+        if text.count(begin) != 1 or text.count(end) != 1 or text.index(end) < text.index(begin):
+            raise SystemExit(f"markers for {key!r} must appear once each, BEGIN before END, in method-matrix.md")
+        spans.append((text.index(begin), text.index(end), key))
+    spans.sort()
+    for previous, current in zip(spans, spans[1:], strict=False):
+        if current[0] < previous[1]:
+            raise SystemExit(f"generated sections {previous[2]!r} and {current[2]!r} overlap in method-matrix.md")
+
+
 def splice(text: str, key: str, body: str) -> str:
     begin, end = BEGIN.format(key=key), END.format(key=key)
     if text.count(begin) != 1 or text.count(end) != 1 or text.index(end) < text.index(begin):
@@ -156,8 +174,9 @@ def check_references(doc: dict[str, Any]) -> None:
         if cfg["family"] not in doc["families"]:
             raise SystemExit(f"{cfg['id']}: unknown family {cfg['family']!r}")
         members = {i["implementation"] for i in cfg["implementations"]}
-        if not members <= set(impls):
-            raise SystemExit(f"{cfg['id']}: unknown implementation in {sorted(members - set(impls))}")
+        family = {e["implementation"] for e in doc["families"][cfg["family"]]["entries"]}
+        if not members <= family:
+            raise SystemExit(f"{cfg['id']}: {sorted(members - family)} not an entry of family {cfg['family']!r}")
         for triple in cfg["independent_triples"]:
             if len(set(triple)) != 3 or not set(triple) <= members:
                 raise SystemExit(f"{cfg['id']}: triple {triple} is not three distinct members of its implementations")
@@ -180,8 +199,10 @@ def main(argv: list[str]) -> int:
     check_references(doc)
     path = HERE / "method-matrix.md"
     original = _read(path)
+    bodies = sections(doc)
+    check_markers(original, list(bodies))
     text = original
-    for key, body in sections(doc).items():
+    for key, body in bodies.items():
         text = splice(text, key, body)
     if "--check" in argv:
         if text != original:
