@@ -2,7 +2,7 @@
 
 **Ticket:** REFIMPL-34, [#1636](https://github.com/monocongo/climate_indices/issues/1636). **Map:** [#1602](https://github.com/monocongo/climate_indices/issues/1602).
 **Pinned version:** `380aa01f` (`origin/main`, 2026-11-21).
-**Status:** pre-registered. Everything down to "Thresholds" is committed before any measurement is run. "Deviations" and "Results" are added afterwards, in later commits.
+**Status:** measured on macOS arm64; the other four platforms are not run (see "Results"). Everything down to "Out of scope" was committed (`eb710e28`) before any measurement ran; "Deviations" and "Results" were written afterwards. Reproduce with `uv run python scripts/measure_palmer_parity.py measure --out parity.json` (about 45 seconds on four workers) and `uv run pytest tests/test_native_parity_palmer.py`.
 
 ## Question
 
@@ -65,3 +65,62 @@ Boundaries the engineered series target, from `_palmer_wells.py` and `_palmer_pd
 ## Out of scope
 
 Performance ([#1637](https://github.com/monocongo/climate_indices/issues/1637)); the T4 grid ([#1612](https://github.com/monocongo/climate_indices/issues/1612)); changing any kernel, tolerance, or dispatch rule.
+
+## Deviations
+
+All recorded after the first measurement run, because each was found while building the tests.
+
+- **D1.** The plan said a `--digest` flag would add SHA-256 digests. The script records them always, for both the Rust and the Python path, because H5 needs the Python digests and a measurement without them cannot be compared later.
+- **D2.** The plan said to pin the measured maxima. Only macOS arm64 is measured, so only that platform pins `0.0` (`PINNED_RTOL`, `PINNED_ATOL` in `tests/test_native_parity_palmer.py`); every other platform keeps the registry's `1e-10` until the workflow reports it. A `0.0` pin on an unmeasured platform would be a guess.
+- **D3.** The first boundary tests put one boundary value in a series and compared the two paths. They passed, but a probe showed they were vacuous: a lone `z` on a threshold gives `z / 3` whichever branch is taken, and an injected Rust mutant (`pv > 0.0` in place of `pv >= 0.0`) was not caught. They were replaced by corpora of (one ulp below, on, one ulp above) triples with a floor on how many triples change the answer, and the mutants were then caught (see "Results").
+- **D4.** The plan listed NaN gaps as a new case. `test_missing_months_match` already covers them, so only zero precipitation was added.
+
+## Results
+
+Pinned version `380aa01f`, rustc 1.99.0 (LLVM 23.1.1), `aarch64-apple-darwin`, Python 3.14.7, NumPy 2.4.6, release profile `lto = "thin"`, `codegen-units = 1`, no `target-cpu` flag.
+
+### H1, H2: 344 divisions, macOS arm64
+
+For `pdsi()` and `scpdsi()` alike, for each of PDSI, PHDI, PMDI, the Z-Index and the fitted-parameter dictionary: maximum absolute difference **0.0**, maximum relative difference **0.0**, **0** months with a differing sign and **0** NaN-position mismatches. All 344 divisions give a byte-identical float64 array on the two paths, for every output. H1 and H2 hold, at the strongest level (bit equality, not the `1e-10` tolerance).
+
+### H3: engineered boundary series, macOS arm64
+
+| Corpus | Series run on both paths | Series where one ulp changes the answer | Disagreements |
+| --- | --- | --- | --- |
+| Random Z with 60% boundary entries, one entry moved one ulp either way, `pdi.f` recursion | 1,500 triples | 28 (PDSI), 14 (PHDI), 6 (PMDI) | 0 |
+| Same, Wells recursion | 600 triples | 4 | 0 |
+| Established spell, then a threshold value, one ulp either side, `pdi.f` | 384 triples | 26 | 0 |
+| Same, Wells | 384 triples | 30 | 0 |
+| The twelve minimal divergence sequences of REFIMPL-29 | 12, both recursions | n/a | 0 |
+| Division 4002 with 8% of months and one whole year set to zero precipitation | `pdsi()`, `scpdsi()` | n/a | 0 |
+
+The boundary values are 0, -0.0, +-0.15, +-0.5, +-1 and one ulp either side, plus the fitted-factor thresholds `0.5 * wetm`, `0.5 * drym`, `0.5 * (m + b)` and their multiples.
+
+No branch flip is known. H3 holds on this platform.
+
+**Which boundaries are live.** Injected Rust mutants, each built, run against the new tests, and reverted:
+
+| Mutant | Caught |
+| --- | --- |
+| `palmer_pdi.rs` statement 170: `pv >= 0.0` to `pv > 0.0` | yes, by the random straddling corpus |
+| `palmer_pdi.rs` statement 180: `pv <= 0.0` to `pv < 0.0` | yes, by the random straddling corpus |
+| `palmer_pdi.rs` `advance_month`: `z >= 0.15` to `z > 0.15`, and to `z >= 10.0` | no |
+| `palmer_wells.rs` `_continue_spell`: `direction * z >= abatement_z` to `>` | no |
+
+The three uncaught mutants are equivalent mutants, not test gaps. The entry test (`z >= 0.15`; `direction * z >= 0.5 * slope`) is redundant with the sign test that the abatement statement then applies: in an established spell `v` is zero, so `pv = (z - 0.15) + min(v, 0)` is non-negative exactly when `z >= 0.15`, and the Wells abatement path computes `v = 0` at the threshold and continues the spell the same way. The same edit in the Python source (`z >= 10.0` in `_advance_month`; `>` in `_continue_spell`) leaves the output unchanged on 300 random series and on the 1,152-series spell corpus. So the branch that decides the spell state at exactly `z == 0.15` is the `pv` sign test, and the Z-Index sentinels that matter are the exact-zero state variables already tabulated in `docs/algorithm_refs/palmer.md`.
+
+### H4, H5: cross-platform
+
+| Platform | Rust vs Python max abs difference | Rust digests equal to macOS arm64 | Python digests equal to macOS arm64 |
+| --- | --- | --- | --- |
+| macOS arm64 (`aarch64-apple-darwin`) | 0.0 | reference | reference |
+| Linux x86-64 | not run | not run | not run |
+| Linux aarch64 | not run | not run | not run |
+| macOS x86-64 | not run | not run | not run |
+| Windows x86-64 | not run | not run | not run |
+
+H4 and H5 are open. `.github/workflows/palmer-reproducibility.yml` runs all five targets and compares the digests; it has not been dispatched. What can be said without it: the Palmer kernels contain no `mul_add`, the build sets no `target-cpu` and no fast-math flag, and the scPDSI rescale and percentile run in NumPy on both paths, so the only floating-point work specific to the Rust path is the water balance, the CAFEC coefficients, the Z-Index, and the two recursions. A difference on another platform would most plausibly come from the math library (`log10` in the K' factor) or from NumPy's own vectorized kernels, which is what the Python control separates.
+
+### Sentence for the manuscript
+
+On macOS arm64, the Rust and Python Palmer implementations return byte-identical PDSI, PHDI, PMDI, Z-Index and fitted parameters for `pdsi()` and `scpdsi()` on all 344 climate divisions, and agree on 1,500 + 600 + 384 + 384 engineered boundary series; no branch flip was found. The other four release targets are not yet measured.
