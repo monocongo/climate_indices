@@ -17,7 +17,9 @@ CAL = ("1981-01-01", "2010-12-31")
 
 
 def out(label, value):
-    print(f"{label}\t{float(value):.6f}")
+    # Full precision: run.sh rounds to the decimals expected.tsv records, so rounding here
+    # first could turn a real difference into a match.
+    print(f"{label}\t{float(value)!r}")
 
 
 which = sys.argv[1]

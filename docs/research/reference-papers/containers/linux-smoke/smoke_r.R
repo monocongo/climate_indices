@@ -1,4 +1,5 @@
-# R comparator smoke calls. Prints `label<TAB>June-2005 value` lines (NA stays NA).
+# R comparator smoke calls. Prints `label<TAB>June-2005 value` lines (NA stays NA), at full
+# precision so run.sh can round to the decimals expected.tsv records.
 # Inputs: /work/inputs.csv (see inputs.py). Calls and arguments follow the "Smoke evidence"
 # table in comparators.md.
 suppressMessages({ library(SPEI); library(SCI); library(SEI); library(climatekit); library(Evapotranspiration) })
@@ -13,7 +14,7 @@ wb <- ts(d$precip - as.numeric(pet_r), start = c(1895, 1), frequency = 12)
 cal <- c(1981, 1); calend <- c(2010, 12)
 lat <- 25.2292
 
-out <- function(label, x) cat(label, "\t", if (is.na(x)) "NA" else sprintf("%.6f", x), "\n", sep = "")
+out <- function(label, x) cat(label, "\t", if (is.na(x)) "NA" else sprintf("%.17g", x), "\n", sep = "")
 at <- function(x) as.numeric(x)[jun05]
 try_out <- function(label, expr) tryCatch(out(label, expr), error = function(e) { message(label, ": ", conditionMessage(e)); cat(label, "\tERROR\n", sep = "") })
 

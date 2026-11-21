@@ -1,5 +1,5 @@
 #!/bin/sh
-# Run every smoke call, then compare with expected.tsv (the macOS arm64 values) at six decimals.
+# Run every smoke call, then compare with expected.tsv (the macOS arm64 values) at each value's recorded decimals.
 set -u
 V=/opt/venvs
 echo "arch: $(uname -m)  python: $($V/xclim/bin/python -V)  $(R --version | head -1)"
@@ -32,7 +32,7 @@ for k, e in exp.items():
     except ValueError:
         same = False
     bad += not same
-    print(f"{'ok  ' if same else 'DIFF'} {k:34s} {e:>12s} {g:>12s}")
+    print(f"{'ok  ' if same else 'DIFF'} {k:34s} {e:>12s} {g:>20s}")
 print(f"{len(exp) - bad}/{len(exp)} reproduced")
 raise SystemExit(bad > 0)
 PY
