@@ -29,7 +29,7 @@ RUN set -eu; \
     fetch https://files.pythonhosted.org/packages/source/s/standard-precip/standard_precip-2.0.0.tar.gz 6a1f65c093568248a093d9ef14e76d62dade6dee6064a381b9f044980f0ce323 standard_precip-2.0.0.tar.gz; \
     fetch https://files.pythonhosted.org/packages/source/p/pyet/pyet-1.5.0.tar.gz 81bedbc592df50f83e917dd76b5d239516c150bae060c39c536169c57042888b pyet-1.5.0.tar.gz; \
     inst xclim xclim-1.0.0.tar.gz; inst spei spei-0.8.3.tar.gz; inst standard_precip standard_precip-2.0.0.tar.gz; inst pyet pyet-1.5.0.tar.gz; \
-    uv venv --python 3.12 /opt/venvs/pyeto; uv pip install --python /opt/venvs/pyeto/bin/python numpy pandas; \
+    uv venv --python 3.12 /opt/venvs/pyeto; uv pip install --only-binary :all: --python /opt/venvs/pyeto/bin/python numpy==2.5.5 pandas==3.1.1; \
     git clone https://github.com/woodcrafty/PyETo /opt/PyETo; \
     git -C /opt/PyETo checkout --quiet 79ddd88d727c7ebdad0ce26e220528d2921b66ea; \
     test "$(git -C /opt/PyETo rev-parse HEAD)" = 79ddd88d727c7ebdad0ce26e220528d2921b66ea; \
