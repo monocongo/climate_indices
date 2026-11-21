@@ -89,7 +89,7 @@ three printed inconsistencies above, and every excluded month is named in the te
 **Transcription.** Pass 1 and the blind pass 2 agree on all 2,600 cells (six files, no
 disagreement), and both found the same printing oddities independently.
 
-**Corrections to the pre-registered bounds, made after the first run.** Two bounds omitted a
+**Corrections to the pre-registered bounds, made after the first run.** One bound omitted a
 rounding that the paper itself documents, and one count was mis-stated; the tolerances (0.01,
 0.02) are unchanged.
 
@@ -108,7 +108,7 @@ rounding that the paper itself documents, and one count was mis-stated; the tole
 | H2 coefficients | 91 of 92 testable Table 3 values lie inside the interval implied by Table 2's rounded means (75 of the 92 intervals are narrower than 0.02, so informative). Western Kansas May beta prints 0.1155; R = 0.38 and PR = 3.36 allow at most 0.1148. |
 | H3 K normalization | Reproduced for both regions within the propagated bound (largest difference 0.0053, western Kansas). Equation 26 for K' from Table 2's means and Table 9's D-bar holds in 23 of 24 months; central Iowa December prints 1.55 where the means give 1.566 (0.016 against a bound of 0.013). |
 | H4 P-hat, d, Z | Reproduced for all 36 months within the propagated bound (largest differences: P-hat 0.0142, d 0.0142, Z 0.0272). |
-| H5 X, pdi.f lineage | Within 0.02 of the printed X in 32 of 40 months. The other eight (1889-06, 1889-07, 1890-06 to 1890-10, 1891-07) follow from the three printing inconsistencies: with Z repaired to three times the printed Z/3 in June 1890 and July 1891, and June 1889 X1 taken as 0.95 + 0.25, every month agrees. |
+| H5 X, pdi.f lineage | Within 0.02 of the printed X in 32 of 40 months. The other eight (1889-06, 1889-07, 1890-06 to 1890-10, 1891-07) follow from the three printing inconsistencies: with Z repaired to three times the printed Z/3 in June 1890 and July 1891, and June 1889 X1 taken as 0.95 + 0.25, every month is within 0.02. The set of eight is defined by that tolerance: November and December 1890 (0.016 and 0.0197) are also downstream of the June 1890 Z error but fall inside it. |
 | H6 X, Wells lineage | Differs from the printed X in 7 further months where pdi.f agrees (1889-02 to 1889-05, 1890-01 to 1890-03). Switching only the establishment threshold in a copy of the pdi.f recursion (mechanism E of #1631) reproduces the Wells series exactly on this input. |
 
 Not tested: Table 9 Equation 26 produces K' only inside the library's calibration loop, so

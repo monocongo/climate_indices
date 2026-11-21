@@ -15,7 +15,7 @@ Two kinds of test live here:
   every rounded printed quantity that enters the result, weighted by its coefficient.
 
 Where the library does not reproduce the print, the test pins the measured deviation and
-names its cause; no tolerance is widened to make a month pass.
+states its cause or that none was established; no tolerance is widened to make a month pass.
 """
 
 import csv
@@ -186,7 +186,7 @@ _TABLE9_TRANSPOSED = {("western_kansas", 4), ("western_kansas", 5)}
 # Equation 26 with Table 2's means and Table 9's D-bar reproduces the printed K' within the rounding
 # of those inputs in 23 of 24 cases. Central Iowa December prints K' = 1.55; the means give 1.566
 # (T = 1.00, D-bar = 0.74), 0.016 against a propagated bound of 0.013, and K = 17.67 K' / sum agrees
-# with the printed 1.55. Cause not established; logged in the discrepancy ledger (#1626).
+# with the printed K = 1.52. Cause not established; logged in the discrepancy ledger (#1626).
 _TABLE9_EQ26_EXCEEDS = {("central_iowa", 12): 0.0158}
 
 
