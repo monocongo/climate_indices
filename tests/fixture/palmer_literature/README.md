@@ -86,4 +86,33 @@ three printed inconsistencies above, and every excluded month is named in the te
 
 ## Verification result
 
-Filled in with the test results (see the tests and the discrepancy ledger).
+**Transcription.** Pass 1 and the blind pass 2 agree on all 2,600 cells (six files, no
+disagreement), and both found the same printing oddities independently.
+
+**Corrections to the pre-registered bounds, made after the first run.** Two bounds omitted a
+rounding that the paper itself documents, and one count was mis-stated; the tolerances (0.01,
+0.02) are unchanged.
+
+* H4: Table 4's footnote says column 10 is `col 6 + col 7 + col 8 - col 9`, so the printed
+  P-hat is the sum of four products each rounded to 0.01. The first-run bound left those four
+  roundings out and P-hat for June 1933 missed it by 0.003; the committed bound adds
+  `4 x 0.005`. The audit already confirms the footnote holds.
+* H2: the number of coefficient-months whose interval is defined is 92 (not the 93 first
+  written down).
+
+**Per stage** (`tests/test_palmer_literature.py`, marker `validation`):
+
+| Stage | Outcome |
+| --- | --- |
+| H1 water balance | One month from the printed start state: reproduced within 0.01 in in 33 of 36 months. 1933-08 (0.012), 1934-05 (0.0201) and 1934-07 (0.0124) are not. Print rounding of P, PE, Ss and Su explains 1933-08 but not 1934-05 (bound 0.016) and only just misses 1934-07 (0.0115). In all three the printed loss is smaller than `(PE - P) S'u / AWC` computed from the printed values; cause not established. Carrying the library's own state over the 36 months drifts from the print by up to 0.0286 (S'u, July 1934), as expected when 72 inputs are rounded to 0.01. |
+| H2 coefficients | 91 of 92 testable Table 3 values lie inside the interval implied by Table 2's rounded means (75 of the 92 intervals are narrower than 0.02, so informative). Western Kansas May beta prints 0.1155; R = 0.38 and PR = 3.36 allow at most 0.1148. |
+| H3 K normalization | Reproduced for both regions within the propagated bound (largest difference 0.0053, western Kansas). Equation 26 for K' from Table 2's means and Table 9's D-bar holds in 23 of 24 months; central Iowa December prints 1.55 where the means give 1.566 (0.016 against a bound of 0.013). |
+| H4 P-hat, d, Z | Reproduced for all 36 months within the propagated bound (largest differences: P-hat 0.0142, d 0.0142, Z 0.0272). |
+| H5 X, pdi.f lineage | Within 0.02 of the printed X in 32 of 40 months. The other eight (1889-06, 1889-07, 1890-06 to 1890-10, 1891-07) follow from the three printing inconsistencies: with Z repaired to three times the printed Z/3 in June 1890 and July 1891, and June 1889 X1 taken as 0.95 + 0.25, every month agrees. |
+| H6 X, Wells lineage | Differs from the printed X in 7 further months where pdi.f agrees (1889-02 to 1889-05, 1890-01 to 1890-03). Switching only the establishment threshold in a copy of the pdi.f recursion (mechanism E of #1631) reproduces the Wells series exactly on this input. |
+
+Not tested: Table 9 Equation 26 produces K' only inside the library's calibration loop, so
+the library is exercised for the normalization step (D-bar injected), not for K' itself.
+The coefficient intervals are uninformative where a printed mean is 0.05 or below (for
+example western Kansas January alpha), so a transcription slip there is caught by the
+checksum, not by H2.
