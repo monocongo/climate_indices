@@ -46,7 +46,7 @@ def _stats(rust: np.ndarray, python: np.ndarray) -> dict[str, Any]:
     return {
         "max_abs": float(difference.max(initial=0.0)),
         "max_rel": float(relative.max(initial=0.0)),
-        "sign_mismatches": int((np.sign(rust) != np.sign(python)).sum()),
+        "sign_mismatches": int((np.sign(rust)[both] != np.sign(python)[both]).sum()),
         "nan_mismatches": int((np.isnan(rust) != np.isnan(python)).sum()),
         "rust_sha256": _digest(rust),
         "python_sha256": _digest(python),
@@ -65,19 +65,26 @@ def _params(rust: dict[str, Any], python: dict[str, Any]) -> dict[str, Any]:
 
 
 def _division(name: str) -> tuple[str, dict[str, Any]]:
+    from climate_indices import _native_backend
     from climate_indices.drought import palmer
 
     directory = FIXTURE / name
     precips, pet = np.load(directory / "precips.npy"), np.load(directory / "pet.npy")
-    awc = float(json.loads((ROOT / "tests" / "fixture" / "palmer_awc.json").read_text())[name])
-    native = palmer._native
+    awc = float(json.loads((ROOT / "tests" / "fixture" / "palmer_awc.json").read_text(encoding="utf-8"))[name])
+    # a pool worker handles many divisions, so the extension comes from the backend module,
+    # never from ``palmer._native``, which this function leaves switched off between calls
+    native = _native_backend.EXTENSION
+    assert native is not None, "the Rust extension is not built"
     result: dict[str, Any] = {}
     for index in (palmer.pdsi, palmer.scpdsi):
         runs = []
-        with np.errstate(all="ignore"):
-            for backend in (native, None):
-                palmer._native = backend
-                runs.append(index(precips, pet, awc, START, *CALIBRATION))
+        try:
+            with np.errstate(all="ignore"):
+                for backend in (native, None):
+                    palmer._native = backend
+                    runs.append(index(precips, pet, awc, START, *CALIBRATION))
+        finally:
+            palmer._native = native
         (rust, python) = runs
         entry = {output: _stats(rust[i], python[i]) for i, output in enumerate(OUTPUTS)}
         entry["params"] = _params(rust[4], python[4])
@@ -138,7 +145,14 @@ def measure(out: Path, workers: int) -> int:
 
 
 def compare(paths: list[Path], backend: str) -> int:
-    """Bit-for-bit comparison of one backend's digests across the given reports."""
+    """Bit-for-bit comparison of one backend's digests across the given reports.
+
+    The first report is the baseline. A report that lacks a division or output the
+    baseline has counts as a mismatch, and fewer than two reports cannot compare anything.
+    """
+    if len(paths) < 2:
+        print(f"{backend}: need at least two reports to compare, got {len(paths)}", file=sys.stderr)
+        return 2
     reports = {str(path): json.loads(path.read_text(encoding="utf-8")) for path in paths}
     key = f"{backend}_sha256"
     first_name, first = next(iter(reports.items()))
@@ -147,7 +161,8 @@ def compare(paths: list[Path], backend: str) -> int:
         for division, indices in first["divisions"].items():
             for index, outputs in indices.items():
                 for output, expected in outputs.items():
-                    if report["divisions"][division][index][output][key] != expected[key]:
+                    actual = report["divisions"].get(division, {}).get(index, {}).get(output, {}).get(key)
+                    if actual != expected[key]:
                         mismatches.append(f"{name} vs {first_name}: {division} {index}.{output}")
     for line in mismatches[:50]:
         print(line)
