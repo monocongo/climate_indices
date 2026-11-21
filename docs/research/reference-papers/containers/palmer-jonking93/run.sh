@@ -14,7 +14,8 @@ IMAGE=gnuoctave/octave@sha256:100d394c57b86469748d26ddafcf73a1074338a66dabcababe
 mkdir -p "$WORK/data" "$WORK/out"
 # Refuse to discard local changes in a reused checkout; ignored build artifacts are left in place.
 if [[ -d "$WORK/upstream/.git" ]]; then
-  if [[ -n "$(git -C "$WORK/upstream" status --porcelain)" ]]; then
+  # --untracked-files=all overrides status.showUntrackedFiles, which clean -fd ignores.
+  if [[ -n "$(git -C "$WORK/upstream" status --porcelain --untracked-files=all)" ]]; then
     echo "error: $WORK/upstream has local changes; remove it or choose another work directory" >&2
     exit 1
   fi
@@ -24,7 +25,7 @@ fi
 git -C "$WORK/upstream" reset --hard -q "$UPSTREAM_SHA"
 git -C "$WORK/upstream" clean -fd -q
 uv run --project "$REPO" python -I "$HERE/prep.py" "$REPO" "$WORK/data"
-docker run --rm --platform linux/amd64 --network none \
+docker run --rm --platform linux/amd64 --network none --user "$(id -u):$(id -g)" \
   -v "$WORK/upstream:/work/upstream:ro" -v "$WORK/data:/work/data:ro" -v "$WORK/out:/work/out" \
   -v "$HERE/jk_run_all.m:/work/jk_run_all.m:ro" \
   "$IMAGE" octave-cli --no-gui /work/jk_run_all.m

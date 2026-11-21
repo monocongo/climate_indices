@@ -59,7 +59,7 @@ These appear in the tickets as items to check, not as findings.
 - Bibliographic details of Bourgault et al. (2023), Stagge et al. (2015), Guttman (1999), Pieper et al. (2020), Dai (2011), van der Schrier et al. (2013), Ficklin et al. (2015), Huntington et al. (2017), Abatzoglou (2013), Vose et al. (2014), Hobbins et al. (2016), and Farahmand and AghaKouchak (2015). REFIMPL-05 verifies each.
 - Which tables in Palmer (1965) are sufficient for stage-by-stage fixtures. REFIMPL-28 determines this.
 - Whether the Wells C++ also applies a fixed number of rescaling passes. REFIMPL-33 checks.
-- Availability and licence of the original Wells C++. REFIMPL-06. (REFIMPL-30 found the NCEI `pdi.f` public at `www1.ncdc.noaa.gov/pub/data/nidis/software/ncei/palmer/` with no licence stated; see `palmer-comparators.md`.)
+- Licence of the original Wells C++ (obtained outside the repository, read only, no licence stated). REFIMPL-06. (REFIMPL-30 found the NCEI `pdi.f` public at `www1.ncdc.noaa.gov/pub/data/nidis/software/ncei/palmer/` with no licence stated; see `palmer-comparators.md` and [palmer-provenance.md](../../algorithm_refs/palmer-provenance.md).)
 - Whether the Jacobi MATLAB tool runs under GNU Octave. REFIMPL-30 could not obtain it. (`JonKing93/pdsi` does run under Octave 9.2.0; see `palmer-comparators.md`.)
 - Whether other small packages beyond `precip-index` derive from `climate_indices`. REFIMPL-04; [comparators.md](comparators.md) answers `precip-index` for REFIMPL-03.
 - Whether `climate_indices.eto` derives from `PyETo`, and the provenance of the repository's Thornthwaite PET fixture. REFIMPL-04.

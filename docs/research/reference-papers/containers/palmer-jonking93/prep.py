@@ -14,7 +14,7 @@ from pathlib import Path
 import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))  # python -I adds neither the script dir nor cwd
-from _safe_path import path_arg as _path  # noqa: E402
+from _safe_path import path_arg as _path  # type: ignore[import-not-found]  # noqa: E402
 
 _FMT = "%.10g"
 

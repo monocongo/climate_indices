@@ -12,7 +12,8 @@ UPSTREAM_SHA=c73b22c89218236e766fbf2895f2a16ebd8f366e   # ktripa/scpdsi-tools ma
 mkdir -p "$WORK"
 # Refuse to discard local changes in a reused checkout; ignored build artifacts are left in place.
 if [[ -d "$WORK/upstream/.git" ]]; then
-  if [[ -n "$(git -C "$WORK/upstream" status --porcelain)" ]]; then
+  # --untracked-files=all overrides status.showUntrackedFiles, which clean -fd ignores.
+  if [[ -n "$(git -C "$WORK/upstream" status --porcelain --untracked-files=all)" ]]; then
     echo "error: $WORK/upstream has local changes; remove it or choose another work directory" >&2
     exit 1
   fi

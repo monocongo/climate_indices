@@ -112,12 +112,13 @@ division-months.
 | `rpkgs/scPDSI2003` | `8cfa1634fa57bf6241ab77abfd7a9f254567c4d0` | MIT | C++ (CMake) | Not run | Wells: README says only an ET module was changed | Exclude: same C++ lineage as `Sibada/scPDSI` |
 | `dficklin/CAGEO-paper` (Ficklin et al.) | `76680f874d7e27e3b866ba46fea0c5587dca9b2c` | None stated (all rights reserved) | MATLAB, `.fig` launcher | Not run | Not determined | Exclude: holds only the amended files, not the Jacobi core |
 | Jacobi et al. (2013) tool | Wiley supporting information of doi:10.1002/wrcr.20342; a 2015 news item says to email the author | Unknown | MATLAB | Not obtained | Undetermined (abstract suggests NCEI-like; source not read) | Open: needs the author or the Wiley file |
-| Wells, Goddard, Hayes C++ at NDMC | No download page found | Unknown | C++ | Not obtained | Undetermined (source not obtained) | Open: REFIMPL-06 |
+| Wells, Goddard, Hayes C++ (original) | `src/scpdsi.cpp` v2.0, 5,179 lines, and the manual, from `greenleaf.unl.edu/downloads/scPDSI.zip`; no NDMC download page found | None stated in the zip or the manual | C++ | Obtained outside the repository and read only; not run in this survey | NCEI: its header says it derives from NCDC `pdi.f` and `palmcode.f` (`docs/algorithm_refs/palmer-provenance.md`) | Not independent: it is already the source of the scPDSI oracle fixtures |
 
 Product-only items (`gridMET` pentad PDSI, WestWide Drought Tracker scPDSI, CRU scPDSI, Dai
 PDSI) are external products, not runnable implementations; they are not assessed further
-here. `xclim` has no Palmer function at 1.0.0 per `research-notes.md`; it was not rechecked
-at the version pinned by REFIMPL-03. GitHub repository searches ("palmer drought", "pdsi",
+here. `research-notes.md` records no Palmer function in the SPI and SPEI modules of `xclim`
+1.0.0, which is the version REFIMPL-03 pins; the package as a whole was not searched. GitHub
+repository searches ("palmer drought", "pdsi",
 "scpdsi", and Julia-language queries) found no Julia Palmer repository. Other ports seen but
 not read: `cszang/pdsi` (no licence, wraps the Wells C++), `TreeGuo/Drought_Index` (no
 licence, Python), `joergsteinkamp/PDSI_for_LPJ-GUESS` (GPL-3, C header), `alexdum/scpdsi`,
@@ -133,11 +134,14 @@ version approved for public release" and is furnished "as is". Files:
 This contradicts H4. The `www.ncei.noaa.gov/pub/data/cirs/software/palmer/pdi_v2.f90` URL that a
 web search returned gave 404 and was not used.
 
-Recipe: `containers/palmer-ncei-pdi/run.sh`. It verifies both checksums, edits only the
-documented parameter statement (`nendyr=2022`, `nendmo=12`, `iouteyr=2022`) in a scratch
-copy, and reads the committed temperature and precipitation inputs (nClimDiv divisional values in degrees F
-and inches, per the fixture provenance). `pdi.f` computes its own Thornthwaite PE from the constants
-in `soilcnst.asc`, so no PET is supplied.
+Recipe: `containers/palmer-ncei-pdi/run.sh`, then
+`containers/palmer-ncei-pdi/smoke_compare.py <repo> <work-dir>/run` for the table below. The
+recipe verifies both checksums, edits only the documented parameter statement (`nendyr=2022`,
+`nendmo=12`, `iouteyr=2022`) in a scratch copy, and reads the committed temperature and
+precipitation inputs, which are nClimDiv divisional values in inches
+(`tests/fixture/palmer/provenance.json`) and degrees F (`tests/test_speibase_reference.py`).
+`pdi.f` computes its own Thornthwaite PE from the constants in `soilcnst.asc`, so no PET is
+supplied.
 
 Input adaptation: rows 1-58 of `soilcnst.asc` belong to another series whose ids collide with
 division ids under Fortran blank-null reads (the row `101 0` reads as 1010), so `pdi.f`, which
@@ -155,10 +159,19 @@ division's AWC equals `tests/fixture/palmer_awc.json`.
 `pdi.f` writes two decimals, so differences of 0.005 are rounding. The 1.4% of PDSI months
 more than 0.05 from the library fixtures is unexplained here; REFIMPL-31 owns the cause.
 
+Read this against `docs/algorithm_refs/palmer-provenance.md` D9, which records a different
+comparison on the same 344 divisions: the library reproduces a double-precision `pdi.f` build
+to within 1.2e-14, and the published single-precision build differs from that build by at most
+2.8e-5. This run is not directly comparable, because it patches `pdi.f`'s parameter statement,
+restricts `soilcnst.asc` to rows 59 onward, and fixes its own period. Reconciling the 2.8e-5
+bound with the 1.4% measured here is REFIMPL-31's.
+
 ### `JonKing93/pdsi`
 
-Recipe: `containers/palmer-jonking93/run.sh` (Octave 9.2.0, image pinned by digest, amd64
-under emulation, no network in the container). H1 holds: `pdsi()` and the upstream
+Recipe: `containers/palmer-jonking93/run.sh`, then
+`containers/palmer-jonking93/summarize.py <repo> <work-dir>/out` for the table below (Octave
+9.2.0, image pinned by digest, amd64 under emulation, no network in the container). H1 holds:
+`pdsi()` and the upstream
 `soilMoisture` and `zPDSI` run under Octave unmodified.
 
 Lineage, read from source: `zPDSI.m` uses the Palmer 1965 constants (0.897, -2.691, 0.5,
@@ -172,7 +185,10 @@ monthly means.
 Two runs. "Supplied PE" runs the steps of `pdsi.m` in order with the fixture's `pet.npy`
 (the division fixtures store no latitude), on all 344 divisions. "As published" calls
 `pdsi()` with its own Thornthwaite PE for division 0101 at the latitude implied by
-`soilcnst.asc` (-tan(lat) = -0.6899, about 34.6 degrees).
+`soilcnst.asc` (-tan(lat) = -0.6899, about 34.6 degrees). Recorded input mismatch: the
+as-published call is made in millimetres and degrees C (`jk_run_all.m:50`, with the conversion
+in `prep.py:33`), while the supplied-PE run stays in inches, so the two runs are not
+like-for-like in units.
 
 | Check | Result |
 | --- | --- |
@@ -193,7 +209,8 @@ disagreement with nClimDiv is larger for this comparator than for the library or
 
 Source reading shows the Palmer 1965 K formula (`Climatology.pm:191,206`), X1/X2/X3
 accountings with the Palmer constants, and a probability-weighted PMDI with no backtracking
-(`get_palmer_pmdi`). Three defects were reproduced with a short probe (Perl 5.34):
+(`get_palmer_pmdi`). Three defects were observed in a scratch probe (Perl 5.34) that is not
+kept in the repository, so they cannot be re-run from here:
 
 1. Neither module declares `Exporter` or `@EXPORT_OK`, so the documented
    `use CPC::Palmer qw(get_palmer_accountings ...)` leaves the functions undefined. The
@@ -243,8 +260,12 @@ here.
 
 ## Deviations from the pre-registration
 
-- **H4 was wrong.** NCEI source is public. The original NDMC C++ and the Jacobi zip were not
-  found, so that part of H4 stands.
+- **H4 was wrong.** NCEI source is public. The Jacobi zip was not found. The authors' original
+  Wells C++ was obtained outside the repository and read only, with no licence stated, as
+  `docs/algorithm_refs/palmer-provenance.md` records; the NDMC-hosted copy was not found, so
+  that part of H4 is partly wrong.
+- **H6 not tested.** The `xclim` statement rests on the module-scoped `research-notes.md`
+  entry, not on a search of the whole package.
 - **H2 and H3 untested.** The Jacobi core was not obtained, and the Ficklin repository
   holds only amended files.
 - **H7 partly wrong.** `JonKing93/pdsi` and `libperl-cpc-palmer` are neither derived from
@@ -263,7 +284,7 @@ here.
 | Item | Observation | Proposed class |
 | --- | --- | --- |
 | `JonKing93/pdsi` vs nClimDiv and library | PDSI 63.6% within 0.05, 10,421 months > 1 | Unexplained |
-| `pdi.f` public release vs library fixtures | 1.4% of PDSI months more than 0.05 apart | Unexplained |
+| `pdi.f` public release vs library fixtures | 1.4% of PDSI months more than 0.05 apart | Unexplained; reconcile with `palmer-provenance.md` D9, which bounds the same single-precision comparison at 2.8e-5, before opening |
 | `soilcnst.asc` id collision | Row `101 0` reads as 1010 and is matched first | Defect in comparator (data file); draft upstream note |
 | `libperl-cpc-palmer` 0.50 | Three defects above | Defect in comparator; draft upstream report |
 | `scpdsi-tools` vs Wells oracle | scPDSI 24.7% within 0.05, 34,988 months > 1; Z-Index median 0.055 off | Unexplained |

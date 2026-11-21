@@ -11,7 +11,7 @@ from pathlib import Path
 import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))  # python -I adds neither the script dir nor cwd
-from _safe_path import path_arg as _path  # noqa: E402
+from _safe_path import path_arg as _path  # type: ignore[import-not-found]  # noqa: E402
 
 repo, out = _path(sys.argv[1]), _path(sys.argv[2])
 divs = json.load(open(repo / "tests/fixture/nclimdiv/divisions.json"))
@@ -23,7 +23,7 @@ for key, fn in runs.items():
     for label, ref in (("nClimDiv", nc), ("library", lib)):
         d = np.abs(arr - ref)
         print(
-            f"{key:7s} vs {label:8s}: median of per-division medians {np.median(np.median(d, 1)):.4f}, "
+            f"{key:7s} vs {label:8s}: median of per-division medians {np.nanmedian(np.nanmedian(d, 1)):.4f}, "
             f"within 0.05 {(d <= 0.05).mean():.3f}, months > 1: {int((d > 1).sum())} of {d.size}"
         )
 i0 = divs.index("0101")
@@ -33,3 +33,5 @@ z = np.abs(
 print(f"division 0101 Z vs nClimDiv: median {np.median(z):.4f} (pre-registered threshold 0.05)")
 pub = np.loadtxt(out / "published_0101_Z.txt")
 print(f"as-published 0101: {int(np.isfinite(pub).sum())} of {pub.size} finite")
+sup = np.loadtxt(out / "supplied_pe_Z.txt")[i0]
+print(f"as-published vs supplied PE, 0101 Z: median {np.nanmedian(np.abs(pub - sup)):.4f} (quoted 0.0118)")

@@ -1,6 +1,6 @@
 """Parse pdi.f outputs (fort.21 WPLM, 22 PDSI, 23 Z, 24 PHDI) and compare with nClimDiv and library fixtures.
 
-usage: pdi_compare.py <repo> <rundir>
+usage: smoke_compare.py <repo> <rundir>
 """
 
 import json
@@ -8,9 +8,10 @@ import sys
 from pathlib import Path
 
 import numpy as np
+from numpy.typing import NDArray
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))  # python -I adds neither the script dir nor cwd
-from _safe_path import path_arg as _path  # noqa: E402
+from _safe_path import path_arg as _path  # type: ignore[import-not-found]  # noqa: E402
 
 repo, run = _path(sys.argv[1]), _path(sys.argv[2])
 divs = json.load(open(repo / "tests/fixture/nclimdiv/divisions.json"))
@@ -22,8 +23,8 @@ NAMES = {
 }
 
 
-def parse(path):
-    out = {}
+def parse(path: Path) -> dict[int, list[float]]:
+    out: dict[int, list[float]] = {}
     for line in Path(path).read_text().splitlines():
         did = int(line[:4])
         vals = [float(line[9 + 7 * i : 16 + 7 * i]) for i in range(12)]
@@ -31,18 +32,21 @@ def parse(path):
     return out
 
 
-def stat(a, b):
+def stat(a: NDArray[np.float64], b: NDArray[np.float64]) -> NDArray[np.float64]:
     m = np.isfinite(a) & np.isfinite(b)
     d = np.abs(a[m] - b[m])
     return d
 
 
-res = {}
+res: dict[str, dict[str, float | int]] = {}
 for key, (fn, fx) in NAMES.items():
     got = parse(run / fn)
     nc = np.load(repo / f"tests/fixture/nclimdiv/{fx}.npy").astype(float)
-    meds, w05, gt1, nmiss = [], [], 0, 0
-    lmeds, lw05 = [], []
+    meds: list[float] = []
+    w05: list[int] = []
+    gt1 = nmiss = 0
+    lmeds: list[float] = []
+    lw05: list[int] = []
     for i, d in enumerate(divs):
         a = np.array(got[int(d)], dtype=float)
         a[a <= -99.0] = np.nan

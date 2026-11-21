@@ -2,7 +2,7 @@
 soilcnst.asc row pdi.f will pick for each (first row whose i5 id equals the division id,
 Fortran blank-null rule), against tests/fixture/palmer_awc.json.
 
-usage: pdi_prep.py <repo> <soilcnst.asc> <outdir>
+usage: prep.py <repo> <soilcnst.asc> <outdir>
 """
 
 import json
@@ -12,7 +12,7 @@ from pathlib import Path
 import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))  # python -I adds neither the script dir nor cwd
-from _safe_path import path_arg as _path  # noqa: E402
+from _safe_path import path_arg as _path  # type: ignore[import-not-found]  # noqa: E402
 
 repo, soil, out = _path(sys.argv[1]), _path(sys.argv[2]), _path(sys.argv[3])
 out.mkdir(parents=True, exist_ok=True)

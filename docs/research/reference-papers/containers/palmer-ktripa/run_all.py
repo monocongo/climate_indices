@@ -16,10 +16,10 @@ import numpy as np
 import pandas as pd
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))  # python -I adds neither the script dir nor cwd
-from _safe_path import path_arg as _path  # noqa: E402
+from _safe_path import path_arg as _path  # type: ignore[import-not-found]  # noqa: E402
 
 sys.path.insert(0, str(_path(sys.argv[1])))  # -I mode does not add the script or cwd to sys.path
-import scpdsi_tools  # noqa: E402
+import scpdsi_tools  # type: ignore[import-not-found]  # noqa: E402
 
 repo, out = _path(sys.argv[2]), _path(sys.argv[3])
 out.mkdir(parents=True, exist_ok=True)
@@ -28,7 +28,7 @@ awc = json.load(open(repo / "tests/fixture/palmer_awc.json"))
 fx = repo / "tests/fixture/palmer"
 dates = pd.date_range("1895-01-01", periods=1536, freq="MS")
 cols = {"pdsi": "scpdsi", "zindex": "sczindex", "phdi": "scphdi", "pmdi": "scpmdi"}
-got = {c: [] for c in cols}
+got: dict[str, list[np.ndarray]] = {c: [] for c in cols}
 for d in divs:
     p = np.load(fx / d / "precips.npy").astype(float)
     e = np.load(fx / d / "pet.npy").astype(float)
