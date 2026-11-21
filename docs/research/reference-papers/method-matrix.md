@@ -52,7 +52,7 @@ Each cell in the JSON has a status:
 
 <!-- END GENERATED: counts -->
 
-Fifteen implementations appear. Ten were read in source: `climate_indices` at `98578c87`, `xclim` 1.0.0, `spei` 0.8.3, `standard_precip` 2.0.0 (with `lmoments3` 1.0.8), R `SPEI` 1.8.1, `SCI` 1.0-3, `SEI` 0.2.0, `climatekit` 0.2.3, the NDMC SPI Generator 1.7.6.0 (its source ships in the zip), and NCL 6.6.2 (source of `dim_spi_n` at the tag). Each download was checked against the sha256 in `comparators.lock.yaml`. `lmoments3` is not in that lock; its sdist sha256 is recorded in the matrix. Climate Engine, `GRIDMET/DROUGHT`, NCEI climdiv SPI, SPEIbase, and NOAA PSL EDDI have no source here (none was found for the first two), and every cell for them is unverified or not applicable.
+Fifteen implementations appear. Ten were read in source: `climate_indices` at `98578c87`, `xclim` 1.0.0, `spei` 0.8.3, `standard_precip` 2.0.0 (with `lmoments3` 1.0.8), R `SPEI` 1.8.1, `SCI` 1.0-3, `SEI` 0.2.0, `climatekit` 0.2.3, the NDMC SPI Generator 1.7.6.0 (its source ships in the zip), and NCL 6.6.2 (source of `dim_spi_n` at the tag). Each download was checked against the sha256 in `comparators.lock.yaml`. The lock's NCL entry hashes the conda-forge binary, not the source tarball read here. `lmoments3` is not in that lock; its sdist sha256 is recorded in the matrix. Climate Engine, `GRIDMET/DROUGHT`, NCEI climdiv SPI, SPEIbase, and NOAA PSL EDDI have no source here (none was found for the first two), and every cell for them is unverified or not applicable.
 
 ## Leads checked
 
