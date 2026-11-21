@@ -1,6 +1,6 @@
 """Statistics for the self-calibrating Palmer Drought Severity Index (scPDSI).
 
-Pure functions implementing the Wells, Goddard & Wilhite (2004) self-calibration
+Pure functions implementing the Wells, Goddard & Hayes (2004) self-calibration
 procedure's statistical building blocks: the rolling-window extreme Z-index sum,
 the correlation-adaptive least-squares duration-factor fit, and the order
 statistic the reference implementation uses for percentile rescaling.
