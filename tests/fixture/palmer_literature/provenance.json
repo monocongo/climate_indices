@@ -1,0 +1,18 @@
+{
+  "source": "Palmer (1965), Meteorological Drought, U.S. Weather Bureau Research Paper No. 45, Tables 1, 2, 3, 4, 9 and 12 (printed pp. 10, 12, 15, 25, 31)",
+  "url": "https://ncei.noaa.gov/monitoring-content/temp-and-precip/drought/docs/palmer.pdf",
+  "download_date": "2026-11-21",
+  "subset_description": "Transcription of the monograph's printed worked examples: Table 1 water balance (central Iowa, 1933-1935), Tables 2-3 long-term means and CAFEC coefficients (western Kansas, central Iowa), Table 4 d/z/Z computation (western Kansas, 1932-06 to 1935-05), Table 9 K factors (western Kansas, central Iowa) and Table 12 X1/X2/X3 recursion (western Kansas, 1888-04 to 1891-07). Every printed column is kept, including printing errors.",
+  "checksum_sha256": "11bc44590b3ad453466a4799995830c45ed28064d62903741b215adcda3aca5b",
+  "fixture_version": "1.0.0",
+  "validation_tolerance": {
+    "water_balance_atol_in": 0.01,
+    "printed_half_unit_2dp": 0.005,
+    "printed_half_unit_4dp": 5e-05,
+    "x_recursion_atol": 0.02,
+    "audit_atol_one_print_unit": 0.0105
+  },
+  "citation": "Palmer, W. C. (1965) Meteorological Drought. U.S. Weather Bureau Research Paper No. 45, 58 pp.",
+  "license": "U.S. Government work (17 USC 105, Weather Bureau). The scanned pages are not redistributed; only transcribed numbers are committed. Licence of the scan itself is tracked in REFIMPL-27 (#1629).",
+  "notes": "checksum_sha256 is the SHA-256 of the six table*.csv files concatenated in filename-sorted order. Source PDF SHA-256 at transcription: 9b52259f8732de597f4c8c34982b196a03a5dc2668fdca0d0a5b22cf60d1e65f. Printing inconsistencies in the paper (Table 4 April 1934 columns 8-9; Table 9 western Kansas April/May K, February D-bar K'; Table 12 June 1889 X1, June 1890 Z, July 1891 Z) are kept as printed and documented in README.md. Tolerances are bounds from print precision, committed before the library comparisons were run."
+}
