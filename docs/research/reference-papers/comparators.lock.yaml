@@ -19,6 +19,7 @@ linux_smoke:
   run: 2026-11-20
   dockerfile: containers/linux-smoke/Dockerfile
   base_image: rocker/r-ver:4.6.2   # tag only; digest not recorded
+  uv: 0.13.9                       # image tag only
   python: 3.12.16
   r: 4.6.2
   platforms: [linux/arm64, linux/amd64 (emulated)]

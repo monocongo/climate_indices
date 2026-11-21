@@ -1,10 +1,11 @@
 # R comparator smoke calls. Prints `label<TAB>June-2005 value` lines (NA stays NA), at full
 # precision so run.sh can round to the decimals expected.tsv records.
-# Inputs: /work/inputs.csv (see inputs.py). Calls and arguments follow the "Smoke evidence"
-# table in comparators.md.
+# Inputs: inputs.csv below $SMOKE_WORK (run.sh passes /work; see inputs.py). Calls and arguments
+# follow the "Smoke evidence" table in comparators.md.
 suppressMessages({ library(SPEI); library(SCI); library(SEI); library(climatekit); library(Evapotranspiration) })
 
-d <- read.csv("/work/inputs.csv", na.strings = "NA")
+work <- Sys.getenv("SMOKE_WORK", ".")
+d <- read.csv(file.path(work, "inputs.csv"), na.strings = "NA")
 n <- nrow(d)
 jun05 <- 1325 + 1  # 1-based index of 2005-06
 p <- ts(d$precip, start = c(1895, 1), frequency = 12)
