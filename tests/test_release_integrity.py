@@ -1307,6 +1307,32 @@ def test_wildfire_applications_cross_links_use_myst_roles() -> None:
     )
 
 
+def test_default_pytest_collection_does_not_import_reference_downloads(tmp_path: Path) -> None:
+    """Default collection must not import untrusted reference code or its conftest files."""
+    (tmp_path / "pyproject.toml").write_text((ROOT / "pyproject.toml").read_text(encoding="utf-8"), encoding="utf-8")
+    tests = tmp_path / "tests"
+    tests.mkdir()
+    (tests / "test_control.py").write_text("def test_control():\n    pass\n", encoding="utf-8")
+    for directory in ("local", "external"):
+        download = tmp_path / "docs/research/reference-papers/sources" / directory / "download"
+        download.mkdir(parents=True)
+        (download / "conftest.py").write_text('raise RuntimeError("untrusted reference imported")\n', encoding="utf-8")
+        (download / "test_reference.py").write_text("def test_reference():\n    pass\n", encoding="utf-8")
+
+    result = subprocess.run(
+        [sys.executable, "-m", "pytest", "--collect-only", "-q"],
+        cwd=tmp_path,
+        env={**os.environ, "PYTEST_DISABLE_PLUGIN_AUTOLOAD": "1", "PYTEST_ADDOPTS": ""},
+        capture_output=True,
+        text=True,
+        timeout=30,
+        check=False,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "test_control.py::test_control" in result.stdout
+    assert "test_reference.py" not in result.stdout
+
+
 def test_every_published_docs_page_has_one_visible_section() -> None:
     """Published pages must be reachable from the four visible section toctrees.
 
