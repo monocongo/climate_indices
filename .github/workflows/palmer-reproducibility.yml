@@ -16,6 +16,7 @@ permissions:
 jobs:
   measure:
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
     env:
       CLIMATE_INDICES_REQUIRE_NATIVE: '1'
     strategy:
@@ -74,7 +75,17 @@ jobs:
     needs: measure
     if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
+    timeout-minutes: 10
+    # an explicit bash adds pipefail, so a failing compare is not hidden by `| tee`
+    defaults:
+      run:
+        shell: bash
     steps:
+      # a failed or skipped measure leg leaves a missing artifact; compare would otherwise
+      # pass on the platforms that did report
+      - name: Require every platform to have reported
+        run: test "${{ needs.measure.result }}" = success
+
       - name: Checkout code
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
 
