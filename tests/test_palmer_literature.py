@@ -515,7 +515,8 @@ def test_h5_the_eight_months_follow_from_the_three_printed_inconsistencies() -> 
     expected = _printed_x().copy()
     june_1889 = next(i for i, row in enumerate(rows) if _ym(row) == (1889, 6))
     expected[june_1889] = 0.95 + 0.25
-    expected[june_1889 + 1] = expected[june_1889] + 0.35 / 3 - 0.103 * expected[june_1889]  # Z/3 = 0.12
+    # July's X3 by the printed recursion: X3(June) + Z/3(July) - 0.103 X3(June)
+    expected[june_1889 + 1] = expected[june_1889] + float(rows[june_1889 + 1]["z_over_3"]) - 0.103 * expected[june_1889]
     deviation = np.abs(_pdi_x(repaired) - expected)
     assert _months(rows, deviation > X_ATOL) == []
 
