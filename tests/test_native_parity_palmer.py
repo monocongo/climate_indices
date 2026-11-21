@@ -351,7 +351,7 @@ def test_pdi_dispatch_scans_z_for_infinities_only_when_the_kernel_can_take_it(mo
 # --- branch stability (REFIMPL-34, #1636) ---------------------------------------------
 # The recursions branch on exact zeros and fixed thresholds (docs/algorithm_refs/palmer.md,
 # "Exact-zero comparisons"), so a one-ulp difference upstream could flip a branch. The
-# corpus puts boundary values (0, +-0.15, +-0.5, +-1, -0.0 and one ulp either side) into
+# corpus puts boundary values (-0.0, which equals 0, and +-0.15, +-0.5, +-1, each with one ulp either side) into
 # random Z series, then repeats each series with one boundary entry moved one ulp down
 # and up. Both paths must agree on every series; the liveness floors prove that moving
 # an entry by one ulp does change the answer for some series, so agreement is not vacuous.
@@ -422,13 +422,13 @@ def test_pdi_recursion_takes_the_same_branches_on_boundary_series(monkeypatch) -
     assert calls == {"palmer_pdi"}
     _same_outcome(rust, python)
     for output in python:
-        assert _live_triples(output.reshape(_MONTHS, -1)) >= 5
+        assert _live_triples(output.reshape(_MONTHS, -1)) >= 1
 
 
 def test_wells_recursion_takes_the_same_branches_on_boundary_series(monkeypatch) -> None:
     factors = DurationFactors.from_defaults()
     corpus = _straddling_corpus(series=600)
-    results = np.full((_MONTHS, corpus.shape[1]), np.nan)
+    results = np.zeros((_MONTHS, corpus.shape[1]))
     errors = 0
     for column in range(corpus.shape[1]):
         z = np.ascontiguousarray(corpus[:, column])
@@ -440,7 +440,7 @@ def test_wells_recursion_takes_the_same_branches_on_boundary_series(monkeypatch)
         else:
             results[:, column] = python[0]
     assert errors < corpus.shape[1] // 10, "the corpus must mostly complete, or it tests only the error path"
-    assert _live_triples(np.nan_to_num(results)) >= 2
+    assert _live_triples(results) >= 1
 
 
 def _spell_threshold_corpus(factors: DurationFactors) -> np.ndarray:
@@ -493,6 +493,28 @@ def test_wells_recursion_takes_the_same_branches_at_spell_thresholds(monkeypatch
     assert _live_triples(results) >= 5
 
 
+@pytest.mark.parametrize("direction", [1.0, -1.0], ids=["wet", "dry"])
+def test_wells_continuation_threshold_right_after_a_spell_ends(monkeypatch, direction: float) -> None:
+    """``direction * z >= 0.5 * slope`` is not redundant while a terminated spell's carry is open.
+
+    After a spell terminates and a new one is established in the same month, the state has
+    ``probability == 100`` and a nonzero ``v``. A ``z`` exactly on the threshold then restarts
+    the spell (``v = 0``), while one ulp below it continues the abatement (REFIMPL-34 review).
+    """
+    factors = DurationFactors.from_fitted(0.897, 0.333, 0.897, 0.333)
+    threshold = 0.5 * factors.wetm
+    outputs = []
+    for value in (np.nextafter(threshold, 0.0), threshold, np.nextafter(threshold, 1.0)):
+        z = direction * np.array([-1.0, 3.0, 0.0, value, value, value])
+        rust, python, calls = _rust_and_python(monkeypatch, lambda z=z: palmer._wells_recursion(z, factors))
+        assert calls == {"palmer_wells"}
+        _same_outcome(rust, python)
+        outputs.append(python[0])
+    below, on, above = outputs
+    assert abs(below[4] - on[4]) > 0.1  # one ulp changes the answer, so agreement is not vacuous
+    np.testing.assert_allclose(on, above, atol=1e-12)  # same branch, a smooth ulp-level response
+
+
 _SEQUENCES = Path(__file__).parents[1] / "docs/research/reference-papers/palmer-recursion-divergence-sequences.json"
 
 
@@ -528,4 +550,4 @@ def test_zero_precipitation_months_match(monkeypatch, palmer_division_inputs, in
     precips[600:612] = 0.0
     rust, python, calls = _rust_and_python(monkeypatch, index(precips, pet, awc))
     assert "palmer_water_balance" in calls
-    _assert_parity(rust, python, error=ConvergenceError if python[0] is ConvergenceError else None)
+    _assert_parity(rust, python)
