@@ -8,7 +8,7 @@
   "additionalProperties": false,
   "properties": {
     "schema_version": {"const": 1},
-    "ticket": {"type": "string", "format": "uri"},
+    "ticket": {"type": "string", "pattern": "^https?://"},
     "axes": {
       "description": "The axes, in table order. Every entry cell carries every axis.",
       "type": "array",
@@ -102,7 +102,7 @@
         "status": {"enum": ["verified", "unverified", "not_applicable"]},
         "citations": {"type": "array", "items": {"$ref": "#/$defs/citation"}},
         "options": {"type": "array", "items": {"$ref": "#/$defs/option"}},
-        "basis": {"type": "string", "description": "Required when unverified: the documentation or observation the value rests on."},
+        "basis": {"type": "string", "minLength": 1, "description": "Required when unverified: the documentation or observation the value rests on."},
         "note": {"type": "string"}
       },
       "allOf": [

@@ -11,8 +11,9 @@ from __future__ import annotations
 import json
 import sys
 from pathlib import Path
+from typing import Any
 
-import jsonschema
+import jsonschema  # type: ignore[import-untyped]
 
 HERE = Path(__file__).resolve().parent
 BEGIN = "<!-- BEGIN GENERATED: {key} -->"
@@ -22,14 +23,14 @@ STATUS = {"verified": "", "unverified": "**unverified.** ", "not_applicable": ""
 
 
 def _esc(text: str) -> str:
-    return text.replace("|", "\\|").replace("\n", " ")
+    return text.replace("<", "&lt;").replace("|", "\\|").replace("\n", " ")
 
 
-def _cites(cites: list[dict]) -> str:
+def _cites(cites: list[dict[str, Any]]) -> str:
     return "; ".join(f"`{c['file']}:{c['lines']}`" for c in cites)
 
 
-def _row(axis: str, cell: dict) -> str:
+def _row(axis: str, cell: dict[str, Any]) -> str:
     position = STATUS[cell["status"]] + _esc(cell["value"])
     if cell["status"] == "not_applicable":
         position = f"n/a: {position}"
@@ -46,11 +47,12 @@ def _row(axis: str, cell: dict) -> str:
     return f"| {axis.replace('_', ' ')} | {position} | {evidence} |"
 
 
-def render_summary(doc: dict, key: str) -> list[str]:
+def render_summary(doc: dict[str, Any], key: str) -> list[str]:
     """Defaults at a glance: axes as rows, implementations as columns; evidence is in the per-package tables."""
     entries = doc["families"][key]["entries"]
     names = [
-        f"{doc['implementations'][e['implementation']]['name']}<br>`{_esc(e['entry_point'].split(' ')[0])}`"
+        f"{_esc(doc['implementations'][e['implementation']]['name'])}"
+        f"<br>`{_esc(e['entry_point'].split(' ')[0].split('(')[0])}`"
         for e in entries
     ]
     out = ["| Axis | " + " | ".join(names) + " |", "| --- |" + " --- |" * len(entries)]
@@ -70,7 +72,7 @@ def render_summary(doc: dict, key: str) -> list[str]:
     return out
 
 
-def render_family(doc: dict, key: str) -> str:
+def render_family(doc: dict[str, Any], key: str) -> str:
     family = doc["families"][key]
     out: list[str] = ["##### Defaults at a glance", "", *render_summary(doc, key), "##### Per-package evidence", ""]
     for entry in family["entries"]:
@@ -88,7 +90,7 @@ def render_family(doc: dict, key: str) -> str:
     return "\n".join(out).rstrip() + "\n"
 
 
-def render_aligned(doc: dict) -> str:
+def render_aligned(doc: dict[str, Any]) -> str:
     out: list[str] = []
     for cfg in doc["aligned_configurations"]:
         out.append(f"#### `{cfg['id']}`: {cfg['title']}")
@@ -114,7 +116,7 @@ def render_aligned(doc: dict) -> str:
     return "\n".join(out).rstrip() + "\n"
 
 
-def render_counts(doc: dict) -> str:
+def render_counts(doc: dict[str, Any]) -> str:
     out = ["| Family | Entries | Verified | Unverified | Not applicable |", "| --- | --- | --- | --- | --- |"]
     for fam in doc["families"].values():
         counts = {"verified": 0, "unverified": 0, "not_applicable": 0}
@@ -122,19 +124,16 @@ def render_counts(doc: dict) -> str:
             for c in e["cells"].values():
                 counts[c["status"]] += 1
         out.append(
-            f"| {fam['title']} | {len(fam['entries'])} | {counts['verified']} | {counts['unverified']} | {counts['not_applicable']} |"
+            f"| {_esc(fam['title'])} | {len(fam['entries'])} | {counts['verified']} | {counts['unverified']} | {counts['not_applicable']} |"
         )
     return "\n".join(out) + "\n"
 
 
-def sections(doc: dict) -> dict[str, str]:
-    return {
-        "counts": render_counts(doc),
-        "spi": render_family(doc, "spi"),
-        "spei": render_family(doc, "spei"),
-        "non_parametric": render_family(doc, "non_parametric"),
-        "aligned": render_aligned(doc),
-    }
+def sections(doc: dict[str, Any]) -> dict[str, str]:
+    out = {"counts": render_counts(doc)}
+    out.update({key: render_family(doc, key) for key in doc["families"]})
+    out["aligned"] = render_aligned(doc)
+    return out
 
 
 def splice(text: str, key: str, body: str) -> str:
@@ -146,7 +145,7 @@ def splice(text: str, key: str, body: str) -> str:
     return f"{head}{begin}\n\n{body}\n{end}{tail}"
 
 
-def check_references(doc: dict) -> None:
+def check_references(doc: dict[str, Any]) -> None:
     """Cross-references the schema cannot express."""
     impls = doc["implementations"]
     for key, fam in doc["families"].items():
@@ -164,14 +163,23 @@ def check_references(doc: dict) -> None:
                 raise SystemExit(f"{cfg['id']}: triple {triple} is not three distinct members of its implementations")
 
 
+def _read(path: Path) -> str:
+    if path.is_symlink():
+        raise SystemExit(f"refusing to read through a symlink: {path}")
+    return path.read_text(encoding="utf-8")
+
+
 def main(argv: list[str]) -> int:
-    schema = json.loads((HERE / "method_spec.schema.json").read_text(encoding="utf-8"))
-    doc = json.loads((HERE / "method-matrix.json").read_text(encoding="utf-8"))
+    try:
+        schema = json.loads(_read(HERE / "method_spec.schema.json"))
+        doc = json.loads(_read(HERE / "method-matrix.json"))
+    except (OSError, json.JSONDecodeError) as error:
+        raise SystemExit(f"cannot read the method matrix: {error}") from error
     jsonschema.Draft202012Validator.check_schema(schema)
     jsonschema.validate(doc, schema)
     check_references(doc)
     path = HERE / "method-matrix.md"
-    original = path.read_text(encoding="utf-8")
+    original = _read(path)
     text = original
     for key, body in sections(doc).items():
         text = splice(text, key, body)
@@ -180,6 +188,8 @@ def main(argv: list[str]) -> int:
             print("method-matrix.md is stale; run render_method_matrix.py", file=sys.stderr)
             return 1
         return 0
+    if path.is_symlink():
+        raise SystemExit(f"refusing to write through a symlink: {path}")
     path.write_text(text, encoding="utf-8")
     return 0
 
