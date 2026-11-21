@@ -206,6 +206,7 @@ module = ["zarr.*"]
 follow_imports = "skip"
 
 [tool.pytest.ini_options]
+testpaths = ["tests"]
 filterwarnings = [
     'ignore::FutureWarning',
     'ignore::climate_indices.exceptions.ShortCalibrationWarning',

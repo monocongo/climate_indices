@@ -15,6 +15,7 @@ algorithm_refs/edi
 algorithm_refs/flood_index
 algorithm_refs/eddi
 algorithm_refs/palmer
+algorithm_refs/palmer-provenance
 algorithm_refs/pet
 algorithm_refs/reliability
 wildfire_applications
