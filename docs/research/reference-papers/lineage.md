@@ -83,14 +83,14 @@ There are 177 pairs over eight indices. Every *unknown* pair involves a provider
 | Index | Pairs | derived | validated against | shared numerical routine | independent | unknown |
 | --- | --- | --- | --- | --- | --- | --- |
 | SPI | 78 | 0 | 9 | 17 | 22 | 30 |
-| SPEI | 36 | 0 | 6 | 13 | 4 | 13 |
+| SPEI | 36 | 0 | 6 | 12 | 5 | 13 |
 | PET Thornthwaite | 6 | 1 | 0 | 0 | 5 | 0 |
 | PET Hargreaves | 15 | 1 | 1 | 0 | 13 | 0 |
 | PET FAO-56 Penman-Monteith | 15 | 0 | 1 | 0 | 14 | 0 |
 | EDDI and non-parametric | 6 | 0 | 3 | 0 | 0 | 3 |
 | PDSI, PHDI, PMDI, Z-Index | 15 | 1 | 2 | 4 | 4 | 4 |
 | scPDSI | 6 | 3 | 0 | 0 | 3 | 0 |
-| **All** | **177** | **6** | **22** | **34** | **65** | **50** |
+| **All** | **177** | **6** | **22** | **33** | **66** | **50** |
 
 ### Findings
 
@@ -219,7 +219,7 @@ The other 21 of 78 pairs are *independent*.
 | R SPEI / SPEIbase v2.11 | *shared numerical routine* | *shared numerical routine* (R SPEI 1.8.1 spei() (whole computation); SPEIbase is computed with the package (ub-pwm log-logistic))<br>*shared numerical routine* (Hosking L-moment routines (IBM RC20525); same dependency: R SPEI pp-pwm and ub-pwm fits (default) (lmom dependency); SPEIbase v2.11 ub-pwm log-logistic (lmom dependency, through R SPEI)) |
 | R SEI / Climate Engine API | *unknown* | code not public; question 1 |
 | R SEI / Earth Engine GRIDMET/DROUGHT | *unknown* | code not public; question 2 |
-| R SEI / SPEIbase v2.11 | *shared numerical routine* | *shared numerical routine* (Hosking L-moment routines (IBM RC20525); same dependency: R SEI method = "lmme" (lmom dependency; excludes log-logistic); SPEIbase v2.11 ub-pwm log-logistic (lmom dependency, through R SPEI)) |
+| R SEI / SPEIbase v2.11 | *independent* | note: R SEI method = "lmme" rejects log-logistic, and SPEIbase v2.11 is fitted as log-logistic with lmom::pelglo, so the two call different lmom estimators; sharing the lmom package does not make them share a routine. |
 | Climate Engine API / Earth Engine GRIDMET/DROUGHT | *unknown* | code not public; question 1, 2 |
 | Climate Engine API / SPEIbase v2.11 | *unknown* | code not public; question 1 |
 | Earth Engine GRIDMET/DROUGHT / SPEIbase v2.11 | *unknown* | code not public; question 2 |

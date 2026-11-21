@@ -3301,50 +3301,28 @@
         {
           "a": "r_sei",
           "b": "speibase",
-          "class": "shared numerical routine",
+          "class": "independent",
           "direction": null,
-          "relations": [
+          "relations": [],
+          "notes": [
             {
-              "class": "shared numerical routine",
-              "from": null,
-              "to": null,
-              "configuration": "same dependency: R SEI method = \"lmme\" (lmom dependency; excludes log-logistic); SPEIbase v2.11 ub-pwm log-logistic (lmom dependency, through R SPEI)",
+              "note": "R SEI method = \"lmme\" rejects log-logistic, and SPEIbase v2.11 is fitted as log-logistic with lmom::pelglo, so the two call different lmom estimators; sharing the lmom package does not make them share a routine.",
               "evidence": [
                 {
                   "source": "r_sei",
                   "ref": "SEI 0.2.0 CRAN tarball",
                   "file": "R/fit_dist.R",
-                  "line": "291-308",
-                  "quote": "samp_mom <- lmom::samlmu(data) ... params <- lmom::pelgam(samp_mom)"
-                },
-                {
-                  "source": "r_spei",
-                  "ref": "lmom 3.3 CRAN tarball (dependency)",
-                  "file": "DESCRIPTION",
-                  "line": "Author",
-                  "quote": "Author: J. R. M. Hosking [aut, cre]"
-                },
-                {
-                  "source": "speibase",
-                  "ref": "https://spei.csic.es/database.html",
-                  "accessed": "2026-11-20",
-                  "quote": "SPEIbase v2.11: 1) the CRU TS 4.09 dataset ... 2) Using SPEI package version 1.8.1."
-                },
-                {
-                  "source": "speibase",
-                  "ref": "https://spei.csic.es/database.html",
-                  "accessed": "2026-11-20",
-                  "quote": "Unbiased probability weighted moments (ub-pwm) method has been used for fitting the log-Logistic distribution"
+                  "line": "302-303",
+                  "quote": "method 'lmme' is not available for the log-logistic distribution"
                 },
                 {
                   "source": "r_spei",
                   "ref": "SPEI 1.8.1 CRAN tarball",
                   "file": "R/spei.R",
                   "line": "665-695",
-                  "quote": "\"ub-pwm\" = PWM(x.mon, order = 0:2) ... \"log-Logistic\" = tryCatch(pelglo(fortran_vec) ... \"Gamma\" = tryCatch(pelgam(... \"PearsonIII\" = tryCatch(pelpe3("
+                  "quote": "\"ub-pwm\" = PWM(x.mon, order = 0:2) ... \"log-Logistic\" = tryCatch(pelglo(fortran_vec)"
                 }
-              ],
-              "routine": "Hosking L-moment routines (IBM RC20525)"
+              ]
             }
           ]
         },
@@ -4485,8 +4463,8 @@
   "summary": {
     "derived": 6,
     "validated against": 22,
-    "shared numerical routine": 34,
-    "independent": 65,
+    "shared numerical routine": 33,
+    "independent": 66,
     "unknown": 50
   }
 }
