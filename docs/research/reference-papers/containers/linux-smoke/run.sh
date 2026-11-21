@@ -4,11 +4,12 @@ set -u
 V=/opt/venvs
 echo "arch: $(uname -m)  python: $($V/xclim/bin/python -V)  $(R --version | head -1)"
 $V/xclim/bin/python /smoke/inputs.py || exit 1
+fail=0  # any comparator process failure fails the run, even if its rows match
 {
   for pkg in xclim spei standard_precip pyet pyeto; do
-    $V/$pkg/bin/python /smoke/smoke_py.py "$pkg" || echo "ERROR	$pkg	script failed" >&2
+    $V/$pkg/bin/python /smoke/smoke_py.py "$pkg" || { echo "ERROR	$pkg	script failed" >&2; fail=1; }
   done
-  Rscript /smoke/smoke_r.R || echo "ERROR	R	script failed" >&2
+  Rscript /smoke/smoke_r.R || { echo "ERROR	R	script failed" >&2; fail=1; }
 } > /work/linux.tsv
 echo "--- resolved versions"
 for pkg in xclim spei standard_precip pyet; do
@@ -35,3 +36,6 @@ for k, e in exp.items():
 print(f"{len(exp) - bad}/{len(exp)} reproduced")
 raise SystemExit(bad > 0)
 PY
+rc=$?
+[ "$fail" -eq 0 ] || { echo "a comparator process failed: run fails" >&2; exit 1; }
+exit "$rc"
