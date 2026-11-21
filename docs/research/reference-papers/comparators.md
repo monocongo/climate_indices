@@ -79,6 +79,8 @@
 
 `SEI` 0.2.0 and `SCI` 1.0-3 are the versions already pinned in `tests/fixture/zero_handling/provenance.json`, which was generated with R 4.6.1. This survey used R 4.6.2.
 
+REFIMPL-04 subsequently found that `SEI` documents adapted code from `WillemMaetens/standaRdized` (`R/fit_dist.R`:19-20 at 0.2.0; see [lineage.md](lineage.md)). The `standaRdized` exclusion does not remove this ancestry from the lineage record.
+
 ### `standaRdized`: excluded
 
 It installs and runs (it needs `FAdist` 2.4 and `glogis` 1.0.3, both from CRAN), so this is a judgment, not a failure. Reasons: it is not on CRAN, its last commit is 2019-04-17, it is built around daily series (`agg.length` in days), and `standardized.index` rounds its output to two decimals by default (`digits = 2`). None of that fits a monthly protocol with the pre-registered 1e-6 "equivalent" class (the study tickets register it; see the map's Notes). The maintainer can reverse this; the smoke value below shows it is runnable.

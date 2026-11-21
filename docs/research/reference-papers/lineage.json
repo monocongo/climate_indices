@@ -56,7 +56,15 @@
       "kind": "package",
       "ref": "SEI 0.2.0 CRAN tarball",
       "source_read": true,
-      "origin": []
+      "origin": [
+        {
+          "source": "r_sei",
+          "ref": "SEI 0.2.0 CRAN tarball",
+          "file": "R/fit_dist.R",
+          "line": "19-20",
+          "quote": "This has been adapted from code available at ... https://github.com/WillemMaetens/standaRdized"
+        }
+      ]
     },
     "r_climatekit": {
       "name": "R climatekit",
@@ -309,6 +317,13 @@
     }
   },
   "citations": {
+    "sei_zero_placement_estimators": {
+      "source": "climate_indices",
+      "ref": "monocongo/climate_indices@a7235bf7",
+      "file": "tests/fixture/zero_handling/provenance.json",
+      "line": "17",
+      "quote": "SEI fits gamma by MLE (fitdistrplus) while climate_indices uses Thom's (1958) closed-form approximation"
+    },
     "sei_estimator_default": {
       "source": "r_sei",
       "ref": "SEI 0.2.0 CRAN tarball",

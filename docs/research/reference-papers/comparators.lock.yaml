@@ -161,6 +161,9 @@ products:
   - name: NCEI climdiv SPI
     decision: include
     fixture: tests/fixture/ncei_spi/provenance.json
+  - name: NOAA PSL EDDI
+    decision: include
+    fixture: tests/fixture/noaa-eddi-1month/provenance.json
   - name: SPEIbase v2.11
     decision: include
     fixture: tests/fixture/speibase/provenance.json

@@ -317,7 +317,7 @@ For REFIMPL-40 ([#1642](https://github.com/monocongo/climate_indices/issues/1642
 ## Limits
 
 - **What "read" means.** At each pin, the search covered origin statements (README, DESCRIPTION, CITATION, changelog, module headers), imports and declared dependencies, every mention of another comparator by name in source, tests, and documentation, and author lists. It was not a line-by-line audit. Copying that leaves no textual trace would be missed. *Independent* means that these searches found no relation.
-- **Quotes.** Quotes are short attribution lines, cut with "..." and with Markdown formatting dropped. No comparator code is reproduced.
+- **Quotes.** Quotes include short attribution statements and code excerpts. The excerpts use "..." for omissions and omit Markdown formatting. No complete comparator source file is reproduced.
 - **Palmer pins.** These come from REFIMPL-30 ([#1632](https://github.com/monocongo/climate_indices/issues/1632)), whose pull request ([#1660](https://github.com/monocongo/climate_indices/pull/1660)) is still open. The original Wells C++ is `scPDSI.zip` from `greenleaf.unl.edu` (sha256 `52ceeb42...`; `scpdsi.cpp` dated 2007-05-18). REFIMPL-30's table records it as not obtained.
 - **Authorship.** Shared authors were recorded where package metadata shows them. No pair is classified on authorship alone.
 
@@ -381,6 +381,7 @@ Every citation behind a relation, note, stated origin, ancestor, or statement in
 - monocongo/climate_indices@a7235bf7, `tests/fixture/spei_loglogistic/provenance.json`:2: "R SPEI package (CRAN)"
 - monocongo/climate_indices@a7235bf7, `tests/fixture/speibase/provenance.json`:123: "PLAUSIBILITY CHECK ONLY, NOT EXTERNAL NUMERICAL VALIDATION."
 - monocongo/climate_indices@a7235bf7, `tests/fixture/zero_handling/provenance.json`:2: "R SEI and SCI packages"
+- monocongo/climate_indices@a7235bf7, `tests/fixture/zero_handling/provenance.json`:17: "SEI fits gamma by MLE (fitdistrplus) while climate_indices uses Thom's (1958) closed-form approximation"
 - monocongo/climate_indices@a7235bf7, `tests/parity_registry.py`:1: "One parity registry and harness shared by every ported Rust kernel."
 - monocongo/climate_indices@a7235bf7, `tests/test_nclimdiv_reference.py`:1-5: "Palmer-family comparisons against NOAA nClimDiv. ... against the operational NOAA NCEI nClimDiv reference arrays"
 - monocongo/climate_indices@a7235bf7, `tests/test_noaa_eddi_reference.py`:3-4: "Validates the library's EDDI implementation against pre-computed EDDI values from the NOAA Physical Sciences Laboratory (PSL)."
@@ -429,6 +430,7 @@ Every citation behind a relation, note, stated origin, ancestor, or statement in
 
 **R SEI**
 
+- SEI 0.2.0 CRAN tarball, `R/fit_dist.R`:19-20: "This has been adapted from code available at ... https://github.com/WillemMaetens/standaRdized"
 - SEI 0.2.0 CRAN tarball, `R/fit_dist.R`:52-53: "the default is to estimate parameters using maximum likelihood estimation ... method = "mle""
 - SEI 0.2.0 CRAN tarball, `R/fit_dist.R`:251-252: "else if (method == "lmme") ... params <- fit_dist_lmme(data = data, dist = dist)"
 - SEI 0.2.0 CRAN tarball, `R/fit_dist.R`:302-303: "method 'lmme' is not available for the log-logistic distribution"
