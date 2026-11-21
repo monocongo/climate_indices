@@ -8,7 +8,7 @@
 
 - This is a survey, not a comparison. Every number below is a **smoke value**: it shows that a comparator installed and produced one index value. No evidence class in `VALIDATION.md` fits a one-month smoke value (there, even `characterization` means measured ceilings), it is not evidence for any claim, and no study ticket may cite it. Each study pre-registers its hypotheses, thresholds, and sample before it runs (see the map's Notes).
 - Smoke values are at **L0 (the lowest evidence level), as shipped**: the comparator's own defaults, with the arguments each package offers. Where a package has no calibration-period argument, the difference from the others is expected, not a discrepancy.
-- Agreement between two packages is evidence only if they are independent. [REFIMPL-04](https://github.com/monocongo/climate_indices/issues/1606) has not resolved lineage, so every cross-package agreement here is "same lineage not excluded".
+- Agreement between two packages is evidence only if they are independent. [REFIMPL-04](https://github.com/monocongo/climate_indices/issues/1606) classifies every pair in [lineage.md](lineage.md); read each agreement here against that pair's class.
 - "Headless on Linux" was run only for NCL and the NDMC SPI Generator, which ran in Linux containers (see "Programs run in containers"). Everything else ran on macOS arm64. Several CRAN dependencies compile Fortran and C++ (see the environment notes), so [REFIMPL-08](https://github.com/monocongo/climate_indices/issues/1610) must confirm Linux for them.
 - "Committing outputs" rows state the project rule (numeric outputs and provenance only, never comparator code). They are not a legal opinion on output licensing.
 - Include/exclude entries are proposals for the maintainer to approve.
@@ -34,7 +34,7 @@
 | SPI (program) | NDMC SPI Generator 1.7.6.0 | zip sha256 `ce8f37bc`, run under Mono | **Include** (Windows .NET 4.0 program run in a Linux container under Mono; output rounded to two decimals) |
 | SPI (product) | nClimGrid SPI | n/a | **Exclude** (circular: this repository's author maintains the gridded nClimGrid SPI tooling) |
 | PET (Python) | `pyet` | 1.5.0 | **Include** (no Thornthwaite) |
-| PET (Python) | `PyETo` | git `79ddd88d` (no release) | **Include**, with claimed lineage: `climate_indices.eto` is said to derive from it, unverified ([REFIMPL-04](https://github.com/monocongo/climate_indices/issues/1606)) |
+| PET (Python) | `PyETo` | git `79ddd88d` (no release) | **Include**; `climate_indices.eto` (Thornthwaite, Hargreaves) derives from it ([lineage.md](lineage.md), REFIMPL-04) |
 | PET (R) | `Evapotranspiration` | 1.16 | **Include** (no Thornthwaite) |
 | Other | NCL `dim_spi_n` | conda-forge 6.6.2, linux-64 build `h7a63124_57` | **Include** (linux-64 build in a container under amd64 emulation; NCL is in maintenance) |
 | Other | MATLAB SDAT | n/a | **Exclude** (needs MATLAB; original toolbox not obtained) |
@@ -79,6 +79,8 @@
 
 `SEI` 0.2.0 and `SCI` 1.0-3 are the versions already pinned in `tests/fixture/zero_handling/provenance.json`, which was generated with R 4.6.1. This survey used R 4.6.2.
 
+REFIMPL-04 subsequently found that `SEI` documents adapted code from `WillemMaetens/standaRdized` (`R/fit_dist.R`:19-20 at 0.2.0; see [lineage.md](lineage.md)). The `standaRdized` exclusion does not remove this ancestry from the lineage record.
+
 ### `standaRdized`: excluded
 
 It installs and runs (it needs `FAdist` 2.4 and `glogis` 1.0.3, both from CRAN), so this is a judgment, not a failure. Reasons: it is not on CRAN, its last commit is 2019-04-17, it is built around daily series (`agg.length` in days), and `standardized.index` rounds its output to two decimals by default (`digits = 2`). None of that fits a monthly protocol with the pre-registered 1e-6 "equivalent" class (the study tickets register it; see the map's Notes). The maintainer can reverse this; the smoke value below shows it is runnable.
@@ -98,7 +100,7 @@ It installs and runs (it needs `FAdist` 2.4 and `glogis` 1.0.3, both from CRAN),
 
 Per the research notes, `xclim` changed its Hargreaves method for consistency with recent literature ([pull request 1723](https://github.com/Ouranosinc/xclim/pull/1723)); that was not re-verified here, and it matters for any Hargreaves comparison.
 
-The ticket's claim that `climate_indices.eto` derives from `PyETo` is not re-verified here; it stands as a lead for [REFIMPL-04](https://github.com/monocongo/climate_indices/issues/1606). Until that is resolved, a PET comparison against `PyETo` is "same lineage not excluded".
+The ticket's claim that `climate_indices.eto` derives from `PyETo` was not re-verified here. [REFIMPL-04](https://github.com/monocongo/climate_indices/issues/1606) has since confirmed it for Thornthwaite and Hargreaves ([lineage.md](lineage.md)), so a comparison against `PyETo` for those methods is not independent.
 
 ## Services and products
 
@@ -124,7 +126,7 @@ Two comparators do not run natively on the survey machine (macOS arm64), so each
 - **What it is.** NDMC's program page (<https://drought.unl.edu/Monitoring/SPI/SPIProgram.aspx>, "released as of 12/7/2018") links `SPIgenerator.zip` (5,071,776 bytes, last modified 2021-11-11, sha256 `ce8f37bc00bf5309cdbedff2e788f698b1f30b2794e17b0e7aaab5c337efb4bf`). It holds a VB.NET console program `SPIGenerator.exe` (reported as version 1.7.6.0 in its exception log), a C# `StandardPrecipitationIndex.dll`, the source of both, sample input, and sample output. Its documentation is `documentation.docx` in the zip.
 - **How it ran.** [`containers/ndmc-spi/Dockerfile`](containers/ndmc-spi/Dockerfile): a Debian stage fetches the zip with a pinned checksum, and the `mono:6.12` image (Mono 6.12.0.182, aarch64) runs the shipped 64-bit executable. Debian's own Mono packages lack the `Microsoft.VisualBasic` runtime, which the `mono:6.12` image carries in its GAC. The container runs with `--network none`.
 - **Quirks.** The program joins paths with a Windows backslash, so under Mono each output file is created with a name like `o\NAME.csv`; [`smoke.sh`](containers/ndmc-spi/smoke.sh) strips that prefix. The output directory must already exist, or the program writes `exceptions.txt` and exits 0. Output values are rounded to two decimals.
-- **Method, from its C# source.** The gamma fit is Thom's closed-form approximation (`gamm = (1 + sqrt(1 + 4A/3)) / (4A)`, `A = ln(mean) - mean(ln x)`) over the positive values, with the zero probability as a mixture; there is no calibration-period argument (the whole record is used), and the incomplete gamma code cites *Numerical Recipes*. This is the same approximation `climate_indices` documents, which is a lineage question for [REFIMPL-04](https://github.com/monocongo/climate_indices/issues/1606), not independence evidence.
+- **Method, from its C# source.** The gamma fit is Thom's closed-form approximation (`gamm = (1 + sqrt(1 + 4A/3)) / (4A)`, `A = ln(mean) - mean(ln x)`) over the positive values, with the zero probability as a mixture; there is no calibration-period argument (the whole record is used), and the incomplete gamma code cites *Numerical Recipes*. This is the same approximation `climate_indices` documents. [REFIMPL-04](https://github.com/monocongo/climate_indices/issues/1606) found a shared formula but no shared code with `climate_indices`; the program shares its gamma fit code with NCL instead ([lineage.md](lineage.md), finding 4).
 - **Check against the zip's own sample.** On the bundled monthly sample (station 250365, scales 1 and 2), 12 of 17 output files match the shipped 2014 sample output exactly. The other 5 differ in the last printed digit(s): in the SPI file, 39 of 1,776 value cells differ, all in the 2-month column, with a maximum difference of 0.02 and the 1-month column identical. The shipped output predates this program build (the DLL source is dated 2018), so version change and Mono-versus-Windows behaviour are not separable here.
 - **Not done.** No Windows run; Wine was not tried.
 
@@ -184,7 +186,7 @@ NCL and the NDMC program ran in the containers described above, on the same fixt
 3. **`PyETo` is not installable from PyPI or conda-forge**, and its last commit is 2022-08-31. It can be pinned only by commit.
 4. **`precip-index` states that it is built upon `climate_indices`** (lineage evidence for [REFIMPL-04](https://github.com/monocongo/climate_indices/issues/1606)).
 5. **SPEIbase v2.11 was built with R `SPEI` 1.8.1**, the version pinned here, so the repository's existing SPEIbase fixture and this comparator share a code version.
-6. **R `SPEI` (`ub-pwm`) and `standard_precip` (`lmom`) coincide to six decimals (0.342608) on gamma SPI-3**, and `SEI` MLE (0.343431), `standard_precip` MLE (0.343472), and `climate_indices` (0.343475) lie within about 5e-5. The first pair is consistent with one estimator under two names; whether that reflects shared code is a lineage question for REFIMPL-04, not independence evidence.
+6. **R `SPEI` (`ub-pwm`) and `standard_precip` (`lmom`) coincide to six decimals (0.342608) on gamma SPI-3**, and `SEI` MLE (0.343431), `standard_precip` MLE (0.343472), and `climate_indices` (0.343475) lie within about 5e-5. The first pair is consistent with one estimator under two names. REFIMPL-04 found that both fit with ports of Hosking's L-moment routines, so their agreement is not independence evidence ([lineage.md](lineage.md), finding 1).
 7. **The NDMC SPI Generator runs on Linux under Mono**, uses the same Thom closed-form gamma approximation that `climate_indices` documents, and prints two decimals. For June 2005 on the fixture (whole-record fit, no calibration argument) it gives 0.19 and NCL gamma gives 0.185046, which round to the same value; that is consistent with one estimator in two programs, and says nothing about independence.
 8. **conda-forge's osx-arm64 `ncl` build has no interpreter, but the linux-64 build works**, so the NCL comparator needs `linux/amd64` (emulated on Apple silicon).
 
