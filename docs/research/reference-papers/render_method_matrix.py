@@ -17,6 +17,7 @@ import jsonschema
 HERE = Path(__file__).resolve().parent
 BEGIN = "<!-- BEGIN GENERATED: {key} -->"
 END = "<!-- END GENERATED: {key} -->"
+SUMMARY_WIDTH = 110
 STATUS = {"verified": "", "unverified": "**unverified.** ", "not_applicable": ""}
 
 
@@ -45,9 +46,33 @@ def _row(axis: str, cell: dict) -> str:
     return f"| {axis.replace('_', ' ')} | {position} | {evidence} |"
 
 
+def render_summary(doc: dict, key: str) -> list[str]:
+    """Defaults at a glance: axes as rows, implementations as columns; evidence is in the per-package tables."""
+    entries = doc["families"][key]["entries"]
+    names = [
+        f"{doc['implementations'][e['implementation']]['name']}<br>`{_esc(e['entry_point'].split(' ')[0])}`"
+        for e in entries
+    ]
+    out = ["| Axis | " + " | ".join(names) + " |", "| --- |" + " --- |" * len(entries)]
+    for axis in doc["axes"]:
+        cells = []
+        for entry in entries:
+            cell = entry["cells"][axis]
+            text = (
+                cell["value"]
+                if len(cell["value"]) <= SUMMARY_WIDTH
+                else cell["value"][: SUMMARY_WIDTH - 3].rstrip() + "..."
+            )
+            mark = " (unverified)" if cell["status"] == "unverified" else ""
+            cells.append(_esc(text) + mark)
+        out.append(f"| {axis.replace('_', ' ')} | " + " | ".join(cells) + " |")
+    out.append("")
+    return out
+
+
 def render_family(doc: dict, key: str) -> str:
     family = doc["families"][key]
-    out: list[str] = []
+    out: list[str] = ["##### Defaults at a glance", "", *render_summary(doc, key), "##### Per-package evidence", ""]
     for entry in family["entries"]:
         impl = doc["implementations"][entry["implementation"]]
         out.append(f"#### {impl['name']}: {entry['entry_point']}")
@@ -114,11 +139,29 @@ def sections(doc: dict) -> dict[str, str]:
 
 def splice(text: str, key: str, body: str) -> str:
     begin, end = BEGIN.format(key=key), END.format(key=key)
-    if begin not in text or end not in text:
-        raise SystemExit(f"markers for {key!r} missing from method-matrix.md")
+    if text.count(begin) != 1 or text.count(end) != 1 or text.index(end) < text.index(begin):
+        raise SystemExit(f"markers for {key!r} must appear once each, BEGIN before END, in method-matrix.md")
     head, _, rest = text.partition(begin)
     _, _, tail = rest.partition(end)
     return f"{head}{begin}\n\n{body}\n{end}{tail}"
+
+
+def check_references(doc: dict) -> None:
+    """Cross-references the schema cannot express."""
+    impls = doc["implementations"]
+    for key, fam in doc["families"].items():
+        for name in (e["implementation"] for e in fam["entries"]):
+            if name not in impls:
+                raise SystemExit(f"{key}: unknown implementation {name!r}")
+    for cfg in doc["aligned_configurations"]:
+        if cfg["family"] not in doc["families"]:
+            raise SystemExit(f"{cfg['id']}: unknown family {cfg['family']!r}")
+        members = {i["implementation"] for i in cfg["implementations"]}
+        if not members <= set(impls):
+            raise SystemExit(f"{cfg['id']}: unknown implementation in {sorted(members - set(impls))}")
+        for triple in cfg["independent_triples"]:
+            if len(set(triple)) != 3 or not set(triple) <= members:
+                raise SystemExit(f"{cfg['id']}: triple {triple} is not three distinct members of its implementations")
 
 
 def main(argv: list[str]) -> int:
@@ -126,10 +169,7 @@ def main(argv: list[str]) -> int:
     doc = json.loads((HERE / "method-matrix.json").read_text(encoding="utf-8"))
     jsonschema.Draft202012Validator.check_schema(schema)
     jsonschema.validate(doc, schema)
-    for fam in doc["families"].values():
-        for entry in fam["entries"]:
-            if entry["implementation"] not in doc["implementations"]:
-                raise SystemExit(f"unknown implementation {entry['implementation']!r}")
+    check_references(doc)
     path = HERE / "method-matrix.md"
     original = path.read_text(encoding="utf-8")
     text = original

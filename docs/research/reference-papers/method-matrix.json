@@ -90,7 +90,7 @@
       "name": "SPEIbase v2.11",
       "ref": "fixture downloaded 2026-09-17 (tests/fixture/speibase/provenance.json)",
       "source_read": false,
-      "note": "Described as built with R SPEI 1.8.1; not read here."
+      "note": "Described as built with R SPEI 1.8.1; not read here (lineage.json marks source_read true for it; here no source of the product was read)."
     },
     "noaa_psl_eddi": {
       "name": "NOAA PSL EDDI",
@@ -148,16 +148,24 @@
               ]
             },
             "calibration_period": {
-              "value": "Required calibration_year_initial/final; parameters fit on that window, every year standardized against it; a window outside the record is clamped to the whole record; single series needs at least 30 non-NaN calibration years",
+              "value": "Required calibration_year_initial/final; parameters fit on that window, every year standardized against it; a window the record does not cover is clamped to the record (a window ending one year past it keeps its start) with CalibrationPeriodClampedWarning. The 30-year minimum raises InsufficientDataError only in the xarray adapter, for an in-memory single series containing NaN; the NumPy functions only warn (ShortCalibrationWarning)",
               "status": "verified",
               "citations": [
+                {
+                  "file": "src/climate_indices/compute.py",
+                  "lines": "699"
+                },
                 {
                   "file": "src/climate_indices/_calibration_period.py",
                   "lines": "24"
                 },
                 {
+                  "file": "src/climate_indices/xarray_adapter.py",
+                  "lines": "2056"
+                },
+                {
                   "file": "src/climate_indices/compute.py",
-                  "lines": "699"
+                  "lines": "1249"
                 }
               ]
             },
@@ -214,7 +222,7 @@
               ]
             },
             "zero_handling": {
-              "value": "Mixed CDF p0 + (1-p0)F(x), p0 = zeros / non-missing calibration values per calendar step; a zero scores Phi^-1(p0) ('classic', the top of the zero mass)",
+              "value": "Mixed CDF p0 + (1-p0)F(x), p0 = zeros / non-missing calibration values per calendar step; a zero scores Phi^-1(p0) ('classic', the top of the zero mass). For Pearson, a support-limit mask can override that score and values below 0.0005 are placed with the zeros",
               "status": "verified",
               "citations": [
                 {
@@ -292,7 +300,7 @@
               ]
             },
             "fit_failure": {
-              "value": "Pearson falls back to gamma with a warning; unfit gamma steps give NaN with a warning; a step with no calibration data has undefined zero mass and its zeros are NaN",
+              "value": "Pearson falls back to gamma with a warning. Gamma: a step with no fittable sample has NaN parameters and its non-zero values score NaN with no fit warning (the goodness-of-fit check skips invalid parameters); an all-zero calibration step scores its zeros -inf, clipped to -3.09; a step with no calibration data has undefined zero mass and its zeros are NaN",
               "status": "verified",
               "citations": [
                 {
@@ -302,6 +310,14 @@
                 {
                   "file": "src/climate_indices/compute.py",
                   "lines": "2511"
+                },
+                {
+                  "file": "src/climate_indices/compute.py",
+                  "lines": "1420"
+                },
+                {
+                  "file": "src/climate_indices/compute.py",
+                  "lines": "2524"
                 }
               ]
             }
@@ -312,7 +328,7 @@
           "entry_point": "standardized_precipitation_index (xclim.compute._agro)",
           "cells": {
             "accumulation": {
-              "value": "Input resampled to `freq` by mean, then rolling MEAN over `window` with skipna=False; NaN propagates; first window-1 steps NaN",
+              "value": "Input resampled to `freq` by mean only when its frequency differs (so daily to monthly gives a mean daily rate, not a total), then rolling MEAN over `window` (default 1, no rolling) with skipna=False; NaN propagates; first window-1 steps NaN",
               "status": "verified",
               "citations": [
                 {
@@ -326,12 +342,16 @@
               ]
             },
             "calendar_grouping": {
-              "value": "Month (freq MS), ISO week (W) or day of year (D), by the input frequency",
+              "value": "Month (freq MS), ISO week (W) or day of year (D), by the input frequency. Day of year is the raw time.dayofyear (a leap year's dates after 28 February sit one later), and fitted parameters are re-mapped to the target calendar with resample_doy",
               "status": "verified",
               "citations": [
                 {
                   "file": "src/xclim/compute/stats.py",
                   "lines": "810-816"
+                },
+                {
+                  "file": "src/xclim/compute/stats.py",
+                  "lines": "1136"
                 }
               ]
             },
@@ -396,9 +416,13 @@
               ],
               "options": [
                 {
-                  "value": "APP: Thom closed form for gamma, requires floc",
+                  "value": "APP: Thom closed form for gamma on the values with x - floc > 0 (others are dropped from the fit but still scored), requires floc",
                   "how": "method='APP', fitkwargs={'floc': 0}",
                   "citations": [
+                    {
+                      "file": "src/xclim/compute/stats.py",
+                      "lines": "652"
+                    },
                     {
                       "file": "src/xclim/compute/stats.py",
                       "lines": "657"
@@ -438,7 +462,7 @@
               ]
             },
             "zero_handling": {
-              "value": "zero_inflated=True: zeros removed from the fit; p0 = zeros / non-null values ('ecdf'); zeros placed at the upper bound of the zero mass, as 'classic'",
+              "value": "zero_inflated=True: zeros removed from the fit; p0 = zeros / non-NaN observations, zeros included ('ecdf'); zeros placed at the upper bound of the zero mass, as 'classic'",
               "status": "verified",
               "citations": [
                 {
@@ -497,12 +521,16 @@
               ]
             },
             "missing_data_minimum_sample": {
-              "value": "NaN propagates through the window; NaN dropped from the fit; fewer than 2 values gives NaN parameters; no larger minimum",
+              "value": "NaN propagates through the window; NaN dropped from the fit; ML and APP: fewer than 2 values gives NaN parameters; PWM: numargs + 3 values needed (4 for gamma), else NaN",
               "status": "verified",
               "citations": [
                 {
                   "file": "src/xclim/compute/stats.py",
                   "lines": "50"
+                },
+                {
+                  "file": "src/xclim/compute/stats.py",
+                  "lines": "69"
                 }
               ]
             },
@@ -527,9 +555,13 @@
           "entry_point": "spei.spi (src/spei/si.py)",
           "cells": {
             "accumulation": {
-              "value": "Rolling SUM over `timescale` steps, min_periods=timescale, then NaN rows dropped",
+              "value": "timescale=0 by default: no accumulation. For timescale > 0: rolling SUM over that many series steps (not months), min_periods=timescale, then NaN rows dropped",
               "status": "verified",
               "citations": [
+                {
+                  "file": "src/spei/si.py",
+                  "lines": "26"
+                },
                 {
                   "file": "src/spei/si.py",
                   "lines": "408-411"
@@ -549,7 +581,7 @@
               ]
             },
             "calendar_grouping": {
-              "value": "Series folded onto a year-2000 frame and grouped by pandas Grouper(freq=fit_freq): calendar month, or day with Feb 29 in its own bin; fit_freq inferred from the index",
+              "value": "Series folded onto a year-2000 frame and grouped by pandas Grouper(freq=fit_freq): calendar month, or day with Feb 29 in its own bin; fit_freq inferred from the (rolled, NaN-dropped) index; if pandas cannot infer a frequency (for example gaps) it silently falls back to monthly even for daily data",
               "status": "verified",
               "citations": [
                 {
@@ -559,6 +591,10 @@
                 {
                   "file": "src/spei/utils.py",
                   "lines": "118"
+                },
+                {
+                  "file": "src/spei/utils.py",
+                  "lines": "84"
                 }
               ],
               "options": [
@@ -631,7 +667,7 @@
               ]
             },
             "zero_handling": {
-              "value": "prob_zero=True: p0 = zeros / window length mixes the CDF and sets zeros to p0 (classic placement), but zeros are NOT removed from the fit data",
+              "value": "prob_zero=True: p0 = zeros / valid observations in the fit group mixes the CDF and sets zeros to p0 (classic placement), but zeros are NOT removed from the fit data",
               "status": "verified",
               "citations": [
                 {
@@ -850,7 +886,7 @@
               ]
             },
             "missing_data_minimum_sample": {
-              "value": "Rows with NaN dropped per group before the fit; L-moment fits need max(4, numargs + 3) values, MLE 4; a group of all zeros is not fit",
+              "value": "Rows with NaN dropped per group before the fit; L-moment fits need max(4, numargs + 3) values, MLE 4, counted after zeros are stripped for gam and pe3; a group of all zeros is not fit",
               "status": "verified",
               "citations": [
                 {
@@ -885,11 +921,19 @@
               "citations": [
                 {
                   "file": "R/spei.R",
+                  "lines": "597"
+                },
+                {
+                  "file": "R/spei.R",
                   "lines": "598-601"
                 },
                 {
                   "file": "R/kern.R",
                   "lines": "93"
+                },
+                {
+                  "file": "R/kern.R",
+                  "lines": "101"
                 }
               ],
               "options": [
@@ -996,12 +1040,20 @@
               ]
             },
             "zero_handling": {
-              "value": "Gamma and PearsonIII: p0 = zeros / n computed and zeros removed from the fit, but the p0 adjustment is written to spei[ff, s] and overwritten by qnorm(cdf_res) on the next statement, so p0 never reaches the output and a zero accumulation (CDF 0) becomes -Inf",
+              "value": "Gamma and PearsonIII: p0 = zeros / n is computed and non-positive values are removed from the fit, but the p0 adjustment is applied to spei[ff, s] (still NA, initialised as acu * NA) and overwritten by qnorm(cdf_res), the CDF of the positive-only fit, on the next statement, so p0 never reaches the output. For Gamma a zero accumulation (CDF 0) becomes -Inf; for PearsonIII a zero gets the fitted CDF at 0",
               "status": "verified",
               "citations": [
                 {
                   "file": "R/spei.R",
                   "lines": "641"
+                },
+                {
+                  "file": "R/spei.R",
+                  "lines": "642"
+                },
+                {
+                  "file": "R/spei.R",
+                  "lines": "617"
                 },
                 {
                   "file": "R/spei.R",
@@ -1039,7 +1091,7 @@
               ]
             },
             "missing_data_minimum_sample": {
-              "value": "na.rm=FALSE: any NA in the input is an error; na.rm=TRUE: NA dropped from the fit and the window sum stays NA. A fit needs at least 4 values and a non-zero standard deviation",
+              "value": "na.rm=FALSE: any NA in the input is an error; na.rm=TRUE: NA dropped from the fit and the window sum stays NA. A fit needs at least 4 values (after zero removal for Gamma and PearsonIII) and a non-zero standard deviation",
               "status": "verified",
               "citations": [
                 {
@@ -1133,7 +1185,7 @@
               ]
             },
             "zero_handling": {
-              "value": "p0 = zeros / n; zeros removed and one pseudo-observation 0.01 x min(positive) added before the fit; mixed CDF p0 + (1-p0)F(x), zero at the top of the mass",
+              "value": "`p0` is a required logical. With p0=TRUE and the default p0.center.mass=FALSE, p0 = zeros / n; when p0 > 0 the zeros are removed and one pseudo-observation 0.01 x min(positive) is added before the fit; mixed CDF p0 + (1-p0)F(x), zero at the top of the mass. With p0=FALSE zeros stay in the fit",
               "status": "verified",
               "citations": [
                 {
@@ -1165,7 +1217,7 @@
                   ]
                 }
               ],
-              "note": "p0 is required and defaults to no centre-of-mass; the Weibull form n0/(n+1) applies only with p0.center.mass=TRUE."
+              "note": "p0 has no default; the Weibull form n0/(n+1) and centre-of-mass scoring apply only with p0.center.mass=TRUE."
             },
             "plotting_position": {
               "value": "Parametric fit only",
@@ -1228,21 +1280,25 @@
           "entry_point": "SEI::std_index (dist='gamma' or other parametric)",
           "cells": {
             "accumulation": {
-              "value": "agg_fun 'sum' by default over agg_period units; a window with more than na_thres (10) percent NA is NA",
+              "value": "None unless agg_period is set (default NULL). With agg_period, agg_fun 'sum' by default over a time-based window; a window with more than na_thres (10) percent NA is NA, otherwise NAs are dropped and the function applies to the rest without rescaling, so a sum is biased low",
               "status": "verified",
               "citations": [
+                {
+                  "file": "R/std_index.R",
+                  "lines": "249"
+                },
                 {
                   "file": "R/std_index.R",
                   "lines": "251"
                 },
                 {
                   "file": "R/aggregate_xts.R",
-                  "lines": "128"
+                  "lines": "128-130"
                 }
               ]
             },
             "calendar_grouping": {
-              "value": "None built in: the caller passes a grouping factor gr_new (for example month) and one distribution is fit per group",
+              "value": "None built in: the caller passes a grouping factor gr_new (for example month) and one distribution is fit per group. The per-group call forwards only some arguments (method, n_thres, moving_window and rescale_fun are dropped, so method reverts to 'mle'), and aggregation then runs inside each group, so aggregate beforehand",
               "status": "verified",
               "citations": [
                 {
@@ -1324,7 +1380,7 @@
               ]
             },
             "zero_handling": {
-              "value": "Positive-support families stop on zeros; zeros are handled by censoring at lower=0 with p_l = share at or below it. cens 'normal' (default) places them at pnorm(-dnorm(qnorm(p_l))/p_l), the conditional mean; 'prob' at p_l/2; 'none' at p_l",
+              "value": "Positive-support families stop on zeros; zeros are handled only by censoring, which needs lower=0 (default -Inf), with p_l = share at or below it, and censored values are excluded from the fit with no pseudo-observation. cens 'normal' (default) places them at pnorm(-dnorm(qnorm(p_l))/p_l), the conditional mean; 'prob' at p_l/2; 'none' at p_l",
               "status": "verified",
               "citations": [
                 {
@@ -1346,12 +1402,24 @@
               "status": "not_applicable"
             },
             "inverse_normal": {
-              "value": "Exact: qnorm",
+              "value": "Exact: qnorm, for index_type='normal' (the default)",
               "status": "verified",
               "citations": [
                 {
                   "file": "R/std_index.R",
                   "lines": "395"
+                }
+              ],
+              "options": [
+                {
+                  "value": "The probability itself, or 2p - 1, instead of a z-score",
+                  "how": "index_type='prob01' | 'prob11'",
+                  "citations": [
+                    {
+                      "file": "R/std_index.R",
+                      "lines": "397"
+                    }
+                  ]
                 }
               ]
             },
@@ -1392,7 +1460,7 @@
           "entry_point": "climatekit::ck_spi (daily precipitation and dates)",
           "cells": {
             "accumulation": {
-              "value": "Daily values summed to calendar months with sum(na.rm=TRUE) (a missing day counts as 0), then a trailing sum over `scale` months, also na.rm=TRUE",
+              "value": "Daily values summed to the months present in `dates` with sum(na.rm=TRUE) (a missing day counts as 0, a month of all-NA days sums to 0, absent months are not filled), then a trailing sum over `scale` rows of those totals, so the window spans calendar months only if the dates have no gaps",
               "status": "verified",
               "citations": [
                 {
@@ -1494,7 +1562,7 @@
               ]
             },
             "output_bound": {
-              "value": "CDF clamped to [0.001, 0.999], so +-3.09",
+              "value": "A CDF of exactly 0 or below becomes 0.001 and of 1 or above becomes 0.999 (z = -3.09, +3.09); values in between are not clamped, so |z| can exceed 3.09",
               "status": "verified",
               "citations": [
                 {
@@ -1518,12 +1586,20 @@
               ]
             },
             "fit_failure": {
-              "value": "A <= 0 returns NA without a warning",
+              "value": "Gamma: A <= 0 returns NA without a warning. Pearson III: invalid sd or shape returns NA without a warning, and an out-of-support point (NA CDF) scores z = 0",
               "status": "verified",
               "citations": [
                 {
                   "file": "R/drought.R",
                   "lines": "464"
+                },
+                {
+                  "file": "R/drought.R",
+                  "lines": "502"
+                },
+                {
+                  "file": "R/drought.R",
+                  "lines": "526"
                 }
               ]
             }
@@ -1534,12 +1610,16 @@
           "entry_point": "SPIGenerator.exe (VB.NET) calling StandardPrecipitationIndex.dll (C#)",
           "cells": {
             "accumulation": {
-              "value": "Sum of `timescale` consecutive values; any missing value makes the sum missing (-99); first timescale-1 values missing",
+              "value": "Sum of `timescale` consecutive monthly (or weekly) values; any missing value makes the sum missing (-99); first timescale-1 values missing. Daily input is aggregated first in the front end: a month is missing when more than MaxMissingDays (8) days are absent, missing days are skipped without rescaling, and a week is missing only when all 7 days are",
               "status": "verified",
               "citations": [
                 {
                   "file": "code/spi_standalone/spi.vb",
                   "lines": "215-237"
+                },
+                {
+                  "file": "code/spi_standalone/spicollection.vb",
+                  "lines": "898"
                 }
               ]
             },
@@ -1626,12 +1706,16 @@
               ]
             },
             "output_bound": {
-              "value": "None in the code; output is written to two decimals (observed in REFIMPL-03, not read from this source)",
+              "value": "No clip; a CDF of 0 or 1 returns the sentinel +-9999.0, which equals the missing code. Output is rounded to two decimals in the writer",
               "status": "verified",
               "citations": [
                 {
                   "file": "code/spi_dll/gammadistributionestimatedprobabilities.cs",
-                  "lines": "29"
+                  "lines": "66"
+                },
+                {
+                  "file": "code/spi_standalone/spicollection.vb",
+                  "lines": "328"
                 }
               ]
             },
@@ -1646,12 +1730,16 @@
               ]
             },
             "fit_failure": {
-              "value": "All zeros or one positive value: degenerate parameters (alpha 0, gamma 1, beta the mean) and no error",
+              "value": "One positive value: degenerate parameters (alpha 0, gamma 1, beta the mean), no error. All zeros: pzero = 1, a CDF of 1, and an output of +9999",
               "status": "verified",
               "citations": [
                 {
                   "file": "code/spi_dll/gammadistributionestimatedprobabilities.cs",
                   "lines": "124-138"
+                },
+                {
+                  "file": "code/spi_dll/gammadistributionestimatedprobabilities.cs",
+                  "lines": "132-138"
                 }
               ]
             }
@@ -1702,7 +1790,7 @@
               ]
             },
             "estimator": {
-              "value": "Gamma: Thom closed form on the positive values. Pearson III: Hosking SAMLMR L-moments of the non-zero values, from a thinned sample when nrun exceeds 12",
+              "value": "Gamma: Thom closed form on the positive values. Pearson III (spi_type=3): Hosking SAMLMR L-moments of the non-zero values; for nrun above 12, the fit and pzero use every nstep-th accumulation (nstep = nrun rounded up to a multiple of 12, at least 24, undefined above 72) and all values are then scored",
               "status": "verified",
               "citations": [
                 {
@@ -1748,42 +1836,74 @@
               "status": "not_applicable"
             },
             "inverse_normal": {
-              "value": "Abramowitz and Stegun 26.2.23 rational approximation (anvnrmd); A&S give a maximum error of 4.5e-4, a bound not stated in the source",
+              "value": "Gamma path: Abramowitz and Stegun 26.2.23 rational approximation (anvnrmd); A&S give a maximum error of 4.5e-4, a bound not stated in the source",
               "status": "verified",
               "citations": [
                 {
                   "file": "ni/src/lib/nfpfort/spid.f",
                   "lines": "131"
                 }
+              ],
+              "options": [
+                {
+                  "value": "Hosking QUASTN, algorithm AS241 (exact to about 1e-16)",
+                  "how": "spi_type=3 (Pearson III)",
+                  "citations": [
+                    {
+                      "file": "ni/src/lib/nfpfort/spi3.f",
+                      "lines": "843"
+                    }
+                  ]
+                }
               ]
             },
             "output_bound": {
-              "value": "None; a probability of 0 returns the sentinel +-1e37",
+              "value": "Gamma path: none; a probability of 0 returns the sentinel +-1e37",
               "status": "verified",
               "citations": [
                 {
                   "file": "ni/src/lib/nfpfort/spid.f",
                   "lines": "146"
                 }
+              ],
+              "options": [
+                {
+                  "value": "Probability clamped to [0.001, 0.999], so +-3.09",
+                  "how": "spi_type=3 (Pearson III)",
+                  "citations": [
+                    {
+                      "file": "ni/src/lib/nfpfort/spi3.f",
+                      "lines": "261-262"
+                    }
+                  ]
+                }
               ]
             },
             "missing_data_minimum_sample": {
-              "value": "A constant series is not fit and stays missing; any missing value in a window makes it missing",
+              "value": "A calendar month whose accumulations are all equal is not fit and stays missing; any missing value in a window makes it missing. Pearson III requires the series length to be a multiple of 12",
               "status": "verified",
               "citations": [
                 {
                   "file": "ni/src/lib/nfpfort/spid.f",
                   "lines": "90"
+                },
+                {
+                  "file": "ni/src/lib/nfpfort/spi3.f",
+                  "lines": "27"
                 }
               ]
             },
             "fit_failure": {
-              "value": "All zeros or one positive value: degenerate parameters (alpha 0, gamma 1, beta the mean), no error",
+              "value": "Gamma: exactly one positive value gives degenerate parameters (alpha 0, gamma 1, beta the mean), no error; an all-equal month, all-zero included, is skipped before the fit. Pearson III: fewer than 3 non-zero values or l2 = 0 leaves the value missing",
               "status": "verified",
               "citations": [
                 {
                   "file": "ni/src/lib/nfpfort/spid.f",
                   "lines": "205"
+                },
+                {
+                  "file": "ni/src/lib/nfpfort/spid.f",
+                  "lines": "198"
                 }
               ]
             }
@@ -2096,16 +2216,24 @@
               ]
             },
             "calibration_period": {
-              "value": "Required calibration_year_initial/final; parameters fit on that window, every year standardized against it; a window outside the record is clamped to the whole record; single series needs at least 30 non-NaN calibration years",
+              "value": "Required calibration_year_initial/final; parameters fit on that window, every year standardized against it; a window the record does not cover is clamped to the record (a window ending one year past it keeps its start) with CalibrationPeriodClampedWarning. The 30-year minimum raises InsufficientDataError only in the xarray adapter, for an in-memory single series containing NaN; the NumPy functions only warn (ShortCalibrationWarning)",
               "status": "verified",
               "citations": [
+                {
+                  "file": "src/climate_indices/compute.py",
+                  "lines": "699"
+                },
                 {
                   "file": "src/climate_indices/_calibration_period.py",
                   "lines": "24"
                 },
                 {
+                  "file": "src/climate_indices/xarray_adapter.py",
+                  "lines": "2056"
+                },
+                {
                   "file": "src/climate_indices/compute.py",
-                  "lines": "699"
+                  "lines": "1249"
                 }
               ]
             },
@@ -2171,7 +2299,7 @@
               "note": "The fit is translation-equivariant in location, so the offset does not change the log-logistic or GEV result."
             },
             "zero_handling": {
-              "value": "None: spei() takes no zero_handling; log-logistic and GEV use every value, zeros included, with no zero mass",
+              "value": "spei() takes no zero_handling. Log-logistic and GEV use every value, zeros included, with no zero mass; the gamma and Pearson options apply the classic p0 mixture and exclude exact zeros from the fit",
               "status": "verified",
               "citations": [
                 {
@@ -2213,7 +2341,7 @@
               ]
             },
             "missing_data_minimum_sample": {
-              "value": "NaN in a window gives NaN; fit uses the non-missing calibration values; Pearson L-moments need at least 4 non-zero values; no explicit minimum for gamma",
+              "value": "NaN in a window gives NaN; log-logistic and GEV need at least 4 non-NaN calibration values per step, fewer gives a failed step (NaN); gamma and Pearson as for SPI",
               "status": "verified",
               "citations": [
                 {
@@ -2221,8 +2349,8 @@
                   "lines": "19"
                 },
                 {
-                  "file": "src/climate_indices/_calibration_period.py",
-                  "lines": "23"
+                  "file": "src/climate_indices/lmoments.py",
+                  "lines": "297"
                 }
               ]
             },
@@ -2261,12 +2389,16 @@
               ]
             },
             "calendar_grouping": {
-              "value": "Month (freq MS), ISO week (W) or day of year (D), by the input frequency",
+              "value": "Month (freq MS), ISO week (W) or day of year (D), by the input frequency. Day of year is the raw time.dayofyear (a leap year's dates after 28 February sit one later), and fitted parameters are re-mapped to the target calendar with resample_doy",
               "status": "verified",
               "citations": [
                 {
                   "file": "src/xclim/compute/stats.py",
                   "lines": "810-816"
+                },
+                {
+                  "file": "src/xclim/compute/stats.py",
+                  "lines": "1136"
                 }
               ]
             },
@@ -2319,9 +2451,13 @@
               ],
               "options": [
                 {
-                  "value": "APP: Thom closed form for gamma, requires floc",
+                  "value": "APP: Thom closed form for gamma on the values with x - floc > 0 (others are dropped from the fit but still scored), requires floc",
                   "how": "method='APP', fitkwargs={'floc': 0}",
                   "citations": [
+                    {
+                      "file": "src/xclim/compute/stats.py",
+                      "lines": "652"
+                    },
                     {
                       "file": "src/xclim/compute/stats.py",
                       "lines": "657"
@@ -2393,12 +2529,16 @@
               ]
             },
             "missing_data_minimum_sample": {
-              "value": "NaN propagates through the window; NaN dropped from the fit; fewer than 2 values gives NaN parameters; no larger minimum",
+              "value": "NaN propagates through the window; NaN dropped from the fit; ML and APP: fewer than 2 values gives NaN parameters; PWM: numargs + 3 values needed (4 for gamma), else NaN",
               "status": "verified",
               "citations": [
                 {
                   "file": "src/xclim/compute/stats.py",
                   "lines": "50"
+                },
+                {
+                  "file": "src/xclim/compute/stats.py",
+                  "lines": "69"
                 }
               ]
             },
@@ -2423,9 +2563,13 @@
           "entry_point": "spei.spei (src/spei/si.py); the input series is P - PET",
           "cells": {
             "accumulation": {
-              "value": "Rolling SUM over `timescale` steps, min_periods=timescale, then NaN rows dropped",
+              "value": "timescale=0 by default: no accumulation. For timescale > 0: rolling SUM over that many series steps (not months), min_periods=timescale, then NaN rows dropped",
               "status": "verified",
               "citations": [
+                {
+                  "file": "src/spei/si.py",
+                  "lines": "26"
+                },
                 {
                   "file": "src/spei/si.py",
                   "lines": "408-411"
@@ -2445,7 +2589,7 @@
               ]
             },
             "calendar_grouping": {
-              "value": "Series folded onto a year-2000 frame and grouped by pandas Grouper(freq=fit_freq): calendar month, or day with Feb 29 in its own bin; fit_freq inferred from the index",
+              "value": "Series folded onto a year-2000 frame and grouped by pandas Grouper(freq=fit_freq): calendar month, or day with Feb 29 in its own bin; fit_freq inferred from the (rolled, NaN-dropped) index; if pandas cannot infer a frequency (for example gaps) it silently falls back to monthly even for daily data",
               "status": "verified",
               "citations": [
                 {
@@ -2455,6 +2599,10 @@
                 {
                   "file": "src/spei/utils.py",
                   "lines": "118"
+                },
+                {
+                  "file": "src/spei/utils.py",
+                  "lines": "84"
                 }
               ],
               "options": [
@@ -2637,7 +2785,7 @@
               ]
             },
             "distribution": {
-              "value": "No SPEI default: the SPI default 'gam' is inappropriate for a signed balance, and the docstring recommends dist_type='glo' with fit_type='lmom'",
+              "value": "Inherits the SPI default dist_type='gam' with fit_type='lmom', which strips zeros, applies p0 and fits a gamma, and the docstring calls inappropriate for a signed balance; it recommends dist_type='glo' with fit_type='lmom'",
               "status": "verified",
               "citations": [
                 {
@@ -2665,16 +2813,16 @@
               ]
             },
             "location_offset": {
-              "value": "Gamma: location fixed at 0 (L-moments, and MLE via the floc=0 default); other distributions fit a location",
+              "value": "glo: location fitted (Hosking GLO has a location); gam: fixed at 0",
               "status": "verified",
               "citations": [
                 {
-                  "file": "standard_precip/_distributions.py",
-                  "lines": "50"
+                  "file": "lmoments3-1.0.8/src/lmoments3/distr.py",
+                  "lines": "153"
                 },
                 {
-                  "file": "lmoments3-1.0.8/src/lmoments3/distr.py",
-                  "lines": "1218"
+                  "file": "standard_precip/_distributions.py",
+                  "lines": "50"
                 }
               ]
             },
@@ -2713,7 +2861,7 @@
               ]
             },
             "missing_data_minimum_sample": {
-              "value": "Rows with NaN dropped per group before the fit; L-moment fits need max(4, numargs + 3) values, MLE 4; a group of all zeros is not fit",
+              "value": "Rows with NaN dropped per group before the fit; L-moment fits need max(4, numargs + 3) values, MLE 4, counted after zeros are stripped for gam and pe3; a group of all zeros is not fit",
               "status": "verified",
               "citations": [
                 {
@@ -2748,11 +2896,19 @@
               "citations": [
                 {
                   "file": "R/spei.R",
+                  "lines": "597"
+                },
+                {
+                  "file": "R/spei.R",
                   "lines": "598-601"
                 },
                 {
                   "file": "R/kern.R",
                   "lines": "93"
+                },
+                {
+                  "file": "R/kern.R",
+                  "lines": "101"
                 }
               ],
               "options": [
@@ -2889,7 +3045,7 @@
               ]
             },
             "missing_data_minimum_sample": {
-              "value": "na.rm=FALSE: any NA in the input is an error; na.rm=TRUE: NA dropped from the fit and the window sum stays NA. A fit needs at least 4 values and a non-zero standard deviation",
+              "value": "na.rm=FALSE: any NA in the input is an error; na.rm=TRUE: NA dropped from the fit and the window sum stays NA. A fit needs at least 4 values (after zero removal for Gamma and PearsonIII) and a non-zero standard deviation",
               "status": "verified",
               "citations": [
                 {
@@ -2923,21 +3079,25 @@
           "entry_point": "SEI::std_index (input is P - PET)",
           "cells": {
             "accumulation": {
-              "value": "agg_fun 'sum' by default over agg_period units; a window with more than na_thres (10) percent NA is NA",
+              "value": "None unless agg_period is set (default NULL). With agg_period, agg_fun 'sum' by default over a time-based window; a window with more than na_thres (10) percent NA is NA, otherwise NAs are dropped and the function applies to the rest without rescaling, so a sum is biased low",
               "status": "verified",
               "citations": [
+                {
+                  "file": "R/std_index.R",
+                  "lines": "249"
+                },
                 {
                   "file": "R/std_index.R",
                   "lines": "251"
                 },
                 {
                   "file": "R/aggregate_xts.R",
-                  "lines": "128"
+                  "lines": "128-130"
                 }
               ]
             },
             "calendar_grouping": {
-              "value": "None built in: the caller passes a grouping factor gr_new (for example month) and one distribution is fit per group",
+              "value": "None built in: the caller passes a grouping factor gr_new (for example month) and one distribution is fit per group. The per-group call forwards only some arguments (method, n_thres, moving_window and rescale_fun are dropped, so method reverts to 'mle'), and aggregation then runs inside each group, so aggregate beforehand",
               "status": "verified",
               "citations": [
                 {
@@ -3039,12 +3199,24 @@
               "status": "not_applicable"
             },
             "inverse_normal": {
-              "value": "Exact: qnorm",
+              "value": "Exact: qnorm, for index_type='normal' (the default)",
               "status": "verified",
               "citations": [
                 {
                   "file": "R/std_index.R",
                   "lines": "395"
+                }
+              ],
+              "options": [
+                {
+                  "value": "The probability itself, or 2p - 1, instead of a z-score",
+                  "how": "index_type='prob01' | 'prob11'",
+                  "citations": [
+                    {
+                      "file": "R/std_index.R",
+                      "lines": "397"
+                    }
+                  ]
                 }
               ]
             },
@@ -3085,7 +3257,7 @@
           "entry_point": "climatekit::ck_spei (daily precipitation and PET; provisional, not in the lineage SPEI table)",
           "cells": {
             "accumulation": {
-              "value": "Daily P - PET summed to calendar months with na.rm=TRUE (a missing day counts as 0), then a trailing sum over `scale` months, na.rm=TRUE",
+              "value": "Daily P - PET summed to the months present in `dates` with na.rm=TRUE (a missing day counts as 0, absent months are not filled), then a trailing sum over `scale` rows of those totals",
               "status": "verified",
               "citations": [
                 {
@@ -3182,17 +3354,21 @@
               "citations": [
                 {
                   "file": "R/drought.R",
-                  "lines": "482"
+                  "lines": "662"
                 }
               ]
             },
             "output_bound": {
-              "value": "CDF clamped to [0.001, 0.999], so +-3.09",
+              "value": "A CDF of exactly 0 or below becomes 0.001 and of 1 or above becomes 0.999 (z = -3.09, +3.09); values in between are not clamped, so |z| can exceed 3.09. GEV: an out-of-support point scores z = 0",
               "status": "verified",
               "citations": [
                 {
                   "file": "R/drought.R",
-                  "lines": "479-480"
+                  "lines": "660-661"
+                },
+                {
+                  "file": "R/drought.R",
+                  "lines": "590"
                 }
               ]
             },
@@ -3576,16 +3752,24 @@
               ]
             },
             "calibration_period": {
-              "value": "Required calibration_year_initial/final; parameters fit on that window, every year standardized against it; a window outside the record is clamped to the whole record; single series needs at least 30 non-NaN calibration years",
+              "value": "Required calibration_year_initial/final; parameters fit on that window, every year standardized against it; a window the record does not cover is clamped to the record (a window ending one year past it keeps its start) with CalibrationPeriodClampedWarning. The 30-year minimum raises InsufficientDataError only in the xarray adapter, for an in-memory single series containing NaN; the NumPy functions only warn (ShortCalibrationWarning)",
               "status": "verified",
               "citations": [
+                {
+                  "file": "src/climate_indices/compute.py",
+                  "lines": "699"
+                },
                 {
                   "file": "src/climate_indices/_calibration_period.py",
                   "lines": "24"
                 },
                 {
+                  "file": "src/climate_indices/xarray_adapter.py",
+                  "lines": "2056"
+                },
+                {
                   "file": "src/climate_indices/compute.py",
-                  "lines": "699"
+                  "lines": "1249"
                 }
               ]
             },
@@ -3696,12 +3880,16 @@
               ]
             },
             "calibration_period": {
-              "value": "calibration_year_initial/final, required; each calendar step ranked within that window",
+              "value": "calibration_year_initial/final, required; each calendar step ranked within that window; a window the record does not cover raises CalibrationPeriodError (rejected, not clamped as SPI, SPEI and the empirical path do)",
               "status": "verified",
               "citations": [
                 {
                   "file": "src/climate_indices/drought/indices.py",
                   "lines": "311"
+                },
+                {
+                  "file": "src/climate_indices/drought/indices.py",
+                  "lines": "396"
                 }
               ]
             },
@@ -3792,21 +3980,25 @@
           "entry_point": "SEI::std_index(dist='empirical')",
           "cells": {
             "accumulation": {
-              "value": "agg_fun 'sum' by default over agg_period units; a window with more than na_thres (10) percent NA is NA",
+              "value": "None unless agg_period is set (default NULL). With agg_period, agg_fun 'sum' by default over a time-based window; a window with more than na_thres (10) percent NA is NA, otherwise NAs are dropped and the function applies to the rest without rescaling, so a sum is biased low",
               "status": "verified",
               "citations": [
+                {
+                  "file": "R/std_index.R",
+                  "lines": "249"
+                },
                 {
                   "file": "R/std_index.R",
                   "lines": "251"
                 },
                 {
                   "file": "R/aggregate_xts.R",
-                  "lines": "128"
+                  "lines": "128-130"
                 }
               ]
             },
             "calendar_grouping": {
-              "value": "None built in: the caller passes a grouping factor gr_new (for example month) and one distribution is fit per group",
+              "value": "None built in: the caller passes a grouping factor gr_new (for example month) and one distribution is fit per group. The per-group call forwards only some arguments (method, n_thres, moving_window and rescale_fun are dropped, so method reverts to 'mle'), and aggregation then runs inside each group, so aggregate beforehand",
               "status": "verified",
               "citations": [
                 {
@@ -3912,9 +4104,13 @@
           "entry_point": "spei.si.SI(normal_scores_transform=True)",
           "cells": {
             "accumulation": {
-              "value": "Rolling SUM over `timescale` steps, min_periods=timescale, then NaN rows dropped",
+              "value": "timescale=0 by default: no accumulation. For timescale > 0: rolling SUM over that many series steps (not months), min_periods=timescale, then NaN rows dropped",
               "status": "verified",
               "citations": [
+                {
+                  "file": "src/spei/si.py",
+                  "lines": "26"
+                },
                 {
                   "file": "src/spei/si.py",
                   "lines": "408-411"
@@ -3934,7 +4130,7 @@
               ]
             },
             "calendar_grouping": {
-              "value": "Series folded onto a year-2000 frame and grouped by pandas Grouper(freq=fit_freq): calendar month, or day with Feb 29 in its own bin; fit_freq inferred from the index",
+              "value": "Series folded onto a year-2000 frame and grouped by pandas Grouper(freq=fit_freq): calendar month, or day with Feb 29 in its own bin; fit_freq inferred from the (rolled, NaN-dropped) index; if pandas cannot infer a frequency (for example gaps) it silently falls back to monthly even for daily data",
               "status": "verified",
               "citations": [
                 {
@@ -3944,6 +4140,10 @@
                 {
                   "file": "src/spei/utils.py",
                   "lines": "118"
+                },
+                {
+                  "file": "src/spei/utils.py",
+                  "lines": "84"
                 }
               ],
               "options": [
@@ -3970,12 +4170,16 @@
               ]
             },
             "distribution": {
-              "value": "Normal-scores transform, reachable only through the SI class (spi() and spei() hard-code False)",
+              "value": "Normal-scores transform: SI(normal_scores_transform=True), or the sgi() wrapper, which also sets agg_func='mean'. spi(), spei(), ssfi() and ssmi() hard-code False",
               "status": "verified",
               "citations": [
                 {
                   "file": "src/spei/si.py",
                   "lines": "133"
+                },
+                {
+                  "file": "src/spei/si.py",
+                  "lines": "68"
                 },
                 {
                   "file": "src/spei/si.py",
@@ -4367,8 +4571,8 @@
         ]
       ],
       "residual_axes": [
-        "inverse_normal: NCL and NDMC use the A&S 26.2.23 approximation, the others exact (A&S bound 4.5e-4)",
-        "output_bound: the library and climatekit clip at +-3.09, xclim at +-8.21, NCL and NDMC not at all; apply one common clip in the harness",
+        "inverse_normal: NCL (gamma path) and NDMC use the A&S 26.2.23 approximation, the others exact (A&S bound 4.5e-4)",
+        "output_bound: the library clips at +-3.09; climatekit replaces a CDF of exactly 0 or 1 by 0.001 or 0.999; xclim clips at +-8.21; NCL (gamma) and NDMC do not clip (sentinels +-1e37 and +-9999); apply one common clip in the harness",
         "NDMC prints two decimals, so a 1e-6 difference class cannot be resolved against it",
         "climatekit takes daily input, treats a missing day as 0, and needs 3 accumulations per month; the library wants 30 calibration years"
       ]
@@ -4432,8 +4636,8 @@
       ],
       "independent_triples": [],
       "residual_axes": [
-        "NCL thins the sample for nrun above 12",
-        "NCL uses the A&S inverse normal; R SPEI never applies p0"
+        "NCL's Pearson path thins the fit sample for nrun above 12, requires a series length that is a multiple of 12, clamps the probability to [0.001, 0.999], and inverts with AS241 (not the A&S approximation its gamma path uses)",
+        "R SPEI never applies p0"
       ],
       "absent": "All four descend from Hosking's L-moment Fortran or call it; lineage.json classes their pairs shared numerical routine."
     },
@@ -4456,7 +4660,7 @@
         },
         {
           "implementation": "r_sei",
-          "how": "std_index(dist='gamma', method='lmme')"
+          "how": "std_index(dist='gamma', method='lmme'), without gr_new (the per-group call reverts method to 'mle')"
         }
       ],
       "independent_triples": [],
@@ -4505,7 +4709,7 @@
         "the library adds 1000 per step before accumulating (also harmless)",
         "inputs: the water balance and the PET behind it must be supplied identically"
       ],
-      "absent": "The library and R SPEI are 'validated against' each other and every L-moment path descends from Hosking's code. climatekit, the one implementation here with its own estimator code, has no SPEI independence class yet."
+      "absent": "The library is classed 'validated against' R SPEI, and every L-moment path descends from Hosking's code. climatekit, the one implementation here with its own estimator code, has no SPEI independence class yet."
     },
     {
       "family": "spei",
@@ -4556,7 +4760,7 @@
         "calendar grouping: the library groups internally, SEI needs a factor",
         "SEI has no calibration-window argument other than x_ref"
       ],
-      "absent": "Only the library and SEI expose this position, and the library validates against SEI. Vonk's spei uses (i - 1/2)/n, EDDI uses Tukey with rounded constants, and the providers' formulas are unconfirmed."
+      "absent": "Only the library and SEI expose this position, and the library is validated against SEI (tests/test_energy_sei_reference.py). Vonk's spei uses (i - 1/2)/n, EDDI uses Tukey with rounded constants, and the providers' formulas are unconfirmed."
     }
   ]
 }

@@ -182,7 +182,14 @@
           "items": {"type": "string"}
         },
         "absent": {"type": "string", "description": "Why no independent triple exists, when `independent_triples` is empty."}
-      }
+      },
+      "allOf": [
+        {
+          "if": {"properties": {"independent_triples": {"maxItems": 0}}},
+          "then": {"required": ["absent"]},
+          "else": {"not": {"required": ["absent"]}}
+        }
+      ]
     }
   }
 }
