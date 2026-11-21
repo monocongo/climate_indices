@@ -94,6 +94,7 @@ It installs and runs (it needs `FAdist` 2.4 and `glogis` 1.0.3, both from CRAN),
 | Hargreaves | `HG85` | `hargreaves` | `hargreaves` | `hargreaves` (not run) | `ET.HargreavesSamani` | not examined (`ck_pet` exists) |
 | FAO-56 Penman-Monteith | `FAO_PM98` | `pm_fao56` | `fao56_penman_monteith` | `penman` (not run) | `ET.PenmanMonteith` (exists; not run) | not examined (`ck_pet_pm` exists) |
 | Stated validation | not examined | README lists a "Benchmarked?" column and benchmark notebooks against KNMI and CoAgMET data; GMD 17, 7083 (v1.3.1, per the research notes) | none found | Beguería et al. (2014) (estimator recommendation, not a PET validation) | none found | none found |
+| Headless Linux | reproduced | reproduced | reproduced | reproduced | reproduced | not run |
 | Committing outputs | numeric outputs and provenance | same | same | same; GPL code stays outside the package | same | same |
 
 Per the research notes, `xclim` changed its Hargreaves method for consistency with recent literature ([pull request 1723](https://github.com/Ouranosinc/xclim/pull/1723)); that was not re-verified here, and it matters for any Hargreaves comparison.
