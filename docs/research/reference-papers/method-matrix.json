@@ -2827,7 +2827,7 @@
               ]
             },
             "zero_handling": {
-              "value": "None for glo (no zero stripping); gam and pe3 would strip zeros and use p0",
+              "value": "Zeros stripped and a p0 mass added (the inherited gam default); no stripping with dist_type='glo', and pe3 would strip zeros",
               "status": "verified",
               "citations": [
                 {
@@ -3079,7 +3079,7 @@
           "entry_point": "SEI::std_index (input is P - PET)",
           "cells": {
             "accumulation": {
-              "value": "None unless agg_period is set (default NULL). With agg_period, agg_fun 'sum' by default over a time-based window; a window with more than na_thres (10) percent NA is NA, otherwise NAs are dropped and the function applies to the rest without rescaling, so a sum is biased low",
+              "value": "None unless agg_period is set (default NULL). With agg_period, agg_fun 'sum' by default over a time-based window; a window with more than na_thres (10) percent NA is NA, otherwise NAs are dropped and the function applies to the rest without rescaling, so the error has no fixed direction and depends on the omitted values",
               "status": "verified",
               "citations": [
                 {
@@ -3498,7 +3498,7 @@
         },
         {
           "implementation": "gridmet_drought",
-          "entry_point": "Earth Engine GRIDMET/DROUGHT spi30d..spi1y bands (SPEI)",
+          "entry_point": "Earth Engine GRIDMET/DROUGHT spei30d..spei1y bands (SPEI)",
           "cells": {
             "accumulation": {
               "value": "Fixed trailing days (30, 90, 180, 365), not calendar months",
@@ -3980,7 +3980,7 @@
           "entry_point": "SEI::std_index(dist='empirical')",
           "cells": {
             "accumulation": {
-              "value": "None unless agg_period is set (default NULL). With agg_period, agg_fun 'sum' by default over a time-based window; a window with more than na_thres (10) percent NA is NA, otherwise NAs are dropped and the function applies to the rest without rescaling, so a sum is biased low",
+              "value": "None unless agg_period is set (default NULL). With agg_period, agg_fun 'sum' by default over a time-based window; a window with more than na_thres (10) percent NA is NA, otherwise NAs are dropped and the function applies to the rest without rescaling, so the error has no fixed direction and depends on the omitted values",
               "status": "verified",
               "citations": [
                 {
