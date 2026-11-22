@@ -2,10 +2,12 @@
 Common classes and functions used to compute the various climate indices.
 """
 
+import contextlib
+import contextvars
 import functools
 import math
 import warnings
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 from dataclasses import dataclass
 from typing import Any, cast
 
@@ -47,6 +49,25 @@ from climate_indices.vocabulary import validate_output_scale as validate_output_
 # this family's switch on the optional Rust kernels (climate_indices._native_backend);
 # None runs every computation below on its pure-Python implementation
 _native = _native_backend.EXTENSION
+
+# Whether a fit may emit its calibration-quality and goodness-of-fit warnings. A parametric bootstrap
+# refits simulated samples, whose warnings would describe no real series. A ContextVar is scoped to the
+# calling thread or task, so unlike warnings.catch_warnings() it cannot hide a warning from, or leak a
+# filter into, a concurrent spatial block.
+_FIT_WARNINGS_ENABLED: contextvars.ContextVar[bool] = contextvars.ContextVar(
+    "climate_indices_fit_warnings_enabled", default=True
+)
+
+
+@contextlib.contextmanager
+def _fit_warnings_suppressed() -> Iterator[None]:
+    """Fit inside this block without the fit-quality warnings (and without the checks that raise them)."""
+    token = _FIT_WARNINGS_ENABLED.set(False)
+    try:
+        yield
+    finally:
+        _FIT_WARNINGS_ENABLED.reset(token)
+
 
 # declare the function names that should be included in the public API for this module
 __all__ = [
@@ -1225,6 +1246,8 @@ def _check_calibration_data_quality(
     :param calibration_end_year: End year of the calibration period the fit uses (inclusive)
     :param requested_years: the (start, end) years the caller asked for (#1050)
     """
+    if not _FIT_WARNINGS_ENABLED.get():
+        return
     # a window the record did not cover is fitted as other years than the ones requested
     if requested_years != (calibration_start_year, calibration_end_year):
         used = (calibration_start_year, calibration_end_year)
@@ -1400,6 +1423,8 @@ def _check_goodness_of_fit_gamma(
     :param alphas: Shape parameters for gamma distribution
     :param betas: Scale parameters for gamma distribution
     """
+    if not _FIT_WARNINGS_ENABLED.get():
+        return
     if calibration_values.ndim > 2:
         _check_goodness_of_fit_gamma_spatial(calibration_values, alphas, betas)
         return
@@ -1638,6 +1663,8 @@ def _check_goodness_of_fit_pearson(
     :param scales: Scale parameters for Pearson Type III distribution
     :param skews: Skewness parameters for Pearson Type III distribution
     """
+    if not _FIT_WARNINGS_ENABLED.get():
+        return
     if calibration_values.ndim > 2:
         _check_goodness_of_fit_pearson_spatial(calibration_values, probabilities_of_zero, locs, scales, skews)
         return

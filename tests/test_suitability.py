@@ -580,9 +580,9 @@ class TestMetadata:
         assert meta["calibration_year_final"] == str(CAL_END)
         assert "climate_indices_version" in meta
         assert "climate_indices_provenance" in meta
-        # the GoF and RNG attributes belong to #1586
+        # goodness of fit is on by default; without a bootstrap there is no random stream to record
+        assert meta["climate_indices_gof_bootstrap_samples"] == "0"
         assert "climate_indices_rng_seed" not in meta
-        assert "climate_indices_gof_bootstrap_samples" not in meta
 
     def test_calibration_years_are_the_clamped_window(self):
         values = _precip(22)

@@ -1,0 +1,656 @@
+"""Tests for the goodness-of-fit evidence of ``suitability.compare_distributions`` (#1586, ADR-0028 section 5)."""
+
+from __future__ import annotations
+
+import json
+import warnings
+from pathlib import Path
+from typing import Any
+
+import numpy as np
+import pandas as pd
+import pytest
+import scipy.stats
+import xarray as xr
+
+from climate_indices import compute, suitability
+from climate_indices.exceptions import GoodnessOfFitWarning, InvalidArgumentError
+from climate_indices.vocabulary import Distribution
+
+MONTHLY = compute.Periodicity.monthly
+START, YEARS = 1950, 40
+END = START + YEARS - 1
+GAMMA = (Distribution.gamma,)  # Pearson Type III fails to fit some steps of any record, by design
+
+pytestmark = [
+    pytest.mark.filterwarnings("ignore::climate_indices.exceptions.BetaFeatureWarning"),
+    # a fit of a masked cell takes the mean of an empty slice, the documented all-missing outcome
+    pytest.mark.filterwarnings("ignore:Mean of empty slice:RuntimeWarning"),
+]
+
+
+def _compare(values: Any, scale: int = 1, *, index: str = "spi", **kwargs: Any) -> Any:
+    kwargs.setdefault("data_start_year", START)
+    kwargs.setdefault("calibration_year_initial", START)
+    kwargs.setdefault("calibration_year_final", END)
+    kwargs.setdefault("periodicity", MONTHLY)
+    return suitability.compare_distributions(values, scale, index=index, **kwargs)
+
+
+def _gamma(seed: int, *cells: int, years: int = YEARS) -> np.ndarray:
+    """Stationary gamma monthly precipitation, ``(years * 12, *cells)``: every calendar step is iid gamma."""
+    return np.random.default_rng(seed).gamma(2.0, 30.0, size=(years * 12, *cells))
+
+
+def _grid(seed: int = 0, *, years: int = YEARS) -> xr.DataArray:
+    times = pd.date_range(f"{START}-01-01", periods=years * 12, freq="MS")
+    return xr.DataArray(_gamma(seed, 3, 2, years=years), dims=("time", "lat", "lon"), coords={"time": times})
+
+
+def _gof(values: Any, scale: int = 1, **kwargs: Any) -> suitability.GoodnessOfFit:
+    result = _compare(values, scale, **kwargs)
+    assert result.goodness_of_fit is not None
+    return result.goodness_of_fit
+
+
+# ---- the building blocks, against independent implementations ---------------------------------------------
+
+
+def _anderson_darling(u: np.ndarray) -> float:
+    """A^2 by the textbook double sum, one term at a time."""
+    ordered = np.sort(u)
+    n = len(ordered)
+    total = sum((2 * i - 1) * (np.log(ordered[i - 1]) + np.log(1.0 - ordered[n - i])) for i in range(1, n + 1))
+    return float(-n - total / n)
+
+
+class TestStatistics:
+    def test_k_s_and_anderson_darling_match_independent_formulas(self):
+        rng = np.random.default_rng(1)
+        pit = rng.uniform(size=(30, 4))
+        pit[25:, 1] = np.nan  # a column with fewer finite values
+        pit[:, 3] = np.nan  # a column with none
+        ks, ad, count = suitability._pit_statistics(pit)
+        for column in range(3):
+            finite = pit[:, column][np.isfinite(pit[:, column])]
+            assert count[column] == finite.size
+            assert ks[column] == pytest.approx(scipy.stats.kstest(finite, "uniform").statistic, rel=1e-12)
+            assert ad[column] == pytest.approx(_anderson_darling(finite), rel=1e-12)
+        assert count[3] == 0
+        assert np.isnan(ks[3]) and np.isnan(ad[3])
+
+    def test_a_value_on_the_edge_of_the_support_scores_a_finite_statistic(self):
+        ks, ad, _ = suitability._pit_statistics(np.array([[0.0], [0.4], [1.0]]))
+        assert np.isfinite(ks[0]) and np.isfinite(ad[0])
+
+    @pytest.mark.parametrize("size", [5, 12, 30, 41, 97])
+    def test_naive_p_value_is_the_exact_k_s_p_value(self, size):
+        rng = np.random.default_rng(size)
+        samples = rng.uniform(size=(size, 40))
+        samples[:, ::3] = samples[:, ::3] ** 1.7  # some that are not uniform
+        statistics = np.array([scipy.stats.kstest(samples[:, c], "uniform").statistic for c in range(40)])
+        expected = np.array([scipy.stats.kstest(samples[:, c], "uniform").pvalue for c in range(40)])
+        got = suitability._ks_naive_p_value(statistics, np.full(40, size))
+        np.testing.assert_allclose(got, expected, atol=1e-5)
+
+    def test_naive_p_value_is_nan_without_a_sample(self):
+        got = suitability._ks_naive_p_value(np.array([0.3, np.nan, 0.2]), np.array([0, 10, 10]))
+        assert np.isnan(got[0]) and np.isnan(got[1]) and np.isfinite(got[2])
+
+    @pytest.mark.parametrize(
+        ("distribution", "p"),
+        [
+            (Distribution.gamma, {"alpha": 2.5, "beta": 20.0}),
+            (Distribution.pearson, {"loc": 50.0, "scale": 20.0, "skew": 1.2}),
+            (Distribution.pearson, {"loc": 50.0, "scale": 20.0, "skew": -0.8}),
+            (Distribution.loglogistic, {"loc": 100.0, "scale": 30.0, "shape": -0.3}),
+            (Distribution.loglogistic, {"loc": 100.0, "scale": 30.0, "shape": 0.25}),
+            (Distribution.loglogistic, {"loc": 100.0, "scale": 30.0, "shape": 0.0}),
+            (Distribution.gev, {"loc": 100.0, "scale": 30.0, "shape": -0.2}),
+            (Distribution.gev, {"loc": 100.0, "scale": 30.0, "shape": 0.2}),
+        ],
+    )
+    def test_quantile_inverts_the_cdf_and_the_cdf_integrates_the_density(self, distribution, p):
+        params = {key: np.asarray(value) for key, value in p.items()}
+        u = np.linspace(0.02, 0.98, 49)
+        x = suitability._continuous_ppf(distribution, u, params)
+        np.testing.assert_allclose(suitability._continuous_cdf(distribution, x, params), u, atol=1e-9)
+        # the CDF's slope is the density the likelihood uses, so the PIT is the likelihood's own CDF
+        step = 1e-5 * np.abs(x).clip(1.0)
+        slope = (
+            suitability._continuous_cdf(distribution, x + step, params)
+            - suitability._continuous_cdf(distribution, x - step, params)
+        ) / (2 * step)
+        density = np.exp(suitability._log_density(distribution, x, params))
+        np.testing.assert_allclose(slope, density, rtol=1e-5)
+
+    def test_log_logistic_cdf_is_zero_or_one_beyond_its_support(self):
+        # shape > 0 has a finite upper end, shape < 0 a finite lower end
+        upper = suitability._glo_cdf(np.array([1e6]), np.array(0.0), np.array(1.0), np.array(0.5))
+        lower = suitability._glo_cdf(np.array([-1e6]), np.array(0.0), np.array(1.0), np.array(-0.5))
+        assert upper[0] == 1.0 and lower[0] == 0.0
+
+
+# ---- the result on the NumPy route -----------------------------------------------------------------------
+
+
+class TestResult:
+    def test_default_call_computes_the_statistics_and_the_naive_p_value_only(self):
+        result = _compare(_gamma(0))
+        gof = result.goodness_of_fit
+        assert gof.ks_statistic.shape == gof.ks_p_value_naive.shape == gof.ad_statistic.shape == (2, 12)
+        scored = ~result.fit_failed  # a candidate that failed to fit has no statistic
+        assert scored[1].all()  # gamma fits every step of this record
+        for name in ("ks_statistic", "ad_statistic", "ks_p_value_naive"):
+            assert (np.isfinite(getattr(gof, name)) == scored).all(), name
+        assert ((gof.ks_p_value_naive[scored] > 0) & (gof.ks_p_value_naive[scored] <= 1)).all()
+        assert gof.n_bootstrap == 0
+        for name in ("ks_p_value_bootstrap", "ad_p_value_bootstrap", "bootstrap_failed_share"):
+            assert getattr(gof, name) is None
+        for name in ("ks_p_value_bh", "ad_p_value_bh", "rejection_share"):
+            assert getattr(gof, name) is None  # a single series has no cell axis
+
+    def test_an_empty_gof_skips_goodness_of_fit(self):
+        assert _compare(_gamma(0), gof=()).goodness_of_fit is None
+
+    def test_a_statistic_left_out_is_nan(self):
+        only_ad = _gof(_gamma(0), gof=("ad",), candidates=GAMMA)
+        assert np.isnan(only_ad.ks_statistic).all() and np.isnan(only_ad.ks_p_value_naive).all()
+        assert np.isfinite(only_ad.ad_statistic).all()
+        only_ks = _gof(_gamma(0), gof=["ks"], n_bootstrap=9, seed=1, candidates=GAMMA)
+        assert np.isnan(only_ks.ad_statistic).all()
+        assert np.isnan(only_ks.ad_p_value_bootstrap).all()
+        assert np.isfinite(only_ks.ks_p_value_bootstrap).all()
+
+    def test_the_statistic_is_the_one_of_the_fitted_candidate_on_its_positive_values(self):
+        values = _gamma(2)
+        values[::7] = 0.0  # exact zeros are the zero mass, not part of the continuous distribution
+        result = _compare(values, candidates=(Distribution.gamma,))
+        alpha, beta = (result.parameters[Distribution.gamma][name] for name in ("alpha", "beta"))
+        scaled = compute.prepare_scaled(values, 1, MONTHLY)
+        for step in range(12):
+            positive = scaled[:, step][scaled[:, step] > 0]
+            expected = scipy.stats.kstest(positive, scipy.stats.gamma(a=alpha[step], scale=beta[step]).cdf)
+            assert result.goodness_of_fit.ks_statistic[0, step] == pytest.approx(expected.statistic, rel=1e-10)
+            assert result.goodness_of_fit.ks_p_value_naive[0, step] == pytest.approx(expected.pvalue, abs=1e-5)
+
+    def test_repeated_positive_values_are_kept_with_their_frequency(self):
+        values = np.round(_gamma(3), -1) + 10.0  # a record rounded to tens: many ties, none of them zero
+        result = _compare(values, candidates=(Distribution.gamma,))
+        alpha, beta = (result.parameters[Distribution.gamma][name] for name in ("alpha", "beta"))
+        scaled = compute.prepare_scaled(values, 1, MONTHLY)
+        assert np.unique(scaled[:, 0]).size < scaled.shape[0]
+        for step in range(12):
+            expected = scipy.stats.kstest(scaled[:, step], scipy.stats.gamma(a=alpha[step], scale=beta[step]).cdf)
+            assert result.goodness_of_fit.ks_statistic[0, step] == pytest.approx(expected.statistic, rel=1e-10)
+
+    def test_a_candidate_without_a_usable_fit_has_no_goodness_of_fit(self):
+        values = _gamma(4, 2, 2)
+        values[:, 0, 0] = np.nan
+        result = _compare(values, spatial_time_major=True, n_bootstrap=5, seed=1, candidates=GAMMA)
+        gof = result.goodness_of_fit
+        for name in (
+            "ks_statistic",
+            "ks_p_value_naive",
+            "ad_statistic",
+            "ks_p_value_bootstrap",
+            "ad_p_value_bootstrap",
+        ):
+            assert np.isnan(getattr(gof, name)[:, :, 0, 0]).all()
+        assert np.isnan(gof.bootstrap_failed_share[:, :, 0, 0]).all()
+        assert np.isfinite(gof.ks_statistic[:, :, 1, 1]).all()
+
+    def test_a_candidate_that_failed_to_fit_has_no_goodness_of_fit(self, monkeypatch):
+        def failing_resolve(*args, **kwargs):
+            raise suitability.DistributionFittingError("no fit")
+
+        monkeypatch.setattr(compute.FittedDistribution, "resolve", failing_resolve)
+        gof = _gof(_gamma(0), n_bootstrap=3, seed=1, candidates=GAMMA)
+        assert np.isnan(gof.ks_statistic).all() and np.isnan(gof.ks_p_value_bootstrap).all()
+
+
+class TestBootstrap:
+    def test_p_values_follow_the_floor_formula_and_report_the_failed_share(self):
+        gof = _gof(_gamma(5, 2, 3), n_bootstrap=49, seed=3, spatial_time_major=True, candidates=GAMMA)
+        for p in (gof.ks_p_value_bootstrap, gof.ad_p_value_bootstrap):
+            assert p.shape == gof.ks_statistic.shape
+            assert np.nanmin(p) >= 1 / 50 and np.nanmax(p) <= 1
+            # with no failed refit every p-value is a multiple of 1 / (B + 1)
+            np.testing.assert_allclose(p * 50, np.round(p * 50), atol=1e-9)
+        assert (gof.bootstrap_failed_share == 0).all()
+        assert gof.n_bootstrap == 49
+
+    def test_a_failed_refit_leaves_the_denominator_and_is_reported(self):
+        # about 6 positive values of 40 per step: a refit loses its fit once it draws fewer than the 4 Pearson needs
+        values = _gamma(6, 2, 2)
+        values[np.random.default_rng(7).random(values.shape) < 0.84] = 0.0
+        gof = _gof(values, candidates=(Distribution.pearson,), n_bootstrap=60, seed=2, spatial_time_major=True)
+        share = gof.bootstrap_failed_share
+        assert np.nanmax(share) > 0
+        succeeded = np.round(60 * (1 - np.nan_to_num(share, nan=1.0))).astype(int)  # no fit, no refit
+        p = gof.ks_p_value_bootstrap
+        defined = succeeded > 0
+        np.testing.assert_allclose((p * (succeeded + 1))[defined], np.round((p * (succeeded + 1))[defined]), atol=1e-9)
+        assert (p[defined] >= 1 / (succeeded[defined] + 1) - 1e-12).all()
+        assert np.isnan(p[~defined]).all()
+
+    def test_every_refit_failing_gives_a_nan_p_value_and_a_full_failed_share(self, monkeypatch):
+        def never_fits(distribution, draws, period, periodicity):
+            nan = np.full(draws.shape[1:], np.nan)
+            return {"ks": nan, "ad": nan}, np.zeros(draws.shape[1:], dtype=bool)
+
+        monkeypatch.setattr(suitability, "_refit_statistics", never_fits)
+        gof = _gof(_gamma(0), n_bootstrap=8, seed=1, candidates=GAMMA)
+        assert np.isnan(gof.ks_p_value_bootstrap).all() and np.isnan(gof.ad_p_value_bootstrap).all()
+        assert (gof.bootstrap_failed_share == 1).all()
+        assert np.isfinite(gof.ks_statistic).all()
+
+    def test_the_same_seed_gives_an_identical_result_and_another_seed_does_not(self):
+        values = _gamma(8, 2, 2)
+        first = _gof(values, n_bootstrap=20, seed=11, spatial_time_major=True)
+        again = _gof(values, n_bootstrap=20, seed=11, spatial_time_major=True)
+        other = _gof(values, n_bootstrap=20, seed=12, spatial_time_major=True)
+        for name in ("ks_p_value_bootstrap", "ad_p_value_bootstrap", "bootstrap_failed_share"):
+            np.testing.assert_array_equal(getattr(first, name), getattr(again, name))
+        assert not np.array_equal(first.ks_p_value_bootstrap, other.ks_p_value_bootstrap)
+
+    def test_a_cell_gets_the_same_p_values_alone_as_in_a_grid(self):
+        # the stream is keyed on the cell's own values, so neither its position nor its neighbours change it
+        values = _gamma(9, 2, 3)
+        grid = _gof(values, n_bootstrap=15, seed=4, spatial_time_major=True)
+        alone = _gof(values[:, 1:2, 2:3], n_bootstrap=15, seed=4, spatial_time_major=True)
+        np.testing.assert_array_equal(alone.ks_p_value_bootstrap[:, :, 0, 0], grid.ks_p_value_bootstrap[:, :, 1, 2])
+        np.testing.assert_array_equal(alone.ad_p_value_bootstrap[:, :, 0, 0], grid.ad_p_value_bootstrap[:, :, 1, 2])
+
+    def test_the_batch_size_does_not_change_the_result(self, monkeypatch):
+        values = _gamma(10, 2, 2)
+        whole = _gof(values, n_bootstrap=17, seed=6, spatial_time_major=True)
+        monkeypatch.setattr(suitability, "_BOOTSTRAP_BATCH_ELEMENTS", 1)  # one replicate per batch
+        singly = _gof(values, n_bootstrap=17, seed=6, spatial_time_major=True)
+        np.testing.assert_array_equal(whole.ks_p_value_bootstrap, singly.ks_p_value_bootstrap)
+
+    def test_seed_is_recorded_and_reproduces_a_run_that_drew_its_own(self):
+        values = _gamma(11)
+        drawn = _compare(values, n_bootstrap=12)
+        recorded = drawn.metadata["climate_indices_rng_seed"]
+        assert recorded.isdecimal() and int(recorded) > 2**64  # a 128-bit seed, as a decimal string
+        replay = _compare(values, n_bootstrap=12, seed=int(recorded))
+        np.testing.assert_array_equal(
+            drawn.goodness_of_fit.ks_p_value_bootstrap, replay.goodness_of_fit.ks_p_value_bootstrap
+        )
+        assert replay.metadata["climate_indices_rng_seed"] == recorded
+        assert drawn.metadata["climate_indices_gof_bootstrap_samples"] == "12"
+        assert _compare(values, n_bootstrap=12).metadata["climate_indices_rng_seed"] != recorded
+
+    def test_the_resolution_rounds_the_draws_and_is_recorded(self):
+        values = np.round(_gamma(12, 2, 2), 0) + 1.0
+        continuous = _gof(values, n_bootstrap=30, seed=5, spatial_time_major=True)
+        rounded = _compare(values, n_bootstrap=30, seed=5, resolution=1.0, spatial_time_major=True)
+        assert not np.array_equal(continuous.ks_p_value_bootstrap, rounded.goodness_of_fit.ks_p_value_bootstrap)
+        record = json.loads(rounded.metadata["climate_indices_provenance"])["parameters"]
+        assert record["resolution"] == 1.0 and record["n_bootstrap"] == 30 and record["seed"] == "5"
+        assert record["gof"] == ["ks", "ad"]
+
+    def test_simulated_draws_are_rounded_and_keep_the_zero_mass(self):
+        uniforms = np.random.default_rng(0).uniform(size=(5000, 1))
+        p = {"alpha": np.array([2.0]), "beta": np.array([30.0]), "prob_zero": np.array([0.2])}
+        draws = suitability._simulate(Distribution.gamma, uniforms, p, 0.5)
+        assert np.allclose(draws / 0.5, np.round(draws / 0.5))
+        assert abs((draws == 0).mean() - 0.2) < 0.03  # the zero mass of the fit, nothing else rounds to zero here
+        assert (draws[draws > 0] >= 0.5).all()
+
+    def test_library_fit_warnings_describe_the_data_not_the_simulated_samples(self):
+        bimodal = np.where(np.random.default_rng(0).random((YEARS * 12,)) < 0.5, 5.0, 200.0)
+        bimodal = bimodal + np.random.default_rng(1).uniform(0, 1, bimodal.shape)
+
+        def count(**kwargs: Any) -> int:
+            with warnings.catch_warnings(record=True) as caught:
+                warnings.simplefilter("always")
+                _compare(bimodal, **kwargs)
+            return sum(issubclass(w.category, GoodnessOfFitWarning) for w in caught)
+
+        assert count(n_bootstrap=0) > 0  # the data itself is a poor gamma fit
+        assert count(n_bootstrap=25, seed=1) == count(n_bootstrap=0)
+
+    def test_the_fit_warning_switch_is_scoped_to_its_block(self):
+        bimodal = np.where(np.random.default_rng(0).random((YEARS, 12)) < 0.5, 5.0, 200.0) + np.random.default_rng(
+            1
+        ).uniform(0, 1, (YEARS, 12))
+
+        def poor_fit_warnings() -> int:
+            with warnings.catch_warnings(record=True) as caught:
+                warnings.simplefilter("always")
+                compute.FittedDistribution.resolve(bimodal, Distribution.gamma, START, START, END, MONTHLY)
+            return sum(issubclass(w.category, GoodnessOfFitWarning) for w in caught)
+
+        assert poor_fit_warnings() > 0
+        with compute._fit_warnings_suppressed():
+            assert poor_fit_warnings() == 0
+        assert poor_fit_warnings() > 0
+
+
+class TestAcrossCells:
+    def _gof(self, **kwargs: Any) -> suitability.GoodnessOfFit:
+        return _gof(_gamma(13, 3, 4), spatial_time_major=True, candidates=GAMMA, **kwargs)
+
+    def test_rejection_share_counts_the_cells_below_alpha(self):
+        gof = self._gof(alpha=0.3)
+        assert gof.rejection_share.shape == (1, 12, 2)
+        expected = (gof.ks_p_value_naive < 0.3).mean(axis=(2, 3))
+        np.testing.assert_allclose(gof.rejection_share[..., 0], expected)
+        assert np.isnan(gof.rejection_share[..., 1]).all()  # Anderson-Darling has no naive p-value
+
+    def test_rejection_share_follows_the_bootstrap_p_value_once_there_is_one(self):
+        gof = self._gof(n_bootstrap=19, seed=2, alpha=0.2)
+        for column, p in enumerate((gof.ks_p_value_bootstrap, gof.ad_p_value_bootstrap)):
+            np.testing.assert_allclose(gof.rejection_share[..., column], (p < 0.2).mean(axis=(2, 3)))
+        assert np.isfinite(gof.rejection_share).all()
+
+    def test_rejection_share_leaves_out_the_cells_without_a_p_value(self):
+        values = _gamma(14, 2, 2)
+        values[:, 0, 0] = np.nan
+        gof = _gof(values, spatial_time_major=True, alpha=0.5, candidates=GAMMA)
+        finite = np.isfinite(gof.ks_p_value_naive)
+        expected = ((gof.ks_p_value_naive < 0.5) & finite).sum(axis=(2, 3)) / finite.sum(axis=(2, 3))
+        np.testing.assert_allclose(gof.rejection_share[..., 0], expected)
+
+    def test_benjamini_hochberg_matches_scipy_per_candidate_and_step(self):
+        gof = self._gof(n_bootstrap=19, seed=3, bh_adjust=True)
+        for p, adjusted in (
+            (gof.ks_p_value_bootstrap, gof.ks_p_value_bh),
+            (gof.ad_p_value_bootstrap, gof.ad_p_value_bh),
+        ):
+            for candidate in range(p.shape[0]):
+                for step in range(p.shape[1]):
+                    expected = scipy.stats.false_discovery_control(p[candidate, step].ravel())
+                    np.testing.assert_allclose(adjusted[candidate, step].ravel(), expected)
+        assert (gof.ks_p_value_bh >= gof.ks_p_value_bootstrap - 1e-12).all()
+
+    def test_without_a_bootstrap_the_k_s_p_value_is_adjusted_and_anderson_darling_has_none(self):
+        gof = self._gof(bh_adjust=True)
+        expected = scipy.stats.false_discovery_control(gof.ks_p_value_naive[0, 0].ravel())
+        np.testing.assert_allclose(gof.ks_p_value_bh[0, 0].ravel(), expected)
+        assert gof.ad_p_value_bh is None
+
+    def test_a_nan_p_value_stays_out_of_the_family(self):
+        values = _gamma(15, 2, 3)
+        values[:, 0, 0] = np.nan
+        gof = _gof(values, spatial_time_major=True, bh_adjust=True, candidates=GAMMA)
+        assert np.isnan(gof.ks_p_value_bh[:, :, 0, 0]).all()
+        finite = gof.ks_p_value_naive[0, 0].ravel()
+        expected = np.full(finite.shape, np.nan)
+        expected[np.isfinite(finite)] = scipy.stats.false_discovery_control(finite[np.isfinite(finite)])
+        np.testing.assert_allclose(gof.ks_p_value_bh[0, 0].ravel(), expected, equal_nan=True)
+
+    def test_bh_needs_a_cell_axis(self):
+        with pytest.raises(InvalidArgumentError, match="cell"):
+            _compare(_gamma(0), bh_adjust=True)
+        with pytest.raises(InvalidArgumentError, match="cell"):
+            _compare(_gamma(0).reshape(YEARS, 12), bh_adjust=True)
+
+
+class TestArguments:
+    @pytest.mark.parametrize(
+        "kwargs",
+        [
+            {"gof": "ks"},
+            {"gof": ("ks", "chi2")},
+            {"gof": ("ks", "ks")},
+            {"gof": 5},
+            {"n_bootstrap": -1},
+            {"n_bootstrap": 2.5},
+            {"n_bootstrap": True},
+            {"n_bootstrap": "9"},
+            {"n_bootstrap": 5, "resolution": 0.0},
+            {"n_bootstrap": 5, "resolution": -0.1},
+            {"n_bootstrap": 5, "resolution": float("nan")},
+            {"n_bootstrap": 5, "resolution": float("inf")},
+            {"n_bootstrap": 5, "resolution": "0.1"},
+            {"n_bootstrap": 5, "resolution": True},
+            {"alpha": 0.0},
+            {"alpha": 1.0},
+            {"alpha": float("nan")},
+            {"alpha": "0.05"},
+            {"seed": -1},
+            {"seed": 1.5},
+            {"seed": True},
+            {"n_bootstrap": 5, "seed": np.random.default_rng(1)},
+            {"bh_adjust": 1},
+            {"gof": (), "n_bootstrap": 5},
+            {"gof": (), "bh_adjust": True},
+        ],
+    )
+    def test_invalid_goodness_of_fit_arguments_raise(self, kwargs):
+        with pytest.raises(InvalidArgumentError):
+            _compare(_gamma(0, 2, 2), spatial_time_major=True, **kwargs)
+
+    def test_a_generator_is_refused_with_its_reason(self):
+        with pytest.raises(InvalidArgumentError, match="does not expose the seed"):
+            _compare(_gamma(0), n_bootstrap=5, seed=np.random.default_rng(1))
+
+    def test_numpy_integers_are_accepted(self):
+        result = _compare(_gamma(0), n_bootstrap=np.int64(5), seed=np.int64(3))
+        assert result.goodness_of_fit.n_bootstrap == 5
+        assert result.metadata["climate_indices_rng_seed"] == "3"
+
+    def test_resolution_and_seed_are_ignored_without_a_bootstrap(self):
+        result = _compare(_gamma(0), resolution=0.1, seed=4)
+        assert "climate_indices_rng_seed" not in result.metadata
+        assert "resolution" not in json.loads(result.metadata["climate_indices_provenance"])["parameters"]
+
+
+# ---- the xarray / Dask route ------------------------------------------------------------------------------
+
+
+GOF_VARIABLES = ("ks_statistic", "ks_p_value_naive", "ad_statistic")
+BOOTSTRAP_VARIABLES = ("ks_p_value_bootstrap", "ad_p_value_bootstrap", "bootstrap_failed_share")
+
+
+def _assert_matches_numpy(dataset: xr.Dataset, core: suitability.DistributionComparison) -> None:
+    gof = core.goodness_of_fit
+    assert gof is not None
+    for name in GOF_VARIABLES + BOOTSTRAP_VARIABLES + ("ks_p_value_bh", "ad_p_value_bh"):
+        expected = getattr(gof, name)
+        if expected is None:
+            assert name not in dataset
+        else:
+            np.testing.assert_allclose(dataset[name].values, expected, rtol=1e-12, equal_nan=True, err_msg=name)
+    if gof.rejection_share is None:
+        assert "rejection_share" not in dataset
+    else:
+        assert dataset["rejection_share"].dims == ("candidate", "month", "statistic")
+        assert list(dataset["statistic"].values) == ["ks", "ad"]
+        np.testing.assert_allclose(dataset["rejection_share"].values, gof.rejection_share, equal_nan=True)
+
+
+class TestXarrayRoute:
+    OPTIONS: dict[str, Any] = {"n_bootstrap": 12, "seed": 21, "bh_adjust": True, "alpha": 0.3}
+
+    def test_variables_match_the_numpy_route(self):
+        grid = _grid()
+        dataset = _compare(grid, **self.OPTIONS)
+        core = _compare(grid.values, spatial_time_major=True, **self.OPTIONS)
+        _assert_matches_numpy(dataset, core)
+        assert dataset["ks_statistic"].dims == ("candidate", "month", "lat", "lon")
+        assert dataset["ks_p_value_bh"].dims == dataset["ks_statistic"].dims
+
+    def test_default_call_adds_the_statistics_and_the_naive_p_value(self):
+        dataset = _compare(_grid())
+        for name in GOF_VARIABLES + ("rejection_share",):
+            assert name in dataset
+        for name in BOOTSTRAP_VARIABLES + ("ks_p_value_bh", "ad_p_value_bh"):
+            assert name not in dataset
+        assert dataset["ks_statistic"].attrs["long_name"].startswith("Kolmogorov-Smirnov")
+
+    def test_an_empty_gof_adds_no_variable(self):
+        dataset = _compare(_grid(), gof=())
+        for name in GOF_VARIABLES + BOOTSTRAP_VARIABLES + ("rejection_share",):
+            assert name not in dataset
+        assert "climate_indices_gof_bootstrap_samples" not in dataset["aic"].attrs
+
+    def test_a_single_series_has_no_across_cell_variable(self):
+        dataset = _compare(_grid().isel(lat=1, lon=1), n_bootstrap=6, seed=2)
+        assert "ks_p_value_bootstrap" in dataset and "rejection_share" not in dataset
+        _assert_matches_numpy(dataset, _compare(_grid().isel(lat=1, lon=1).values, n_bootstrap=6, seed=2))
+        with pytest.raises(InvalidArgumentError, match="cell"):
+            _compare(_grid().isel(lat=1, lon=1), bh_adjust=True)
+
+    def test_two_dimensional_input_is_read_cell_by_cell(self):
+        grid = _grid().isel(lon=0)
+        dataset = _compare(grid, n_bootstrap=6, seed=2, bh_adjust=True, candidates=GAMMA)
+        assert dataset["ks_p_value_bh"].dims == dataset["ks_statistic"].dims
+        for cell in range(grid.sizes["lat"]):
+            single = _compare(grid.isel(lat=cell).values, n_bootstrap=6, seed=2, candidates=GAMMA)
+            np.testing.assert_allclose(
+                dataset["ks_p_value_bootstrap"].isel(lat=cell).values, single.goodness_of_fit.ks_p_value_bootstrap
+            )
+        expected = scipy.stats.false_discovery_control(dataset["ks_p_value_bootstrap"].values[0, 0])
+        np.testing.assert_allclose(dataset["ks_p_value_bh"].values[0, 0], expected)
+
+    @pytest.mark.parametrize("chunks", [{"time": -1, "lat": 1, "lon": 1}, {"time": -1, "lat": 2, "lon": 1}])
+    def test_dask_chunking_does_not_change_the_result(self, chunks):
+        grid = _grid(seed=3)
+        eager = _compare(grid, **self.OPTIONS)
+        lazy = _compare(grid.chunk(chunks), **self.OPTIONS)
+        assert lazy["ks_p_value_bh"].chunks is not None
+        for name in GOF_VARIABLES + BOOTSTRAP_VARIABLES + ("ks_p_value_bh", "ad_p_value_bh", "rejection_share"):
+            # a block's floating-point results differ from a whole grid's by rounding only; the stream is the same
+            np.testing.assert_allclose(lazy[name].values, eager[name].values, rtol=1e-9, atol=1e-12, err_msg=name)
+
+    def test_an_unseeded_call_records_one_seed_for_every_block(self):
+        lazy = _compare(_grid(seed=4).chunk({"time": -1, "lat": 1, "lon": 1}), n_bootstrap=8).compute()
+        seeds = {lazy[name].attrs["climate_indices_rng_seed"] for name in GOF_VARIABLES + BOOTSTRAP_VARIABLES}
+        assert len(seeds) == 1
+        replay = _compare(_grid(seed=4), n_bootstrap=8, seed=int(seeds.pop()))
+        np.testing.assert_array_equal(replay["ks_p_value_bootstrap"].values, lazy["ks_p_value_bootstrap"].values)
+
+    def test_attributes_name_the_bootstrap_and_the_seed(self):
+        dataset = _compare(_grid(), n_bootstrap=7, seed=2**100 + 5, resolution=0.5)
+        for name in ("aic", "ks_statistic", "ks_p_value_bootstrap", "rejection_share"):
+            attrs = dataset[name].attrs
+            assert attrs["climate_indices_gof_bootstrap_samples"] == "7", name
+            assert attrs["climate_indices_rng_seed"] == str(2**100 + 5), name
+        record = json.loads(dataset["ks_statistic"].attrs["climate_indices_provenance"])["parameters"]
+        assert record["resolution"] == 0.5 and record["n_bootstrap"] == 7
+
+    def test_netcdf_round_trip_keeps_the_values_and_a_seed_above_64_bits(self, tmp_path: Path):
+        dataset = _compare(_grid(), n_bootstrap=5, seed=2**100 + 5, bh_adjust=True).compute()
+        path = tmp_path / "gof.nc"
+        dataset.to_netcdf(path, engine="h5netcdf")
+        with xr.open_dataset(path, engine="h5netcdf") as reopened:
+            for name in ("ks_statistic", "ks_p_value_bootstrap", "ks_p_value_bh", "rejection_share"):
+                np.testing.assert_allclose(reopened[name].values, dataset[name].values, equal_nan=True)
+            assert reopened["ks_p_value_bootstrap"].attrs["climate_indices_rng_seed"] == str(2**100 + 5)
+
+    def test_an_input_dimension_named_like_an_output_is_refused(self):
+        renamed = _grid().rename(lon="statistic")
+        with pytest.raises(InvalidArgumentError, match="named like an output"):
+            _compare(renamed)
+
+    def test_arguments_are_validated_on_this_route_too(self):
+        with pytest.raises(InvalidArgumentError):
+            _compare(_grid(), n_bootstrap=-2)
+
+
+# ---- size under the null: characterization of the bootstrap p-values ---------------------------------------
+
+
+def _draws(distribution: Distribution, years: int, cells: tuple[int, ...], seed: int) -> tuple[np.ndarray, str, dict]:
+    """A record whose every calendar step and cell is iid from ``distribution``, with its route and arguments."""
+    shape = (years * 12, *cells)
+    rng = np.random.default_rng(seed)
+    if distribution is Distribution.gamma:
+        return rng.gamma(2.0, 30.0, size=shape), "spi", {}
+    if distribution is Distribution.pearson:
+        return scipy.stats.pearson3.rvs(1.0, loc=100.0, scale=30.0, size=shape, random_state=rng), "spi", {}
+    draw = (
+        scipy.stats.fisk.rvs(c=1 / 0.3, scale=60.0, size=shape, random_state=rng)
+        if distribution is Distribution.loglogistic
+        else scipy.stats.genextreme.rvs(-0.1, loc=100.0, scale=30.0, size=shape, random_state=rng)
+    )
+    # PET of zero makes the water balance, and so the SPEI sample, the draw itself
+    return draw, "spei", {"pet_mm": np.zeros(shape)}
+
+
+N_BOOTSTRAP, ALPHA, ROUNDING = 99, 0.05, 10.0
+# A p-value is a multiple of 1 / (B_ok + 1) and a refit that fails leaves B_ok, so under the null a series
+# rejects with probability floor(alpha (B_ok + 1)) / (B_ok + 1), which is alpha exactly when (B_ok + 1) alpha is an integer.
+Z_999 = scipy.stats.norm.ppf(0.9995)
+
+
+def _rejections(distribution: Distribution, *, rounded: bool = False, resolution: float | None = None, seed: int = 0):
+    """Counts of ``p <= alpha`` for the K-S and A^2 bootstrap p-values over 12 steps x 60 cells, and their null band."""
+    values, index, extra = _draws(distribution, YEARS, (6, 10), seed)
+    if rounded:
+        values = np.round(values / ROUNDING) * ROUNDING
+    gof = _compare(
+        values,
+        index=index,
+        candidates=(distribution,),
+        n_bootstrap=N_BOOTSTRAP,
+        seed=seed + 100,
+        spatial_time_major=True,
+        resolution=resolution,
+        **extra,
+    ).goodness_of_fit
+    carried = np.isfinite(gof.bootstrap_failed_share)
+    succeeded = np.round(N_BOOTSTRAP * (1 - gof.bootstrap_failed_share[carried]))
+    q = np.floor(ALPHA * (succeeded + 1) + 1e-9) / (succeeded + 1)
+    counts = np.array([(p <= ALPHA).sum() for p in (gof.ks_p_value_bootstrap, gof.ad_p_value_bootstrap)])
+    return counts, q.sum(), float(np.sqrt((q * (1 - q)).sum()))
+
+
+class TestSizeUnderTheNull:
+    """Under H0 a bootstrap test rejects at its achievable rate. The acceptance band is 99.9%, normal."""
+
+    @pytest.mark.parametrize(
+        "distribution",
+        [Distribution.gamma, Distribution.pearson, Distribution.loglogistic, Distribution.gev],
+        ids=lambda d: d.value,
+    )
+    def test_continuous_record(self, distribution):
+        counts, expected, spread = _rejections(distribution)
+        assert (np.abs(counts - expected) <= Z_999 * spread).all(), (counts, expected, spread)
+
+    def test_rounded_record_with_its_resolution(self):
+        counts, expected, spread = _rejections(Distribution.gamma, rounded=True, resolution=ROUNDING)
+        assert (np.abs(counts - expected) <= Z_999 * spread).all(), (counts, expected, spread)
+
+    def test_rounded_record_without_its_resolution_rejects_far_too_often(self):
+        # a continuous null does not describe a record with ties, so the observed statistics look extreme
+        counts, expected, spread = _rejections(Distribution.gamma, rounded=True)
+        assert (counts > expected + 10 * spread).all(), (counts, expected, spread)
+
+    def test_naive_k_s_under_rejects_for_estimated_parameters(self):
+        values = _gamma(30, 6, 10)
+        gof = _gof(values, candidates=(Distribution.gamma,), spatial_time_major=True)
+        tests = int(np.isfinite(gof.ks_p_value_naive).sum())
+        rejected = int((gof.ks_p_value_naive <= ALPHA).sum())
+        # a calibrated test rejects about 5% of the series, and 99.9% of the time at least this many
+        assert rejected < scipy.stats.binom.interval(0.999, tests, ALPHA)[0]
+        assert np.nanmean(gof.ks_p_value_naive) > 0.6  # uniform p-values would average 0.5
+
+
+# ---- cross-check against SciPy for gamma ---------------------------------------------------------------
+
+
+class TestAgainstScipy:
+    @pytest.mark.parametrize("seed", [0, 1])
+    def test_gamma_bootstrap_agrees_with_scipy_goodness_of_fit_in_distribution(self, seed):
+        # SciPy refits by maximum likelihood and the library by Thom's approximation, so the p-values agree
+        # to Monte-Carlo and estimator error, not exactly; a misfitted series is rejected by both.
+        series = _gamma(seed)[0::12]
+        for sample in (series, 1.0 + 0.02 * series**2.0):
+            values = np.repeat(sample, 12)  # every calendar step holds the same sample
+            ours = _gof(values, candidates=(Distribution.gamma,), n_bootstrap=199, seed=seed)
+            reference = scipy.stats.goodness_of_fit(
+                scipy.stats.gamma,
+                sample,
+                known_params={"loc": 0.0},
+                statistic="ad",
+                n_mc_samples=199,
+                rng=np.random.default_rng(seed),
+            )
+            assert abs(ours.ad_p_value_bootstrap[0, 0] - reference.pvalue) < 0.2
+            assert ours.ad_statistic[0, 0] == pytest.approx(reference.statistic, rel=0.2)
+            assert (ours.ad_p_value_bootstrap[0, 0] < 0.05) == (reference.pvalue < 0.05)

@@ -6,6 +6,7 @@ Amended: the NumPy comparison core is implemented in
 [SUIT-03 (#1584)](https://github.com/monocongo/climate_indices/issues/1584)
 and its xarray/Dask route in
 [SUIT-04 (#1585)](https://github.com/monocongo/climate_indices/issues/1585).
+Goodness of fit is implemented in [SUIT-05 (#1586)](https://github.com/monocongo/climate_indices/issues/1586).
 GEV for SPEI is implemented in [SUIT-02 (#1583)](https://github.com/monocongo/climate_indices/issues/1583).
 The maintainer approved these contracts.
 [SUIT-01 (#1582)](https://github.com/monocongo/climate_indices/issues/1582) records this decision under
@@ -19,9 +20,9 @@ The implementation responsibilities and their current state are explicit:
 | Proposed API | Tracking issue | Current state |
 | --- | --- | --- |
 | `Distribution.gev` for `spei` (Hosking, L-moments) | [#1583](https://github.com/monocongo/climate_indices/issues/1583) | Implemented, with SciPy CDF parity and synthetic-recovery tests; no external fixture ([VALIDATION.md](https://github.com/monocongo/climate_indices/blob/main/VALIDATION.md)). |
-| `suitability.compare_distributions()` and `DistributionComparison`, NumPy core | [#1584](https://github.com/monocongo/climate_indices/issues/1584) | Implemented for the gamma, Pearson Type III, log-logistic and GEV candidates (GEV joined with [#1583](https://github.com/monocongo/climate_indices/issues/1583)); the goodness-of-fit field and the GoF and seed provenance attributes arrive with [#1586](https://github.com/monocongo/climate_indices/issues/1586). |
-| `suitability.compare_distributions()`, xarray/Dask route | [#1585](https://github.com/monocongo/climate_indices/issues/1585) | Implemented: a `DataArray` input returns a Dataset over `(candidate, month or dayofyear, *cells)`, with the section 6 attributes that apply before goodness of fit. The goodness-of-fit variables and the `climate_indices_gof_bootstrap_samples` and `climate_indices_rng_seed` attributes arrive with [#1586](https://github.com/monocongo/climate_indices/issues/1586). |
-| `GoodnessOfFit`: Anderson–Darling and parametric bootstrap, optional BH adjustment | [#1586](https://github.com/monocongo/climate_indices/issues/1586) | Not implemented. |
+| `suitability.compare_distributions()` and `DistributionComparison`, NumPy core | [#1584](https://github.com/monocongo/climate_indices/issues/1584) | Implemented for the gamma, Pearson Type III, log-logistic and GEV candidates (GEV joined with [#1583](https://github.com/monocongo/climate_indices/issues/1583)); the `goodness_of_fit` field and the GoF and seed provenance attributes arrived with [#1586](https://github.com/monocongo/climate_indices/issues/1586). |
+| `suitability.compare_distributions()`, xarray/Dask route | [#1585](https://github.com/monocongo/climate_indices/issues/1585) | Implemented: a `DataArray` input returns a Dataset over `(candidate, month or dayofyear, *cells)`, with the section 6 attributes. The goodness-of-fit variables and the `climate_indices_gof_bootstrap_samples` and `climate_indices_rng_seed` attributes arrived with [#1586](https://github.com/monocongo/climate_indices/issues/1586). |
+| `GoodnessOfFit`: Anderson–Darling and parametric bootstrap, optional BH adjustment | [#1586](https://github.com/monocongo/climate_indices/issues/1586) | Implemented for NumPy and xarray/Dask, with a synthetic size characterization ([VALIDATION.md](https://github.com/monocongo/climate_indices/blob/main/VALIDATION.md)). The decisions it made are listed under section 5. |
 | `suitability.drought_category()` and `suitability.compare_categories()` | [#1587](https://github.com/monocongo/climate_indices/issues/1587) | Implemented for NumPy and xarray/Dask (both functions are elementwise or count-only, so time need not be a single chunk), with boundary tests against the USDM table and a hand-computed confusion fixture ([VALIDATION.md](https://github.com/monocongo/climate_indices/blob/main/VALIDATION.md)). |
 | `suitability.pit_uniformity()` | [#1588](https://github.com/monocongo/climate_indices/issues/1588) | Not implemented. |
 | `suitability.event_concordance()` and `suitability.category_agreement()` | [#1590](https://github.com/monocongo/climate_indices/issues/1590) | Not implemented. |
@@ -33,7 +34,7 @@ Amend this status and implementation table as those issues land.
 
 Users must choose a distribution per index, region, season and Timescale.
 The library reports a K–S statistic and exact p-value per fit (`fit_diagnostics`).
-It supports GEV for SPEI and NumPy relative-fit comparisons, but decision-impact and concordance tools remain unimplemented.
+It supports GEV for SPEI, relative-fit comparisons and their goodness of fit, but concordance and PIT-uniformity tools remain unimplemented.
 The existing p-value is naive: it does not account for estimating parameters from the tested sample.
 In the classical Lilliefors setting, naive fitted-parameter K–S p-values are conservative
 (as discussed in the SciPy `goodness_of_fit` documentation). This does not establish
@@ -104,6 +105,33 @@ It is returned whenever it is defined, and no significance threshold is applied.
   overlapping aggregation windows across consecutive years invalidate GoF p-values and effective n.
 - Identify the GoF p-value of a criterion-selected candidate as a post-selection statistic
   in the result and user-facing documentation; it is not an ordinary confirmatory test.
+
+Implementation decisions of SUIT-05 ([#1586](https://github.com/monocongo/climate_indices/issues/1586)):
+
+- **What is tested.** The statistics test the continuous part of each fit on the shared calibration sample. Exact zeros are
+  excluded from them for every family, because a zero is the zero mass and not an observation of the continuous distribution.
+  Repeated positive values stay, with their frequency.
+- **Naive p-value.** Only K–S has one, the exact null distribution of D for fully specified parameters. It is tabulated per
+  sample size and interpolated to within 1e-5, because SciPy's exact value costs about 35 microseconds a series.
+- **The bootstrap sample.** Each replicate has the observed size and missing-value pattern and is drawn by inverting the fitted
+  mixed CDF at uniform numbers, so the zero mass is part of every sample. A `resolution` rounds the draws to the record's unit and
+  is never inferred. Without it, a record rounded to a coarse unit is rejected far too often
+  ([VALIDATION.md](https://github.com/monocongo/climate_indices/blob/main/VALIDATION.md)).
+- **A refit fails by the rule that fails the observed fit.** A refit with no usable parameters, or with a value outside its fitted
+  support (zero likelihood), is left out of the p-value, whose denominator is the number of refits that succeeded plus one.
+  The share that failed is returned as `bootstrap_failed_share`. Counting a refit that scores a value beyond its own support
+  would inflate the null distribution of A², which has no such value in an observed fit that ranks. Because a p-value is a
+  multiple of `1 / (B_ok + 1)`, a series with fewer than `B` refits cannot reach the nominal size exactly.
+- **Streams are keyed on the data.** Each calendar step and cell draws from its own stream, seeded by the seed and a digest of that
+  column's calibration values. A result therefore does not depend on a cell's position, on its neighbours, on the batching of
+  replicates or on the Dask chunking. Identical columns share a stream, which leaves each p-value valid. A seed of `None` draws
+  128 bits from the operating system's entropy; it is drawn once per call and recorded as a decimal string.
+- **No warnings from simulated samples.** The library's calibration-quality and goodness-of-fit warnings describe a real series, so a
+  context variable (`compute._fit_warnings_suppressed`) turns them off for the refits. It is scoped to the calling thread or task,
+  unlike `warnings.catch_warnings`, which would race with concurrent Dask blocks.
+- **Across cells.** `rejection_share` and the Benjamini–Hochberg p-values are computed from the bootstrap p-value when one was
+  run and otherwise from the naive K–S p-value. They need every cell, so the xarray route adds them after its blocks are joined.
+  A series without a cell axis has neither, and `bh_adjust=True` raises there.
 
 ### 6. Result types and provenance
 

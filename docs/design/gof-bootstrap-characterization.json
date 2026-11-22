@@ -1,0 +1,269 @@
+{
+  "configuration": {
+    "years": 40,
+    "cells": [
+      6,
+      10
+    ],
+    "calendar_steps": 12,
+    "repeats": 5,
+    "n_bootstrap": 99,
+    "alpha": 0.05,
+    "rounding_unit": 10.0,
+    "band_confidence": 0.999,
+    "seed": 1586
+  },
+  "environment": {
+    "climate_indices": "3.2.0",
+    "numpy": "2.4.6",
+    "scipy": "1.17.1",
+    "python": "3.14.7"
+  },
+  "cases": {
+    "gamma": {
+      "series": 3600,
+      "statistics": {
+        "ks": {
+          "rejected": 181,
+          "rate": 0.050277777777777775,
+          "wilson_95": [
+            0.04360676141280878,
+            0.057907542976266796
+          ],
+          "z_against_achievable": 0.07647191129018725,
+          "within_achievable_band": true,
+          "within_nominal_band": true
+        },
+        "ad": {
+          "rejected": 187,
+          "rate": 0.051944444444444446,
+          "wilson_95": [
+            0.04516109594611085,
+            0.05968298866141163
+          ],
+          "z_against_achievable": 0.5353033790313108,
+          "within_achievable_band": true,
+          "within_nominal_band": true
+        }
+      },
+      "achievable_expected_rejections": 180.0,
+      "nominal_band": [
+        138.0,
+        224.0
+      ],
+      "bootstrap_failed_share": {
+        "mean": 0.0,
+        "max": 0.0
+      },
+      "seconds": 5.3
+    },
+    "pearson": {
+      "series": 3138,
+      "statistics": {
+        "ks": {
+          "rejected": 151,
+          "rate": 0.04811982154238369,
+          "wilson_95": [
+            0.04116838282799452,
+            0.05617626769918175
+          ],
+          "z_against_achievable": 1.1524819966164597,
+          "within_achievable_band": true,
+          "within_nominal_band": true
+        },
+        "ad": {
+          "rejected": 130,
+          "rate": 0.041427660930529,
+          "wilson_95": [
+            0.034997737899350054,
+            0.04897895611236126
+          ],
+          "z_against_achievable": -0.6774752263636731,
+          "within_achievable_band": true,
+          "within_nominal_band": true
+        }
+      },
+      "achievable_expected_rejections": 137.77448760822296,
+      "nominal_band": [
+        118.0,
+        199.0
+      ],
+      "bootstrap_failed_share": {
+        "mean": 0.11968312828733478,
+        "max": 0.4545454545454546
+      },
+      "seconds": 5.7
+    },
+    "loglogistic": {
+      "series": 3383,
+      "statistics": {
+        "ks": {
+          "rejected": 142,
+          "rate": 0.04197457877623411,
+          "wilson_95": [
+            0.03572057999757305,
+            0.04926759034356868
+          ],
+          "z_against_achievable": -0.3286475296785738,
+          "within_achievable_band": true,
+          "within_nominal_band": true
+        },
+        "ad": {
+          "rejected": 125,
+          "rate": 0.036949453148093406,
+          "wilson_95": [
+            0.031099981509349988,
+            0.04384933687683815
+          ],
+          "z_against_achievable": -1.7676452468249821,
+          "within_achievable_band": true,
+          "within_nominal_band": false
+        }
+      },
+      "achievable_expected_rejections": 145.88256905342075,
+      "nominal_band": [
+        129.0,
+        212.0
+      ],
+      "bootstrap_failed_share": {
+        "mean": 0.04842990949996565,
+        "max": 0.18181818181818177
+      },
+      "seconds": 0.9
+    },
+    "gev": {
+      "series": 3600,
+      "statistics": {
+        "ks": {
+          "rejected": 171,
+          "rate": 0.0475,
+          "wilson_95": [
+            0.0410210481172636,
+            0.05494362257440046
+          ],
+          "z_against_achievable": -0.31709936340540174,
+          "within_achievable_band": true,
+          "within_nominal_band": true
+        },
+        "ad": {
+          "rejected": 141,
+          "rate": 0.03916666666666667,
+          "wilson_95": [
+            0.03330530877972948,
+            0.04601046081970003
+          ],
+          "z_against_achievable": -2.641795634754182,
+          "within_achievable_band": true,
+          "within_nominal_band": true
+        }
+      },
+      "achievable_expected_rejections": 175.09213926972174,
+      "nominal_band": [
+        138.0,
+        224.0
+      ],
+      "bootstrap_failed_share": {
+        "mean": 0.002205387205387201,
+        "max": 0.11111111111111116
+      },
+      "seconds": 1.2
+    },
+    "gamma_rounded_with_resolution": {
+      "series": 3600,
+      "statistics": {
+        "ks": {
+          "rejected": 155,
+          "rate": 0.043055555555555555,
+          "wilson_95": [
+            0.03689765798579463,
+            0.050187598790011015
+          ],
+          "z_against_achievable": -1.9117977822546812,
+          "within_achievable_band": true,
+          "within_nominal_band": true
+        },
+        "ad": {
+          "rejected": 153,
+          "rate": 0.0425,
+          "wilson_95": [
+            0.03638352329930363,
+            0.049591806737019704
+          ],
+          "z_against_achievable": -2.064741604835056,
+          "within_achievable_band": true,
+          "within_nominal_band": true
+        }
+      },
+      "achievable_expected_rejections": 180.0,
+      "nominal_band": [
+        138.0,
+        224.0
+      ],
+      "bootstrap_failed_share": {
+        "mean": 0.0,
+        "max": 0.0
+      },
+      "seconds": 5.5
+    },
+    "control_gamma_rounded_without_resolution": {
+      "series": 3600,
+      "statistics": {
+        "ks": {
+          "rejected": 850,
+          "rate": 0.2361111111111111,
+          "wilson_95": [
+            0.2225239498311659,
+            0.25026084891474004
+          ],
+          "z_against_achievable": 51.23618056442546,
+          "within_achievable_band": false,
+          "within_nominal_band": false
+        },
+        "ad": {
+          "rejected": 567,
+          "rate": 0.1575,
+          "wilson_95": [
+            0.14596650588298699,
+            0.1697636592261731
+          ],
+          "z_against_achievable": 29.594629669302467,
+          "within_achievable_band": false,
+          "within_nominal_band": false
+        }
+      },
+      "achievable_expected_rejections": 180.0,
+      "nominal_band": [
+        138.0,
+        224.0
+      ],
+      "bootstrap_failed_share": {
+        "mean": 0.0,
+        "max": 0.0
+      },
+      "seconds": 5.2
+    },
+    "control_gamma_naive_k_s": {
+      "series": 3600,
+      "statistics": {
+        "ks": {
+          "rejected": 2,
+          "rate": 0.0005555555555555556,
+          "wilson_95": [
+            0.0001523665946796532,
+            0.0020234946107297908
+          ],
+          "z_against_achievable": -13.612000209653331,
+          "within_achievable_band": false,
+          "within_nominal_band": false
+        }
+      },
+      "achievable_expected_rejections": 180.0,
+      "nominal_band": [
+        138.0,
+        224.0
+      ],
+      "bootstrap_failed_share": null,
+      "seconds": 0.0
+    }
+  }
+}

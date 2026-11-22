@@ -869,18 +869,42 @@ per calendar step discriminate weakly, so `delta_to_runner_up` is returned and n
 applied. A sample value outside a candidate's fitted support gives zero likelihood, so that
 candidate is reported as failed and does not rank; `best` can then have one eligible candidate
 and `delta_to_runner_up` is NaN. The NumPy route and the xarray/Dask route are available now;
-goodness of fit and the other suitability tools are tracked in ADR-0028.
+the other suitability tools are tracked in ADR-0028.
+
+Goodness of fit (`gof`, on by default) answers a different question from the criteria: not which
+candidate fits best, but whether it fits at all. Each candidate's probability integral transform over
+the positive calibration values gives a Kolmogorov–Smirnov statistic and an Anderson–Darling statistic
+(`GoodnessOfFit`). Exact zeros are left out, because the zero mass is not part of the continuous
+distribution tested. The parameters were estimated from the same sample, so the **naive K–S p-value is
+uncalibrated and far too high** (a synthetic gamma record rejected 2 of 3,600 series at a nominal 0.05),
+and Anderson–Darling has none. `n_bootstrap` runs a parametric bootstrap: it draws samples of the observed
+size and missing-value pattern from each fitted mixed distribution (zero mass included), refits each with
+the library's own estimator and scores it. The p-value is `(1 + #{statistic* >= statistic}) / (B_ok + 1)`
+over the `B_ok` refits that succeeded; a refit that fails is counted in `bootstrap_failed_share` and left
+out, so with failures a series cannot reach the nominal size exactly. Pass the record's rounding unit as
+`resolution` if it was rounded: without it a record rounded to 10 mm was rejected in 24% of series at a
+nominal 5%. The same `seed` gives an identical result for a cell alone, in a grid, or under any Dask
+chunking, and an unseeded call records its 128-bit seed as a decimal string in `climate_indices_rng_seed`.
+`rejection_share` reports the share of cells below `alpha`, and `bh_adjust=True` adds
+Benjamini–Hochberg p-values across cells, whose assumptions spatial correlation weakens. A p-value of the
+candidate that `best` selected is a post-selection statistic, not an ordinary test. The bootstrap costs
+about `n_bootstrap` times the fits ({doc}`performance`), and p-values are invalid above a Timescale of 12
+months (365 days), where consecutive years' windows overlap (the call warns).
 
 An `xr.DataArray` input returns an `xr.Dataset`. Per-candidate variables (`log_likelihood`, `aic`,
 `aicc`, `bic`, `n_parameters`, `fit_failed` and each fitted parameter, NaN where a family has no
 such parameter) run over `(candidate, month | dayofyear, *cells)`. The per-step variables `n`,
 `best` (the winning candidate's name, or `"none"` where no candidate is eligible) and
-`delta_to_runner_up` run over `(month | dayofyear, *cells)`. Every variable carries the
-ADR-0028 provenance attributes that apply before goodness of fit, including
-`climate_indices_candidates`, `climate_indices_fitting_methods`, `climate_indices_criterion` and
-`climate_indices_log_likelihood_at`, and they survive a NetCDF round trip. The attributes
-`climate_indices_gof_bootstrap_samples` and `climate_indices_rng_seed` arrive with goodness of fit
-([#1586](https://github.com/monocongo/climate_indices/issues/1586)), so do not rely on them yet. Time must be a single
+`delta_to_runner_up` run over `(month | dayofyear, *cells)`. The goodness-of-fit variables
+(`ks_statistic`, `ks_p_value_naive`, `ad_statistic`, and with a bootstrap `ks_p_value_bootstrap`,
+`ad_p_value_bootstrap` and `bootstrap_failed_share`) run over the per-candidate dimensions, the
+Benjamini–Hochberg p-values `ks_p_value_bh` and `ad_p_value_bh` likewise, and `rejection_share` runs over
+`(candidate, month | dayofyear, statistic)`; a series with no cell dimension has neither of the last two.
+Every variable carries the
+ADR-0028 provenance attributes, including
+`climate_indices_candidates`, `climate_indices_fitting_methods`, `climate_indices_criterion`,
+`climate_indices_log_likelihood_at` and `climate_indices_gof_bootstrap_samples` (and
+`climate_indices_rng_seed` with a bootstrap), and they survive a NetCDF round trip. Time must be a single
 Dask chunk ([ADR-0003](adr/0003-dask-time-dimension-single-chunk.md)), and a Dask input stays lazy
 until `.compute()`, so its fits and warnings also run then. A fully missing input is accepted and
 scores as no usable fit (`n` is 0, `best` is `"none"`) instead of raising. An input dimension, or
@@ -909,6 +933,14 @@ assert comparison["aicc"].dims == ("candidate", "month", "lat", "lon")
 assert (comparison["best"] != "none").all()
 assert set(np.unique(comparison["best"].values)) <= {"pearson", "gamma"}
 assert comparison["best"].attrs["climate_indices_log_likelihood_at"] == "fitted_estimates"
+
+# goodness of fit: the naive K-S p-value is there by default; a seeded bootstrap calibrates it
+assert comparison["ks_p_value_naive"].dims == ("candidate", "month", "lat", "lon")
+tested = suitability.compare_distributions(precipitation, 3, index="spi", n_bootstrap=19, seed=7, bh_adjust=True)
+assert float(tested["ks_p_value_bootstrap"].min()) >= 1 / 20  # the floor is 1 / (B_ok + 1)
+assert tested["rejection_share"].dims == ("candidate", "month", "statistic")
+assert tested["ks_p_value_bh"].dims == tested["ks_statistic"].dims
+assert tested["ks_statistic"].attrs["climate_indices_rng_seed"] == "7"
 ```
 
 `drought_category` and `compare_categories` show whether the choice changes what managers see.
