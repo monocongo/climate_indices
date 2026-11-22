@@ -263,16 +263,16 @@ Residual differences after alignment:
 
 <!-- END GENERATED: aligned -->
 
-### Provisional mapping to the REFIMPL-02 ladder
+### Mapping to the REFIMPL-02 ladder
 
-[REFIMPL-02](https://github.com/monocongo/climate_indices/issues/1604) proposes the ladder L0 as shipped, L1 aligned inputs, calibration period and accumulation window, L2 aligned distribution family, L3 aligned estimator, L4 aligned zero handling, plotting position, clipping and missing-data rules. It is unapproved, so this mapping can change:
+[`protocol.md`](protocol.md) (REFIMPL-02, version 1.0.0, proposed until the maintainer approves its text) adopts the ladder L0 as shipped, L1 aligned inputs, calibration period and accumulation window, L2 aligned distribution family, L3 aligned estimator, L4 aligned zero handling, plotting position, clipping and missing-data rules, and puts the inverse-normal transform in L4. The mapping of this matrix's axes is:
 
 | Rung | Axes in this matrix |
 | --- | --- |
 | L1 | accumulation, calendar grouping, calibration period (and the inputs, which this matrix does not cover) |
 | L2 | distribution |
 | L3 | estimator, location or offset |
-| L4 | zero handling, plotting position, output bound, missing data and minimum sample, fit failure, and, as a proposed addition, inverse normal |
+| L4 | zero handling, plotting position, output bound, missing data and minimum sample, fit failure, and inverse normal |
 
 ## Not done
 

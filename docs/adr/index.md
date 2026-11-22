@@ -42,4 +42,5 @@ decision stands; the record's text was corrected in place), or
 0026-reliability-module-api-and-conventions
 0027-drought-namespace-and-module-migration
 0028-distribution-suitability-contracts
+0029-reference-implementation-evaluation-protocol
 ```
