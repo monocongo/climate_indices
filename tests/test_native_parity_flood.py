@@ -13,8 +13,9 @@ Native dispatch also requires NumPy floating-point errors to be ignored, as in
 Skipped when the extension is not built (``uv run maturin develop --release``),
 unless ``CLIMATE_INDICES_REQUIRE_NATIVE=1`` is set, as in CI's native legs.
 
-No external numeric oracle exists for the flood family (``tests/fixture/flood/README.md``);
-the real-record cases run the Fresno GHCN daily rainfall the KBDI reference uses.
+The real-record cases use the Fresno GHCN daily rainfall from the KBDI fixture.
+That rainfall is an input, not a flood oracle. A separate synthetic API comparison
+is documented in ``tests/fixture/flood/README.md``.
 """
 
 from __future__ import annotations
