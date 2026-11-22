@@ -2,7 +2,7 @@
 
 **Ticket:** REFIMPL-34, [#1636](https://github.com/monocongo/climate_indices/issues/1636). **Map:** [#1602](https://github.com/monocongo/climate_indices/issues/1602).
 **Pinned version:** `380aa01f` (`origin/main`, 2026-11-21).
-**Status:** measured on macOS arm64; the other four platforms are not run (see "Results"). Everything down to "Out of scope" was committed (`eb710e28`) before any measurement ran; "Deviations" and "Results" were written afterwards. Reproduce with `uv run python scripts/measure_palmer_parity.py measure --out parity.json` (about 25 seconds on four workers) and `uv run pytest tests/test_native_parity_palmer.py`.
+**Status:** The study measured macOS arm64. The other four platforms remain unmeasured. Commit `eb710e28` records the original plan. See D1–D7 for differences between that plan and this record. Reproduce with `uv run python scripts/measure_palmer_parity.py measure --out parity.json` (about 25 seconds on four workers) and `uv run pytest tests/test_native_parity_palmer.py`.
 
 ## Question
 
@@ -37,6 +37,8 @@ None of these is a finding yet. Each is a lead to confirm or refute at the pinne
 | H4 | The Rust results are bit-identical across the five wheel targets of `release.yml` (Linux x86-64 and aarch64, macOS arm64 and x86-64, Windows x86-64) | any output of any division differs in its float64 bytes between two platforms |
 | H5 | The pure-Python results are also bit-identical across the same platforms | same, for the Python path |
 
+H2 and H3 state the original hypotheses. The tests observe the returned values, not the internal spell state or branch decisions. Output agreement alone cannot confirm the internal claims.
+
 H5 is a control: if H4 holds and H5 does not, the difference lies in NumPy or the platform math library, not in the Rust kernels.
 
 ## Method
@@ -57,8 +59,8 @@ Boundaries the engineered series target, from `_palmer_wells.py` and `_palmer_pd
 
 ## Thresholds
 
-- **Accept parity** (H1, H3): `|rust - python| <= 1e-10` absolute and relative, and exact sign and NaN-position equality. These are the registry's values; they are not tuned to the result.
-- **Pinned maxima:** the tests pin the measured maximum per output, never above `1e-10`. If the measured maximum is `0.0`, `0.0` is pinned.
+- **Measured maximum (H1):** The measurement checks whether the maximum absolute difference for each output is at most `1e-10`.
+- **Test tolerance:** The tests use `assert_allclose`, which checks `|rust - python| <= atol + rtol * |python|`, with matching signs and NaN positions. The full-division tests use a single platform-wide tolerance: `rtol = atol = 0.0` on macOS arm64 and `1e-10` elsewhere. Boundary tests use `rtol = atol = 1e-10` on all platforms. The measurement reports separate maxima per output; these are not separate test thresholds.
 - **Cross-platform** (H4, H5): equality of the float64 bytes, no tolerance. A difference is a finding to attribute (fused multiply-add, the math library, NumPy), not a failure to hide.
 - **Branch flip:** any engineered or fixture case where the paths take a different branch, recorded in the REFIMPL-24 ledger ([#1626](https://github.com/monocongo/climate_indices/issues/1626)) with its cause and owner.
 
@@ -68,7 +70,7 @@ Performance ([#1637](https://github.com/monocongo/climate_indices/issues/1637));
 
 ## Deviations
 
-All recorded after the first measurement run, because each was found while building the tests.
+The study recorded these deviations after the first measurement run.
 
 - **D1.** The plan said a `--digest` flag would add SHA-256 digests. The script records them always, for both the Rust and the Python path, because H5 needs the Python digests and a measurement without them cannot be compared later.
 - **D2.** The plan said to pin the measured maxima. Only macOS arm64 is measured, so only that platform pins `0.0` (`PINNED_RTOL`, `PINNED_ATOL` in `tests/test_native_parity_palmer.py`); every other platform keeps the registry's `1e-10` until the workflow reports it. A `0.0` pin on an unmeasured platform would be a guess.
@@ -76,6 +78,7 @@ All recorded after the first measurement run, because each was found while build
 - **D4.** The plan listed NaN gaps as a new case. `test_missing_months_match` already covers them, so only zero precipitation was added.
 - **D5.** The first macOS arm64 measurement was invalid and was discarded. The script took the extension from `palmer._native`, which each call left switched off, so every division after a pool worker's first compared Python with Python and reported identical. Found in pre-PR review, fixed in `0508b366` (the extension now comes from the backend module and is restored in a `finally`), and the full measurement re-run; the numbers below are from the re-run. The per-division pytest tests were never affected.
 - **D6.** An earlier draft called the Wells entry-threshold mutant equivalent, on the strength of identical output on 300 random series and on the spell corpus. Review produced a counterexample (see "Which boundaries are live"), a deterministic test now pins it, and the Rust mutant fails it.
+- **D7.** After the first measurement, the Claims table clarified which stages run in Rust or NumPy. The Method clarified which toolchain details the script records and removed the planned `--digest` option (D1). The Branch inventory corrected the Wells signed continuation threshold and the conditions for its probability checks. The Thresholds section now distinguishes the measured maximum from the test tolerance (D2).
 
 ## Results
 
@@ -83,11 +86,11 @@ Pinned version `380aa01f`, rustc 1.99.0 (LLVM 23.1.1), `aarch64-apple-darwin`, P
 
 ### H1, H2: 344 divisions, macOS arm64
 
-For `pdsi()` and `scpdsi()` alike, for each of PDSI, PHDI, PMDI, the Z-Index and the fitted-parameter dictionary: maximum absolute difference **0.0**, maximum relative difference **0.0**, **0** months with a differing sign and **0** NaN-position mismatches. All 344 divisions give a byte-identical float64 array on the two paths, for every output. H1 and H2 hold, at the strongest level (bit equality, not the `1e-10` tolerance).
+For `pdsi()` and `scpdsi()`, all four index arrays had maximum absolute and relative differences of **0.0**, with no sign or NaN-position mismatches. The fitted parameters also had a maximum absolute difference of **0.0**. Each output had matching float64 digests on both paths in all 344 divisions. The review measurement reproduced these results and verified the expected Rust kernel calls for every division. H1 and the output criteria for H2 held. The measurement did not compare internal spell states.
 
 ### H3: engineered boundary series, macOS arm64
 
-| Corpus | Series run on both paths | Series where one ulp changes the answer | Disagreements |
+| Corpus | Cases run on both paths | Triples with a numerical response to a one-ulp input change | Disagreements |
 | --- | --- | --- | --- |
 | Random Z with 60% boundary entries, one entry moved one ulp either way, `pdi.f` recursion | 1,500 triples | 28 (PDSI), 14 (PHDI), 6 (PMDI) | 0 |
 | Same, Wells recursion | 600 triples | 4 | 0 |
@@ -99,7 +102,7 @@ For `pdsi()` and `scpdsi()` alike, for each of PDSI, PHDI, PMDI, the Z-Index and
 
 The random corpora use -0.0 (equal to 0), +-0.15, +-0.5, +-1 and one ulp either side. The spell corpora add thresholds computed from the default duration factors (`wetm = drym = 0.309`, `wetb = dryb = 2.691`): `0.5 * wetm`, `0.5 * (m + b)` and their multiples, so the wet and dry sides of those corpora are not independent. No Palmer-fitted factors with `wetm != drym` are exercised.
 
-No branch flip is known. H3 holds on this platform.
+The outputs agreed within the test tolerance. In the Wells counts, all three runs of each counted triple returned results. These tests did not observe which branches ran, so H3 remains unverified.
 
 **Which boundaries are live.** Injected Rust mutants, each built, run against the tests, and reverted:
 
@@ -107,10 +110,10 @@ No branch flip is known. H3 holds on this platform.
 | --- | --- |
 | `palmer_pdi.rs` `statement_170`: `pv >= 0.0` to `pv > 0.0` | yes, by the random straddling corpus |
 | `palmer_pdi.rs` `statement_180`: `pv <= 0.0` to `pv < 0.0` | yes, by the random straddling corpus |
-| `palmer_pdi.rs` `advance_month`: `z >= 0.15` to `z > 0.15`, and to `z >= 10.0` | no (equivalent, below) |
+| `palmer_pdi.rs` `advance_month`: `z >= 0.15` to `z > 0.15`, and to `z >= 10.0` | not by the corpora |
 | `palmer_wells.rs` `continue_spell`: `direction * z >= abatement_z` to `>` | not by the corpora; yes by the termination test added after review (D6) |
 
-The two `pdi.f` mutants that survive are equivalent. In an established `pdi.f` spell `v` is zero (`pro` is 0, or `pro` is 100 and the next month starts from `x3 == 0` and takes the spell-ended path), so `pv = (z - 0.15) + min(v, 0)` is non-negative exactly when `z >= 0.15`, and the entry test duplicates the `pv` sign test that statement 170 applies next. The same edit in the Python source (`z >= 10.0` in `_advance_month`) leaves the output unchanged on 300 random series. So at exactly `z == 0.15` the branch that decides the pdi.f spell state is the `pv` sign test.
+The corpora did not detect the two `pdi.f` mutants. The `z >= 10.0` change in Python also left the output unchanged on 300 random series. This does not prove equivalence. A month can end one spell and establish the opposite spell, leaving `pro == 100` and nonzero `x3` and `v`. Statement 170 uses `min(v, 0)` for wet-spell carry, and statement 180 uses `max(v, 0)` for dry-spell carry. The earlier explanation incorrectly assumed that `v` or `x3` must be zero after a spell ends.
 
 The Wells entry test is **not** redundant. It is equivalent to the abatement path only when `probability == 0`, where `v == 0`. When a spell terminates and a new one is established in the same month, the state carries `probability == 100` and a nonzero `v`; a `z` exactly on `0.5 * slope` then restarts the spell (`v = 0`, `probability = 0`), while one ulp below continues the abatement. For `wetm = drym = 0.897`, `wetb = dryb = 0.333` and `z = [-1, 3, 0, t, t, t]` with `t = 0.4485`, the PDSI at index 4 is 0.51175 on the threshold and 0.36463 one ulp below. Random draws reach that state rarely, which is why the corpora missed it, and the previous version of this paragraph, which called the Wells mutant equivalent from a null result on the random corpus, was wrong.
 
@@ -128,4 +131,4 @@ H4 and H5 are open. `.github/workflows/palmer-reproducibility.yml` runs all five
 
 ### Sentence for the manuscript
 
-On macOS arm64, the Rust and Python Palmer implementations return byte-identical PDSI, PHDI, PMDI, Z-Index and fitted parameters for `pdsi()` and `scpdsi()` on all 344 climate divisions, and agree on 1,500 + 600 + 384 + 384 engineered boundary series; no branch flip was found. The other four release targets are not yet measured.
+On macOS arm64, Rust and Python returned byte-identical outputs and fitted parameters for `pdsi()` and `scpdsi()` across 344 climate divisions. The tests found no output disagreement across 2,868 engineered boundary triples, 12 divergence sequences, two Wells spell-termination triples, or the zero-precipitation case. The tests did not compare internal branch decisions. The other four release targets remain unmeasured.

@@ -392,11 +392,19 @@ def _straddling_corpus(series: int) -> np.ndarray:
     return corpus
 
 
-def _live_triples(result: np.ndarray) -> int:
-    """How many (below, on, above) triples differ by more than a smooth response could."""
+def _live_triples(result: np.ndarray, completed: np.ndarray | None = None) -> int:
+    """Count complete (below, on, above) triples with a change above the liveness floor."""
     triples = result.reshape(result.shape[0], -1, 3)
+    if completed is not None:
+        triples = triples[:, completed.reshape(-1, 3).all(axis=1), :]
     spread = np.abs(triples[:, :, [0, 2]] - triples[:, :, [1]]).max(axis=(0, 2))
     return int(np.count_nonzero(spread > _LIVE_DIFFERENCE))
+
+
+def test_live_triples_excludes_failed_runs() -> None:
+    results = np.array([[1.0, 0.0, 1.0, 1.0, 2.0, 1.0]])
+    completed = np.array([True, False, True, True, True, True])
+    assert _live_triples(results, completed) == 1
 
 
 def _same_outcome(rust: Any, python: Any) -> None:
@@ -428,19 +436,19 @@ def test_pdi_recursion_takes_the_same_branches_on_boundary_series(monkeypatch) -
 def test_wells_recursion_takes_the_same_branches_on_boundary_series(monkeypatch) -> None:
     factors = DurationFactors.from_defaults()
     corpus = _straddling_corpus(series=600)
-    results = np.zeros((_MONTHS, corpus.shape[1]))
-    errors = 0
+    results = np.zeros(corpus.shape)
+    completed = np.zeros(corpus.shape[1], dtype=bool)
     for column in range(corpus.shape[1]):
         z = np.ascontiguousarray(corpus[:, column])
         rust, python, calls = _rust_and_python(monkeypatch, lambda z=z: palmer._wells_recursion(z, factors))
         assert calls == {"palmer_wells"} or isinstance(python[0], type)
         _same_outcome(rust, python)
-        if isinstance(python[0], type):
-            errors += 1
-        else:
+        if not isinstance(python[0], type):
             results[:, column] = python[0]
+            completed[column] = True
+    errors = completed.size - np.count_nonzero(completed)
     assert errors < corpus.shape[1] // 10, "the corpus must mostly complete, or it tests only the error path"
-    assert _live_triples(results) >= 1
+    assert _live_triples(results, completed) >= 1
 
 
 def _spell_threshold_corpus(factors: DurationFactors) -> np.ndarray:
@@ -483,6 +491,7 @@ def test_wells_recursion_takes_the_same_branches_at_spell_thresholds(monkeypatch
     factors = DurationFactors.from_defaults()
     corpus = _spell_threshold_corpus(factors)
     results = np.zeros(corpus.shape)
+    completed = np.zeros(corpus.shape[1], dtype=bool)
     for column in range(corpus.shape[1]):
         z = np.ascontiguousarray(corpus[:, column])
         rust, python, calls = _rust_and_python(monkeypatch, lambda z=z: palmer._wells_recursion(z, factors))
@@ -490,7 +499,8 @@ def test_wells_recursion_takes_the_same_branches_at_spell_thresholds(monkeypatch
         _same_outcome(rust, python)
         if not isinstance(python[0], type):
             results[:, column] = python[0]
-    assert _live_triples(results) >= 5
+            completed[column] = True
+    assert _live_triples(results, completed) >= 5
 
 
 @pytest.mark.parametrize("direction", [1.0, -1.0], ids=["wet", "dry"])

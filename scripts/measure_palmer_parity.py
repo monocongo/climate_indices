@@ -9,8 +9,9 @@ a later ``compare`` run can test bit-for-bit equality across platforms.
     uv run python scripts/measure_palmer_parity.py measure --out parity-<platform>.json
     uv run python scripts/measure_palmer_parity.py compare parity-a.json parity-b.json ...
 
-``measure`` needs the extension (``uv run maturin develop --release``) and exits
-non-zero without it, so a platform that silently fell back to Python cannot pass.
+``measure`` needs the extension (``uv run maturin develop --release``). It fails
+if a division does not call the expected Rust kernels. The output path must stay
+inside the working directory.
 """
 
 from __future__ import annotations
@@ -19,10 +20,12 @@ import argparse
 import hashlib
 import json
 import platform
-import subprocess
+import shutil
+import subprocess  # nosec B404 # Only the local rustc runs, with fixed arguments and no shell.
 import sys
 from concurrent.futures import ProcessPoolExecutor
 from pathlib import Path
+from types import ModuleType
 from typing import Any
 
 import numpy as np
@@ -31,6 +34,30 @@ ROOT = Path(__file__).resolve().parents[1]
 FIXTURE = ROOT / "tests" / "fixture" / "palmer"
 START, CALIBRATION = 1895, (1931, 1990)
 OUTPUTS = ("pdsi", "phdi", "pmdi", "zindex")
+_SHARED_KERNELS = {"palmer_water_balance", "palmer_k_prime", "palmer_raw_zindex"}
+_KERNELS = {
+    "pdsi": _SHARED_KERNELS | {"palmer_pdi"},
+    "scpdsi": _SHARED_KERNELS | {"scpdsi_duration_factors", "palmer_wells"},
+}
+
+
+class _NativeRecorder(ModuleType):
+    def __init__(self, extension: ModuleType) -> None:
+        super().__init__(extension.__name__)
+        self.extension = extension
+        self.calls: set[str] = set()
+
+    def __getattr__(self, name: str) -> Any:
+        attribute = getattr(self.extension, name)
+        if isinstance(attribute, type):
+            return attribute
+
+        def record(*args: Any, **kwargs: Any) -> Any:
+            result = attribute(*args, **kwargs)
+            self.calls.add(name)
+            return result
+
+        return record
 
 
 def _digest(array: np.ndarray) -> str:
@@ -68,34 +95,53 @@ def _division(name: str) -> tuple[str, dict[str, Any]]:
     from climate_indices import _native_backend
     from climate_indices.drought import palmer
 
-    directory = FIXTURE / name
-    precips, pet = np.load(directory / "precips.npy"), np.load(directory / "pet.npy")
-    awc = float(json.loads((ROOT / "tests" / "fixture" / "palmer_awc.json").read_text(encoding="utf-8"))[name])
-    # a pool worker handles many divisions, so the extension comes from the backend module,
-    # never from ``palmer._native``, which this function leaves switched off between calls
     native = _native_backend.EXTENSION
-    assert native is not None, "the Rust extension is not built"
+    if native is None:
+        raise RuntimeError("the Rust extension is not built")
+
+    directory = FIXTURE / name
+    try:
+        precips, pet = np.load(directory / "precips.npy"), np.load(directory / "pet.npy")
+        awc = float(json.loads((ROOT / "tests" / "fixture" / "palmer_awc.json").read_text(encoding="utf-8"))[name])
+    except (KeyError, OSError, ValueError) as error:
+        raise RuntimeError(f"{name}: cannot load Palmer fixtures: {error}") from error
     result: dict[str, Any] = {}
     for index in (palmer.pdsi, palmer.scpdsi):
-        runs = []
+        recorder = _NativeRecorder(native)
+        previous = palmer._native
         try:
             with np.errstate(all="ignore"):
-                for backend in (native, None):
-                    palmer._native = backend
-                    runs.append(index(precips, pet, awc, START, *CALIBRATION))
+                palmer._native = recorder
+                rust = index(precips, pet, awc, START, *CALIBRATION)
+                missing = _KERNELS[index.__name__] - recorder.calls
+                if missing:
+                    raise RuntimeError(
+                        f"{name} {index.__name__}: Rust kernels not called: {', '.join(sorted(missing))}"
+                    )
+                palmer._native = None
+                python = index(precips, pet, awc, START, *CALIBRATION)
         finally:
-            palmer._native = native
-        (rust, python) = runs
-        entry = {output: _stats(rust[i], python[i]) for i, output in enumerate(OUTPUTS)}
-        entry["params"] = _params(rust[4], python[4])
+            palmer._native = previous
+        *rust_arrays, rust_params = rust
+        *python_arrays, python_params = python
+        if rust_params is None or python_params is None:
+            raise RuntimeError(f"{name} {index.__name__}: missing fitting parameters")
+        entry = {output: _stats(r, p) for output, r, p in zip(OUTPUTS, rust_arrays, python_arrays, strict=True)}
+        entry["params"] = _params(rust_params, python_params)
         result[index.__name__] = entry
     return name, result
 
 
 def _toolchain() -> dict[str, Any]:
-    def run(*command: str) -> str:
+    rustc = shutil.which("rustc")
+
+    def run(*args: str) -> str:
+        if rustc is None:
+            return "unavailable"
         try:
-            return subprocess.run(command, capture_output=True, text=True, check=True).stdout.strip()
+            # The rustc path comes from PATH and all arguments are fixed.
+            completed = subprocess.run([rustc, *args], capture_output=True, text=True, check=True)  # nosec B603
+            return completed.stdout.strip()
         except (OSError, subprocess.CalledProcessError):
             return "unavailable"
 
@@ -106,8 +152,8 @@ def _toolchain() -> dict[str, Any]:
         "machine": platform.machine(),
         "python": sys.version.split()[0],
         "numpy": np.__version__,
-        "rustc": run("rustc", "-vV"),
-        "rust_cfg": run("rustc", "--print", "cfg").splitlines(),
+        "rustc": run("-vV"),
+        "rust_cfg": run("--print", "cfg").splitlines(),
         "extension": getattr(_native_backend.EXTENSION, "__file__", None),
     }
 
@@ -115,6 +161,10 @@ def _toolchain() -> dict[str, Any]:
 def measure(out: Path, workers: int) -> int:
     from climate_indices import _native_backend
 
+    out = out.resolve()
+    if not out.is_relative_to(Path.cwd()):
+        print("the output path must stay inside the working directory", file=sys.stderr)
+        return 2
     if _native_backend.EXTENSION is None:
         print("the Rust extension is not built; run `uv run maturin develop --release`", file=sys.stderr)
         return 2
@@ -144,29 +194,50 @@ def measure(out: Path, workers: int) -> int:
     return 0
 
 
-def compare(paths: list[Path], backend: str) -> int:
-    """Bit-for-bit comparison of one backend's digests across the given reports.
+def _report_digests(path: Path, key: str) -> dict[tuple[str, str, str], str]:
+    try:
+        divisions = json.loads(path.read_text(encoding="utf-8"))["divisions"]
+    except (KeyError, OSError, TypeError, ValueError) as error:
+        raise ValueError(f"{path}: cannot read divisions: {error}") from error
+    if not isinstance(divisions, dict) or not divisions:
+        raise ValueError(f"{path}: no divisions")
+    digests = {}
+    for division, indices in divisions.items():
+        if not isinstance(indices, dict) or not indices:
+            raise ValueError(f"{path}: no indices for {division}")
+        for index, outputs in indices.items():
+            if not isinstance(outputs, dict) or not outputs:
+                raise ValueError(f"{path}: no outputs for {division} {index}")
+            for output, stats in outputs.items():
+                digest = stats.get(key) if isinstance(stats, dict) else None
+                if not isinstance(digest, str) or not digest:
+                    raise ValueError(f"{path}: invalid digest for {division} {index}.{output}")
+                digests[division, index, output] = digest
+    return digests
 
-    The first report is the baseline. A report that lacks a division or output the
-    baseline has counts as a mismatch, and fewer than two reports cannot compare anything.
-    """
+
+def compare(paths: list[Path], backend: str) -> int:
+    """Compare one backend's digests across reports with identical, nonempty coverage."""
     if len(paths) < 2:
         print(f"{backend}: need at least two reports to compare, got {len(paths)}", file=sys.stderr)
         return 2
-    reports = {str(path): json.loads(path.read_text(encoding="utf-8")) for path in paths}
     key = f"{backend}_sha256"
-    first_name, first = next(iter(reports.items()))
+    first_path, *others = paths
     mismatches: list[str] = []
-    for name, report in reports.items():
-        for division, indices in first["divisions"].items():
-            for index, outputs in indices.items():
-                for output, expected in outputs.items():
-                    actual = report["divisions"].get(division, {}).get(index, {}).get(output, {}).get(key)
-                    if actual != expected[key]:
-                        mismatches.append(f"{name} vs {first_name}: {division} {index}.{output}")
+    try:
+        first = _report_digests(first_path, key)
+        for path in others:
+            actual = _report_digests(path, key)
+            for division, index, output in sorted(first.keys() | actual.keys()):
+                coordinate = (division, index, output)
+                if actual.get(coordinate) != first.get(coordinate):
+                    mismatches.append(f"{path} vs {first_path}: {division} {index}.{output}")
+    except ValueError as error:
+        print(f"{backend}: invalid report: {error}", file=sys.stderr)
+        return 2
     for line in mismatches[:50]:
         print(line)
-    print(f"{backend}: {len(reports)} reports, {len(mismatches)} differing outputs")
+    print(f"{backend}: {len(paths)} reports, {len(mismatches)} differing outputs")
     return 1 if mismatches else 0
 
 

@@ -40,6 +40,8 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Set up Python
         uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0  # v7.1.0
@@ -58,9 +60,6 @@ jobs:
       - name: Build the Rust extension
         run: uv run --no-sync --no-build maturin develop --release
 
-      - name: Run the Palmer parity tests
-        run: uv run --no-sync --no-build pytest -q -n auto tests/test_native_parity_palmer.py
-
       - name: Measure parity on the 344 divisions
         run: uv run --no-sync --no-build python scripts/measure_palmer_parity.py measure --out "parity-${{ matrix.target }}.json"
 
@@ -70,6 +69,10 @@ jobs:
           name: parity-${{ matrix.target }}
           path: parity-${{ matrix.target }}.json
           if-no-files-found: error
+
+      # Upload the report first so a parity test failure does not hide the measurement.
+      - name: Run the Palmer parity tests
+        run: uv run --no-sync --no-build pytest -q -n auto tests/test_native_parity_palmer.py
 
   compare:
     needs: measure
@@ -81,13 +84,14 @@ jobs:
       run:
         shell: bash
     steps:
-      # a failed or skipped measure leg leaves a missing artifact; compare would otherwise
-      # pass on the platforms that did report
-      - name: Require every platform to have reported
+      # Require both the measurement and the parity tests to pass on all targets.
+      - name: Require every platform to finish successfully
         run: test "${{ needs.measure.result }}" = success
 
       - name: Checkout code
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Set up Python
         uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0  # v7.1.0
