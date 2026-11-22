@@ -61,8 +61,7 @@ def test_reference_fit_is_near_standard_normal_over_the_calibration_period(seed:
     Five seeds of this series measured |mean| <= 0.015 and |sd - 1| <= 0.006. The bound
     holds for the reference fit only, and only over the pooled window. The pooled anomaly
     is a scale mixture, so the lighter-tailed Pearson and normal fits reach the +/-3.09
-    clip on wet-season values and their clipped spread falls short of one; no calendar
-    period is promised a unit variance either.
+    clip on wet-season values. No calendar period is promised a unit variance either.
     """
     calibration = _spai(_seasonal(seed))[:CALIBRATION_STEPS]
 
@@ -216,6 +215,28 @@ def test_normal_reduces_to_the_pooled_anomaly() -> None:
     # maximum-likelihood scale is its root-mean-square deviation
     assert loc == pytest.approx(0.0, abs=1e-12)
     np.testing.assert_allclose(result, np.clip(anomaly / scale, -3.09, 3.09).ravel(), rtol=0, atol=1e-12)
+
+
+@pytest.mark.parametrize(("distribution", "expected_sd"), [(PEARSON, 1.0361247952), (NORMAL, 0.8889721338)])
+def test_wet_season_clips_both_tails(distribution: indices.Distribution, expected_sd: float) -> None:
+    values = _seasonal(seed=3)
+    shape = (-1, 12)
+    probabilities = _spai(values, distribution, output_scale="probability")[:CALIBRATION_STEPS].reshape(shape)
+    unclipped = scipy.stats.norm.ppf(probabilities)
+    result = _spai(values, distribution)[:CALIBRATION_STEPS].reshape(shape)
+
+    wet = unclipped[:, 5:9]  # June through September
+    dry_tail, wet_tail = wet < -3.09, wet > 3.09
+    assert dry_tail.any()
+    assert wet_tail.any()
+    np.testing.assert_array_equal(result[:, 5:9][dry_tail], -3.09)
+    np.testing.assert_array_equal(result[:, 5:9][wet_tail], 3.09)
+    np.testing.assert_allclose(result, np.clip(unclipped, -3.09, 3.09), rtol=0, atol=1e-12)
+
+    assert np.isfinite(result).all()
+    sd = result.std(ddof=1)
+    assert sd == pytest.approx(expected_sd, rel=0, abs=1e-9)
+    assert abs(sd - 1) == pytest.approx(abs(expected_sd - 1), rel=0, abs=1e-9)
 
 
 def test_t_location_scale_matches_scipy_maximum_likelihood(seasonal: np.ndarray) -> None:
