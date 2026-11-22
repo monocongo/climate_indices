@@ -250,6 +250,16 @@ def _table12_audit_failures() -> dict[tuple[int, int], set[str]]:
         assert z is not None and z_over_3 is not None
         if abs(z / 3 - z_over_3) > HALF_2DP + 0.0017:
             failures.setdefault(tag, set()).add("z_over_3")
+        uw, ud = value(row, "uw"), value(row, "ud")
+        if uw is not None and abs(z + 0.15 - uw) > AUDIT_ATOL:
+            failures.setdefault(tag, set()).add("uw")
+        if ud is not None and abs(z - 0.15 - ud) > AUDIT_ATOL:
+            failures.setdefault(tag, set()).add("ud")
+        ze = value(row, "ze")
+        if index > 0 and ze is not None and value(row, "q") not in (None, 0.0):
+            previous_v = value(rows[index - 1], "v") or 0.0
+            if abs(ze + previous_v - (value(row, "q") or 0.0)) > AUDIT_ATOL:
+                failures.setdefault(tag, set()).add("q")
         v, q, pe = value(row, "v"), value(row, "q"), value(row, "pe_pct")
         if q and v is not None and pe is not None and abs(min(100.0, 100 * v / q) - pe) > 0.6:
             failures.setdefault(tag, set()).add("pe_pct")
@@ -276,6 +286,21 @@ def test_table12_printed_recurrences_fail_only_where_the_paper_is_inconsistent()
     """Pe = 100 V/Q, Z/3, -0.103 X(i-1), dX = Z/3 - 0.103 X(i-1) and X = X(i-1) + dX hold except in three cells."""
     failures = _table12_audit_failures()
     assert failures == {tag: {cell} for tag, cell in _TABLE12_INCONSISTENT.items()}
+
+
+def test_table12_printing_errors_have_the_documented_size() -> None:
+    """Pin how far each inconsistent cell is from its row's own arithmetic, so a slip there is not hidden."""
+    rows = {_ym(row): row for row in _rows("table12_severity_western_kansas.csv")}
+    previous = rows[(1889, 5)]
+    # X1(May 1889) + dX1(June) = 0.95 + 0.25 = 1.20, printed 1.10
+    june = rows[(1889, 6)]
+    assert float(previous["x1"]) + float(june["dx1"]) - float(june["x1"]) == pytest.approx(0.10, abs=1e-9)
+    # Z(June 1890) / 3 against the printed Z/3 of -0.94
+    z_june = rows[(1890, 6)]
+    assert float(z_june["z"]) / 3 - float(z_june["z_over_3"]) == pytest.approx(-0.0333, abs=0.0005)
+    # Z(July 1891) / 3 against the printed Z/3 of 1.74
+    z_july = rows[(1891, 7)]
+    assert float(z_july["z"]) / 3 - float(z_july["z_over_3"]) == pytest.approx(-0.3333, abs=0.0005)
 
 
 # ---------------------------------------------------------------------------
@@ -314,6 +339,7 @@ def test_h1_water_balance_one_month_from_the_printed_state(python_path: None) ->
     for row in rows:
         value = {key: float(text) for key, text in row.items()}
         library = _one_month(value["p_in"], value["pe_in"], ss, su)
+        assert np.isfinite(library).all(), _ym(row)  # NaN would pass every ``deviation > tol`` test
         printed = np.array([value[column] for _, column in _WATER_BALANCE_COLUMNS])
         deviation = float(np.abs(library - printed).max())
         assert abs(10.0 - (ss + su) - value["pr_in"]) <= AUDIT_ATOL  # PR needs no kernel
@@ -343,6 +369,7 @@ def test_h1_water_balance_carrying_the_library_state_stays_within_print_rounding
         "pl_in": prepared.pldat,
         "pr_in": prepared.prdat,
     }
+    assert all(np.isfinite(values).all() for values in library.values())
     worst = max(float(np.abs(values.reshape(-1) - _col(rows, name)).max()) for name, values in library.items())
     assert 0.02 < worst < 0.03
     # PRO is the soil moisture at the start of the month: the previous month's printed S.
@@ -380,12 +407,13 @@ def test_h2_cafec_coefficients_follow_from_the_printed_means() -> None:
             interval = _ratio_interval(numerator, denominator)
             if interval is None:
                 # both means printed as 0: the library's convention (1.0, or 0.0 for delta) is Table 3's
-                if denominator == 0 and numerator == 0:
-                    assert printed == point, (mean_row["region"], mean_row["month"], name)
+                assert denominator == 0 and numerator == 0, (mean_row["region"], mean_row["month"], name)
+                assert printed == point, (mean_row["region"], mean_row["month"], name)
                 continue
             testable += 1
             low, high = interval
-            assert low - HALF_4DP <= point <= high + HALF_4DP
+            # the library's ratio of the printed means is within the interval's width of Table 3's value
+            assert abs(point - printed) <= high - low, (mean_row["region"], mean_row["month"], name)
             informative += high - low <= 0.02
             if not low - HALF_4DP <= printed <= high + HALF_4DP:
                 outside.append(
@@ -465,17 +493,23 @@ def _table12_z_series() -> np.ndarray:
     years after July 1891 is Z = 0 and is never compared.
     """
     z = [0.0, 0.0, 0.81] + [float(r["z"]) for r in _rows("table12_severity_western_kansas.csv")]
-    return np.array(z + [0.0] * (48 - len(z)))
+    series = np.array(z + [0.0] * (48 - len(z)))
+    series.setflags(write=False)  # shared through lru_cache
+    return series
 
 
 def _pdi_x(z: np.ndarray) -> np.ndarray:
     factors = DurationFactors.from_defaults()
     pdi_factors = PdiDurationFactors.from_fitted(factors.wetm, factors.wetb, factors.drym, factors.dryb)
-    return _palmer_pdi.calculate(z.reshape(4, 12, 1), pdi_factors).pdsi.reshape(-1)[3:43]
+    x = _palmer_pdi.calculate(z.reshape(4, 12, 1), pdi_factors).pdsi.reshape(-1)[3:43]
+    assert np.isfinite(x).all()  # NaN would pass every ``deviation > tol`` test
+    return x
 
 
 def _wells_x(z: np.ndarray) -> np.ndarray:
-    return np.asarray(_palmer_wells.calculate(z, factors=DurationFactors.from_defaults()).pdsi)[3:43]
+    x = np.asarray(_palmer_wells.calculate(z, factors=DurationFactors.from_defaults()).pdsi)[3:43]
+    assert np.isfinite(x).all()  # NaN would pass every ``deviation > tol`` test
+    return x
 
 
 def _printed_x() -> np.ndarray:

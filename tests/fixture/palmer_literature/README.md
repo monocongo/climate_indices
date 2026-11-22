@@ -111,6 +111,14 @@ rounding that the paper itself documents, and one count was mis-stated; the tole
 | H5 X, pdi.f lineage | Within 0.02 of the printed X in 32 of 40 months. The other eight (1889-06, 1889-07, 1890-06 to 1890-10, 1891-07) follow from the three printing inconsistencies: with Z repaired to three times the printed Z/3 in June 1890 and July 1891, and June 1889 X1 taken as 0.95 + 0.25, every month is within 0.02. The set of eight is defined by that tolerance: November and December 1890 (0.016 and 0.0197) are also downstream of the June 1890 Z error but fall inside it. |
 | H6 X, Wells lineage | Differs from the printed X in 7 further months where pdi.f agrees (1889-02 to 1889-05, 1890-01 to 1890-03). Switching only the establishment threshold in a copy of the pdi.f recursion (mechanism E of #1631) reproduces the Wells series exactly on this input. |
 
+Limits of the transcription audits: they catch gross slips, not last-digit ones (a 0.01 error
+goes unnoticed in most Table 1 and Table 4 cells), and some columns are only partly constrained:
+Table 3 column `k` for central Iowa (no printed d to test it against), Table 4 `pro_in` and, for
+the most part, `pr_in` (gamma and beta are small), and Table 12 `v`, `pe_pct` and the X1/X2/X3
+cells printed as 0. For those the guard is the blind second pass and the checksum. The Table 12
+count of 32 matching months depends on the 0.02 tolerance: November and December 1890 (0.016,
+0.0197) are inside it and October 1890 (0.0210) is not.
+
 Not tested: Table 9 Equation 26 produces K' only inside the library's calibration loop, so
 the library is exercised for the normalization step (D-bar injected), not for K' itself.
 The coefficient intervals are uninformative where a printed mean is 0.05 or below (for
