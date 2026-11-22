@@ -250,7 +250,8 @@ def _table12_audit_failures() -> dict[tuple[int, int], set[str]]:
     for index, row in enumerate(rows):
         tag = _ym(row)
         z, z_over_3 = value(row, "z"), value(row, "z_over_3")
-        assert z is not None and z_over_3 is not None
+        assert z is not None
+        assert z_over_3 is not None
         if abs(z / 3 - z_over_3) > HALF_2DP + 0.0017:
             failures.setdefault(tag, set()).add("z_over_3")
         uw, ud = value(row, "uw"), value(row, "ud")
@@ -444,7 +445,8 @@ def test_h2_cafec_coefficients_follow_from_the_printed_means() -> None:
             interval = _ratio_interval(numerator, denominator)
             if interval is None:
                 # both means printed as 0: the library's convention (1.0, or 0.0 for delta) is Table 3's
-                assert denominator == 0 and numerator == 0, (mean_row["region"], mean_row["month"], name)
+                assert denominator == 0, (mean_row["region"], mean_row["month"], name)
+                assert numerator == 0, (mean_row["region"], mean_row["month"], name)
                 assert printed == point, (mean_row["region"], mean_row["month"], name)
                 continue
             testable += 1
@@ -620,7 +622,8 @@ def test_h6_wells_recursion_differs_from_table_12_by_the_establishment_threshold
     spec = importlib.util.spec_from_file_location(
         "characterize_palmer_recursion_divergence", ROOT / "scripts" / "characterize_palmer_recursion_divergence.py"
     )
-    assert spec is not None and spec.loader is not None
+    assert spec is not None
+    assert spec.loader is not None
     script: ModuleType = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(script)
     try:
