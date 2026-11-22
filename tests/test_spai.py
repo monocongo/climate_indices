@@ -234,9 +234,7 @@ def test_wet_season_clips_both_tails(distribution: indices.Distribution, expecte
     np.testing.assert_allclose(result, np.clip(unclipped, -3.09, 3.09), rtol=0, atol=1e-12)
 
     assert np.isfinite(result).all()
-    sd = result.std(ddof=1)
-    assert sd == pytest.approx(expected_sd, rel=0, abs=1e-9)
-    assert abs(sd - 1) == pytest.approx(abs(expected_sd - 1), rel=0, abs=1e-9)
+    assert result.std(ddof=1) == pytest.approx(expected_sd, rel=0, abs=1e-9)
 
 
 def test_t_location_scale_matches_scipy_maximum_likelihood(seasonal: np.ndarray) -> None:
