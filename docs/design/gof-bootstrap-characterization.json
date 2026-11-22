@@ -9,7 +9,7 @@
     "repeats": 5,
     "n_bootstrap": 99,
     "alpha": 0.05,
-    "rounding_unit": 10.0,
+    "default_rounding_unit": 10.0,
     "band_confidence": 0.999,
     "seed": 1586
   },
@@ -21,6 +21,8 @@
   },
   "cases": {
     "gamma": {
+      "rounding_unit": null,
+      "resolution": null,
       "series": 3600,
       "statistics": {
         "ks": {
@@ -58,6 +60,8 @@
       "seconds": 4.8
     },
     "pearson": {
+      "rounding_unit": null,
+      "resolution": null,
       "series": 3138,
       "statistics": {
         "ks": {
@@ -95,6 +99,8 @@
       "seconds": 5.1
     },
     "loglogistic": {
+      "rounding_unit": null,
+      "resolution": null,
       "series": 3383,
       "statistics": {
         "ks": {
@@ -132,6 +138,8 @@
       "seconds": 0.8
     },
     "gev": {
+      "rounding_unit": null,
+      "resolution": null,
       "series": 3600,
       "statistics": {
         "ks": {
@@ -169,6 +177,8 @@
       "seconds": 1.0
     },
     "gamma_rounded_with_resolution": {
+      "rounding_unit": 10.0,
+      "resolution": 10.0,
       "series": 3600,
       "statistics": {
         "ks": {
@@ -206,6 +216,8 @@
       "seconds": 5.0
     },
     "control_gamma_rounded_without_resolution": {
+      "rounding_unit": 10.0,
+      "resolution": null,
       "series": 3600,
       "statistics": {
         "ks": {
@@ -243,6 +255,8 @@
       "seconds": 4.7
     },
     "control_gamma_naive_k_s": {
+      "rounding_unit": null,
+      "resolution": null,
       "series": 3600,
       "statistics": {
         "ks": {
@@ -266,6 +280,8 @@
       "seconds": 0.0
     },
     "gamma_zero_heavy_rounded_to_the_mean_with_resolution": {
+      "rounding_unit": 1.0,
+      "resolution": 1.0,
       "series": 3600,
       "statistics": {
         "ks": {

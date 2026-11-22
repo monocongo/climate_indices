@@ -133,6 +133,8 @@ def _run(
     expected, spread = float(q.sum()), float(np.sqrt((q * (1.0 - q)).sum()))
     z = float(scipy.stats.norm.ppf(0.5 + CONFIDENCE / 2))
     return {
+        "rounding_unit": unit if rounded else None,
+        "resolution": resolution,
         "series": series,
         "statistics": {
             name: {
@@ -190,7 +192,7 @@ def main() -> None:
             "repeats": REPEATS,
             "n_bootstrap": N_BOOTSTRAP,
             "alpha": ALPHA,
-            "rounding_unit": ROUNDING,
+            "default_rounding_unit": ROUNDING,
             "band_confidence": CONFIDENCE,
             "seed": SEED,
         },
