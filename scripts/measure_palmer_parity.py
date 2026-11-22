@@ -67,14 +67,20 @@ def _digest(array: np.ndarray) -> str:
 def _stats(rust: np.ndarray, python: np.ndarray) -> dict[str, Any]:
     rust, python = np.asarray(rust, dtype=np.float64), np.asarray(python, dtype=np.float64)
     both = np.isfinite(rust) & np.isfinite(python)
-    difference = np.abs(rust - python)[both]
-    nonzero = both & (python != 0)
-    relative = np.abs(rust - python)[nonzero] / np.abs(python)[nonzero]
+    # index before subtracting, so a masked-out infinity never enters the arithmetic
+    finite_rust, finite_python = rust[both], python[both]
+    difference = np.abs(finite_rust - finite_python)
+    nonzero = finite_python != 0
+    relative = difference[nonzero] / np.abs(finite_python[nonzero])
+    # a finite value against an infinity, or two infinities of opposite sign, is a
+    # difference that the finite-only statistics below would report as zero
+    infinite = np.isinf(rust) ^ np.isinf(python)
     return {
         "max_abs": float(difference.max(initial=0.0)),
         "max_rel": float(relative.max(initial=0.0)),
-        "sign_mismatches": int((np.sign(rust)[both] != np.sign(python)[both]).sum()),
+        "sign_mismatches": int((np.sign(finite_rust) != np.sign(finite_python)).sum()),
         "nan_mismatches": int((np.isnan(rust) != np.isnan(python)).sum()),
+        "infinite_mismatches": int(infinite.sum() + (np.isinf(rust) & np.isinf(python) & (rust != python)).sum()),
         "rust_sha256": _digest(rust),
         "python_sha256": _digest(python),
     }
@@ -165,6 +171,9 @@ def measure(out: Path, workers: int) -> int:
     if not out.is_relative_to(Path.cwd()):
         print("the output path must stay inside the working directory", file=sys.stderr)
         return 2
+    if workers < 1:
+        print(f"workers must be at least 1, got {workers}", file=sys.stderr)
+        return 2
     if _native_backend.EXTENSION is None:
         print("the Rust extension is not built; run `uv run maturin develop --release`", file=sys.stderr)
         return 2
@@ -184,6 +193,7 @@ def measure(out: Path, workers: int) -> int:
                     else {
                         "sign_mismatches": sum(row["sign_mismatches"] for row in rows),
                         "nan_mismatches": sum(row["nan_mismatches"] for row in rows),
+                        "infinite_mismatches": sum(row["infinite_mismatches"] for row in rows),
                     }
                 ),
                 "python_rust_identical_divisions": sum(row["rust_sha256"] == row["python_sha256"] for row in rows),
@@ -194,25 +204,32 @@ def measure(out: Path, workers: int) -> int:
     return 0
 
 
+def _mapping(value: Any, path: Path, where: str) -> dict[str, Any]:
+    """``value`` as a nonempty mapping, or a report error that names ``where``."""
+    if not isinstance(value, dict) or not value:
+        raise ValueError(f"{path}: no {where}")
+    return value
+
+
+def _report_digest(stats: Any, key: str, path: Path, where: str) -> str:
+    """One report entry's digest for ``key``, or a report error that names ``where``."""
+    digest = stats.get(key) if isinstance(stats, dict) else None
+    if not isinstance(digest, str) or not digest:
+        raise ValueError(f"{path}: invalid digest for {where}")
+    return digest
+
+
 def _report_digests(path: Path, key: str) -> dict[tuple[str, str, str], str]:
     try:
-        divisions = json.loads(path.read_text(encoding="utf-8"))["divisions"]
+        # the report path is the operator's own CLI argument
+        divisions = json.loads(path.read_text(encoding="utf-8"))["divisions"]  # NOSONAR (S8707)
     except (KeyError, OSError, TypeError, ValueError) as error:
         raise ValueError(f"{path}: cannot read divisions: {error}") from error
-    if not isinstance(divisions, dict) or not divisions:
-        raise ValueError(f"{path}: no divisions")
     digests = {}
-    for division, indices in divisions.items():
-        if not isinstance(indices, dict) or not indices:
-            raise ValueError(f"{path}: no indices for {division}")
-        for index, outputs in indices.items():
-            if not isinstance(outputs, dict) or not outputs:
-                raise ValueError(f"{path}: no outputs for {division} {index}")
-            for output, stats in outputs.items():
-                digest = stats.get(key) if isinstance(stats, dict) else None
-                if not isinstance(digest, str) or not digest:
-                    raise ValueError(f"{path}: invalid digest for {division} {index}.{output}")
-                digests[division, index, output] = digest
+    for division, indices in _mapping(divisions, path, "divisions").items():
+        for index, outputs in _mapping(indices, path, f"indices for {division}").items():
+            for output, stats in _mapping(outputs, path, f"outputs for {division} {index}").items():
+                digests[division, index, output] = _report_digest(stats, key, path, f"{division} {index}.{output}")
     return digests
 
 

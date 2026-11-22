@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 from types import ModuleType
 
+import numpy as np
 import pytest
 
 from climate_indices import _native_backend
@@ -38,6 +39,24 @@ def test_compare_rejects_two_empty_reports(tmp_path: Path) -> None:
     for report in (first, second):
         report.write_text('{"divisions": {}}', encoding="utf-8")
     assert measure_palmer_parity.compare([first, second], "rust") == 2
+
+
+def test_stats_counts_a_finite_value_against_an_infinity_as_a_difference() -> None:
+    """The finite-only maxima cannot see this difference, so a separate count must."""
+    stats = measure_palmer_parity._stats(np.array([np.inf, -np.inf]), np.array([1.0, np.inf]))
+    assert stats["infinite_mismatches"] == 2
+    assert stats["nan_mismatches"] == 0
+    equal = measure_palmer_parity._stats(np.array([np.inf]), np.array([np.inf]))
+    assert equal["infinite_mismatches"] == 0
+
+
+def test_measure_rejects_a_worker_count_below_one(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    assert measure_palmer_parity.measure(Path("parity.json"), workers=0) == 2
+    assert "workers must be at least 1" in capsys.readouterr().err
+    assert not (tmp_path / "parity.json").exists()
 
 
 def test_measure_rejects_output_outside_working_directory(
