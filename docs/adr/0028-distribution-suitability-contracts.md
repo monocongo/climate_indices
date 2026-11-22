@@ -108,14 +108,22 @@ It is returned whenever it is defined, and no significance threshold is applied.
 
 Implementation decisions of SUIT-05 ([#1586](https://github.com/monocongo/climate_indices/issues/1586)):
 
-- **What is tested.** The statistics test the continuous part of each fit on the shared calibration sample. Exact zeros are
-  excluded from them for every family, because a zero is the zero mass and not an observation of the continuous distribution.
-  Repeated positive values stay, with their frequency.
+- **What is tested.** The statistics test the continuous part of each fit on the shared calibration sample. For gamma and
+  Pearson Type III, whose fit carries a zero mass, exact zeros are excluded because a zero is the mass and not an observation of
+  the continuous distribution. Log-logistic and GEV have no zero mass and `_score_fit` scores a zero as an ordinary value
+  ([ADR-0016](0016-log-logistic-distribution-for-spei.md)), so the statistics keep it, and the observed statistic and a
+  continuous bootstrap draw cover the same number of values. Repeated values stay, with their frequency.
 - **Naive p-value.** Only K–S has one, the exact null distribution of D for fully specified parameters. It is tabulated per
-  sample size and interpolated to within 1e-5, because SciPy's exact value costs about 35 microseconds a series.
+  sample size and interpolated to within 1e-5 from 7 values on, because SciPy's exact value costs about 35 microseconds a
+  series. Fewer values are rare, and the exact distribution has kinks that the grid would smooth (an error of 1.3e-3 for one
+  value), so they take SciPy's value.
 - **The bootstrap sample.** Each replicate has the observed size and missing-value pattern and is drawn by inverting the fitted
-  mixed CDF at uniform numbers, so the zero mass is part of every sample. A `resolution` rounds the draws to the record's unit and
-  is never inferred. Without it, a record rounded to a coarse unit is rejected far too often
+  mixed CDF at uniform numbers, so the zero mass is part of every sample. A `resolution` rounds the draws to the unit of the
+  prepared sample and is never inferred (that unit is the record's for SPI; `aggregation="mean"` divides it by the Timescale). The
+  library fits p0 on the rounded record, so p0 already counts what rounded to zero: a positive draw that rounds to zero is set to
+  the unit, which keeps the simulated zero share at p0 and every nonzero value at least the unit, as in the record. Rounding
+  the draws a second time would add zeros beyond p0, and rejected 8.9% (K-S) and 17.8% (A²) of series at a nominal 4% in a
+  zero-heavy record. Without `resolution`, a record rounded to a coarse unit is rejected far too often
   ([VALIDATION.md](https://github.com/monocongo/climate_indices/blob/main/VALIDATION.md)).
 - **A refit fails by the rule that fails the observed fit.** A refit with no usable parameters, or with a value outside its fitted
   support (zero likelihood), is left out of the p-value, whose denominator is the number of refits that succeeded plus one.
@@ -123,15 +131,21 @@ Implementation decisions of SUIT-05 ([#1586](https://github.com/monocongo/climat
   would inflate the null distribution of A², which has no such value in an observed fit that ranks. Because a p-value is a
   multiple of `1 / (B_ok + 1)`, a series with fewer than `B` refits cannot reach the nominal size exactly.
 - **Streams are keyed on the data.** Each calendar step and cell draws from its own stream, seeded by the seed and a digest of that
-  column's calibration values. A result therefore does not depend on a cell's position, on its neighbours, on the batching of
-  replicates or on the Dask chunking. Identical columns share a stream, which leaves each p-value valid. A seed of `None` draws
+  column's calibration values, each value written one way (every NaN alike, `-0.0` as `0.0`, little-endian). A result therefore
+  does not depend on a cell's position, on its neighbours, on the batching of replicates, on the Dask chunking, or on how a
+  missing value happens to be stored. Identical columns share a stream, which leaves each p-value valid. A seed of `None` draws
   128 bits from the operating system's entropy; it is drawn once per call and recorded as a decimal string.
-- **No warnings from simulated samples.** The library's calibration-quality and goodness-of-fit warnings describe a real series, so a
-  context variable (`compute._fit_warnings_suppressed`) turns them off for the refits. It is scoped to the calling thread or task,
-  unlike `warnings.catch_warnings`, which would race with concurrent Dask blocks.
+- **No warnings or log events from simulated samples.** The library's calibration-quality and goodness-of-fit warnings, and the
+  log events of its fitting functions, describe a real series, so a context variable (`compute._fit_warnings_suppressed`)
+  turns them off for the refits. It is scoped to the calling thread or task, unlike `warnings.catch_warnings`, which would race
+  with concurrent Dask blocks. The gamma fit's `np.nanmean` empty-slice warning, which no context variable controls, is
+  replaced by an explicit count and sum.
 - **Across cells.** `rejection_share` and the Benjamini–Hochberg p-values are computed from the bootstrap p-value when one was
-  run and otherwise from the naive K–S p-value. They need every cell, so the xarray route adds them after its blocks are joined.
-  A series without a cell axis has neither, and `bh_adjust=True` raises there.
+  run and otherwise from the naive K–S p-value. `rejection_share` counts cells with `p <= alpha`, the decision rule of a
+  Monte-Carlo test, which has size exactly `alpha` when `(B_ok + 1) alpha` is an integer. The Benjamini–Hochberg family is
+  the cells of one candidate and one calendar step, with NaN p-values left out. These need every cell, so the xarray route adds
+  them after its blocks are joined. A series without a cell axis has neither, and `bh_adjust=True` raises there, as it does for
+  `gof=("ad",)` without a bootstrap, which leaves nothing to adjust.
 
 ### 6. Result types and provenance
 

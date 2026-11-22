@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import json
+import threading
+import types
 import warnings
 from pathlib import Path
 from typing import Any
@@ -83,7 +85,7 @@ class TestStatistics:
         ks, ad, _ = suitability._pit_statistics(np.array([[0.0], [0.4], [1.0]]))
         assert np.isfinite(ks[0]) and np.isfinite(ad[0])
 
-    @pytest.mark.parametrize("size", [5, 12, 30, 41, 97])
+    @pytest.mark.parametrize("size", [1, 2, 5, 6, 7, 12, 30, 41, 97])
     def test_naive_p_value_is_the_exact_k_s_p_value(self, size):
         rng = np.random.default_rng(size)
         samples = rng.uniform(size=(size, 40))
@@ -172,6 +174,27 @@ class TestResult:
             positive = scaled[:, step][scaled[:, step] > 0]
             expected = scipy.stats.kstest(positive, scipy.stats.gamma(a=alpha[step], scale=beta[step]).cdf)
             assert result.goodness_of_fit.ks_statistic[0, step] == pytest.approx(expected.statistic, rel=1e-10)
+            assert result.goodness_of_fit.ks_p_value_naive[0, step] == pytest.approx(expected.pvalue, abs=1e-5)
+
+    def test_log_logistic_keeps_an_exact_zero_as_an_ordinary_value(self):
+        # a family with no zero mass scores a zero like any value, so its statistics cover it too
+        rng = np.random.default_rng(5)
+        sample = scipy.stats.fisk.rvs(c=1 / 0.3, scale=60.0, size=(YEARS, 12), random_state=rng)
+        sample[:3] = 0.0  # a prepared SPEI sample (water balance plus the 1000 offset) of exactly zero
+        result = _compare(
+            np.zeros(YEARS * 12),
+            index="spei",
+            pet_mm=(1000.0 - sample).reshape(-1),
+            candidates=(Distribution.loglogistic,),
+        )
+        assert not result.fit_failed.any()
+        params = result.parameters[Distribution.loglogistic]
+        for step in range(12):
+            loc, scale, k = (params[name][step] for name in ("loc", "scale", "shape"))
+            z = (sample[:, step] - loc) / scale  # Hosking's CDF, written out independently of the module
+            u = 1 / (1 + np.exp(np.log1p(-k * z) / k)) if abs(k) > 1e-6 else 1 / (1 + np.exp(-z))
+            expected = scipy.stats.kstest(u, "uniform")
+            assert result.goodness_of_fit.ks_statistic[0, step] == pytest.approx(expected.statistic, rel=1e-9)
             assert result.goodness_of_fit.ks_p_value_naive[0, step] == pytest.approx(expected.pvalue, abs=1e-5)
 
     def test_repeated_positive_values_are_kept_with_their_frequency(self):
@@ -299,6 +322,95 @@ class TestBootstrap:
         assert abs((draws == 0).mean() - 0.2) < 0.03  # the zero mass of the fit, nothing else rounds to zero here
         assert (draws[draws > 0] >= 0.5).all()
 
+    def test_a_coarse_unit_adds_no_zeros_beyond_the_fitted_zero_mass(self):
+        # the library fits p0 on the rounded record, so it already counts what rounded to zero: a positive draw
+        # that rounds to zero is set to the unit, and the simulated zero share stays p0
+        uniforms = np.random.default_rng(1).uniform(size=(20000, 1))
+        p = {"alpha": np.array([0.8]), "beta": np.array([3.0]), "prob_zero": np.array([0.15])}
+        draws = suitability._simulate(Distribution.gamma, uniforms, p, 1.0)
+        assert (draws == 0).mean() == pytest.approx((uniforms <= 0.15).mean(), abs=1e-12)
+        assert (draws[draws > 0] >= 1.0).all()
+        assert (draws == 1.0).mean() > 0.2  # the mass that would have rounded to zero now sits at the unit
+
+    def test_a_family_without_a_zero_mass_rounds_its_draws_as_they_are(self):
+        # a zero is an ordinary value for these families, so a draw that rounds to zero stays zero
+        uniforms = np.random.default_rng(2).uniform(size=(5000, 1))
+        p = {"loc": np.array([0.0]), "scale": np.array([1.0]), "shape": np.array([0.0])}
+        draws = suitability._simulate(Distribution.loglogistic, uniforms, p, 2.0)
+        assert (draws == 0).mean() > 0.2
+        assert np.allclose(draws / 2.0, np.round(draws / 2.0))
+
+    def test_a_refit_with_a_value_beyond_its_support_fails_by_the_rule_of_an_observed_fit(self, monkeypatch):
+        # a GEV with shape 0.5 ends at loc + scale / shape = 2: the second replicate holds a 5, which the likelihood
+        # would score as zero, so that refit is a failed one and the first, wholly inside, is not
+        class Fit:
+            parameters = {"loc": np.zeros((1, 2)), "scale": np.ones((1, 2)), "shape": np.full((1, 2), 0.5)}
+
+        monkeypatch.setattr(compute.FittedDistribution, "resolve", lambda *args, **kwargs: Fit())
+        draws = np.stack([np.linspace(-1.0, 1.5, 10), np.linspace(-1.0, 1.5, 10)], axis=-1)[:, np.newaxis, :]
+        draws[3, 0, 1] = 5.0
+        period = types.SimpleNamespace(start_year=START, end_year=START + 9)
+        statistics, succeeded = suitability._refit_statistics(Distribution.gev, draws, period, MONTHLY)
+        assert succeeded.tolist() == [[True, False]]
+        assert np.isfinite(statistics["ks"][0, 0]) and np.isnan(statistics["ks"][0, 1])
+
+    def test_the_stream_depends_on_the_values_not_on_how_a_value_is_stored(self):
+        sample = np.random.default_rng(4).gamma(2.0, 30.0, size=(YEARS, 3))
+        sample[3, 0] = np.nan
+        sample[5, 1] = 0.0
+        variants = {"positive nan": sample, "negative nan": sample.copy(), "negative zero": sample.copy()}
+        variants["negative nan"][3, 0] = -np.nan
+        variants["negative zero"][5, 1] = -0.0
+        assert variants["negative nan"].tobytes() != sample.tobytes()
+        assert variants["negative zero"].tobytes() != sample.tobytes()
+        variants["big-endian"] = sample.astype(">f8")
+
+        def first_draws(values):
+            return [generator.random(4) for generator in suitability._column_generators(7, values)]
+
+        expected = first_draws(sample)
+        for name, values in variants.items():
+            np.testing.assert_array_equal(first_draws(values), expected, err_msg=name)
+
+    def test_simulated_samples_add_no_warning_or_log_event_of_their_own(self, capfd):
+        values = _gamma(20, 2, 2)
+        values[:, 0, 0] = np.nan  # a cell with no value: its refits have an empty column
+
+        def run(**kwargs: Any) -> tuple[list[str], int]:
+            capfd.readouterr()
+            with warnings.catch_warnings(record=True) as caught:
+                warnings.simplefilter("always")
+                _compare(values, spatial_time_major=True, candidates=GAMMA, **kwargs)
+            captured = capfd.readouterr()
+            return sorted(str(w.message) for w in caught), (captured.out + captured.err).count("distribution_fitting_")
+
+        without_bootstrap = run()
+        assert without_bootstrap[1] > 0  # the observed fit does log, so the count below means something
+        assert run(n_bootstrap=6, seed=1) == without_bootstrap
+
+    def test_the_fit_warning_switch_is_scoped_to_its_thread(self):
+        entered, release = threading.Event(), threading.Event()
+
+        def hold() -> None:
+            with compute._fit_warnings_suppressed():
+                entered.set()
+                release.wait(10)
+
+        holder = threading.Thread(target=hold)
+        holder.start()
+        try:
+            assert entered.wait(10)
+            assert compute._FIT_WARNINGS_ENABLED.get() is True  # another thread's block does not reach this one
+        finally:
+            release.set()
+            holder.join()
+
+    def test_a_unit_far_coarser_than_the_data_is_reported_as_failed_refits(self):
+        gof = _gof(_gamma(21, 2, 2), candidates=GAMMA, n_bootstrap=5, seed=1, resolution=1e9, spatial_time_major=True)
+        p = gof.ks_p_value_bootstrap
+        assert ((p > 0) & (p <= 1) | np.isnan(p)).all()
+        assert ((gof.bootstrap_failed_share >= 0) & (gof.bootstrap_failed_share <= 1)).all()
+
     def test_library_fit_warnings_describe_the_data_not_the_simulated_samples(self):
         bimodal = np.where(np.random.default_rng(0).random((YEARS * 12,)) < 0.5, 5.0, 200.0)
         bimodal = bimodal + np.random.default_rng(1).uniform(0, 1, bimodal.shape)
@@ -336,14 +448,14 @@ class TestAcrossCells:
     def test_rejection_share_counts_the_cells_below_alpha(self):
         gof = self._gof(alpha=0.3)
         assert gof.rejection_share.shape == (1, 12, 2)
-        expected = (gof.ks_p_value_naive < 0.3).mean(axis=(2, 3))
+        expected = (gof.ks_p_value_naive <= 0.3).mean(axis=(2, 3))
         np.testing.assert_allclose(gof.rejection_share[..., 0], expected)
         assert np.isnan(gof.rejection_share[..., 1]).all()  # Anderson-Darling has no naive p-value
 
     def test_rejection_share_follows_the_bootstrap_p_value_once_there_is_one(self):
         gof = self._gof(n_bootstrap=19, seed=2, alpha=0.2)
         for column, p in enumerate((gof.ks_p_value_bootstrap, gof.ad_p_value_bootstrap)):
-            np.testing.assert_allclose(gof.rejection_share[..., column], (p < 0.2).mean(axis=(2, 3)))
+            np.testing.assert_allclose(gof.rejection_share[..., column], (p <= 0.2).mean(axis=(2, 3)))
         assert np.isfinite(gof.rejection_share).all()
 
     def test_rejection_share_leaves_out_the_cells_without_a_p_value(self):
@@ -351,7 +463,7 @@ class TestAcrossCells:
         values[:, 0, 0] = np.nan
         gof = _gof(values, spatial_time_major=True, alpha=0.5, candidates=GAMMA)
         finite = np.isfinite(gof.ks_p_value_naive)
-        expected = ((gof.ks_p_value_naive < 0.5) & finite).sum(axis=(2, 3)) / finite.sum(axis=(2, 3))
+        expected = ((gof.ks_p_value_naive <= 0.5) & finite).sum(axis=(2, 3)) / finite.sum(axis=(2, 3))
         np.testing.assert_allclose(gof.rejection_share[..., 0], expected)
 
     def test_benjamini_hochberg_matches_scipy_per_candidate_and_step(self):
@@ -407,6 +519,9 @@ class TestArguments:
             {"n_bootstrap": 5, "resolution": float("inf")},
             {"n_bootstrap": 5, "resolution": "0.1"},
             {"n_bootstrap": 5, "resolution": True},
+            {"n_bootstrap": 5, "resolution": 10**400},  # beyond the float range
+            {"n_bootstrap": 5, "resolution": 1e-320},  # a subnormal: its reciprocal overflows
+            {"gof": ("ad",), "bh_adjust": True},  # nothing to adjust without a bootstrap
             {"alpha": 0.0},
             {"alpha": 1.0},
             {"alpha": float("nan")},
@@ -432,6 +547,18 @@ class TestArguments:
         result = _compare(_gamma(0), n_bootstrap=np.int64(5), seed=np.int64(3))
         assert result.goodness_of_fit.n_bootstrap == 5
         assert result.metadata["climate_indices_rng_seed"] == "3"
+
+    def test_numpy_scalars_are_recorded_as_plain_types(self):
+        result = _compare(
+            _gamma(0), n_bootstrap=3, seed=np.int64(1), alpha=np.float32(0.05), resolution=np.float32(0.5)
+        )
+        record = json.loads(result.metadata["climate_indices_provenance"])["parameters"]
+        assert record["alpha"] == pytest.approx(0.05, rel=1e-6) and record["resolution"] == 0.5
+        assert record["bh_adjust"] is False
+
+    def test_bh_with_only_anderson_darling_needs_a_bootstrap(self):
+        gof = _gof(_gamma(0, 2, 2), gof=("ad",), n_bootstrap=5, seed=1, bh_adjust=True, spatial_time_major=True)
+        assert np.isfinite(gof.ad_p_value_bh).any()
 
     def test_resolution_and_seed_are_ignored_without_a_bootstrap(self):
         result = _compare(_gamma(0), resolution=0.1, seed=4)
@@ -473,6 +600,43 @@ class TestXarrayRoute:
         _assert_matches_numpy(dataset, core)
         assert dataset["ks_statistic"].dims == ("candidate", "month", "lat", "lon")
         assert dataset["ks_p_value_bh"].dims == dataset["ks_statistic"].dims
+
+    @pytest.mark.parametrize("lazy", [False, True])
+    def test_an_all_missing_cell_has_no_p_value_and_stays_out_of_the_family(self, lazy):
+        grid = _grid().copy()
+        grid[{"lat": 0, "lon": 0}] = np.nan
+        data = grid.chunk({"time": -1, "lat": 1, "lon": 1}) if lazy else grid
+        dataset = _compare(data, **self.OPTIONS).compute()
+        _assert_matches_numpy(dataset, _compare(grid.values, spatial_time_major=True, **self.OPTIONS))
+        assert np.isnan(dataset["ks_p_value_bh"].isel(lat=0, lon=0)).all()
+        assert np.isfinite(dataset["ks_p_value_bh"].sel(candidate="gamma").isel(lat=1, lon=1)).all()
+
+    @pytest.mark.parametrize("gof", [("ks",), ("ad",)])
+    def test_a_statistic_left_out_matches_the_numpy_route(self, gof):
+        grid = _grid()
+        options: dict[str, Any] = {"n_bootstrap": 6, "seed": 3, "gof": gof, "bh_adjust": True}
+        _assert_matches_numpy(_compare(grid, **options), _compare(grid.values, spatial_time_major=True, **options))
+
+    def test_bh_without_a_bootstrap_adjusts_the_naive_k_s_p_value_alone(self):
+        grid = _grid()
+        dataset = _compare(grid, bh_adjust=True)
+        assert "ad_p_value_bh" not in dataset
+        _assert_matches_numpy(dataset, _compare(grid.values, spatial_time_major=True, bh_adjust=True))
+
+    def test_daily_periodicity_runs_over_the_day_of_year(self):
+        times = pd.date_range(f"{START}-01-01", f"{END}-12-31", freq="D")
+        series = xr.DataArray(
+            np.random.default_rng(8).gamma(2.0, 30.0, size=(len(times), 2)),
+            dims=("time", "lat"),
+            coords={"time": times},
+        )
+        dataset = _compare(
+            series, periodicity=compute.Periodicity.daily, candidates=GAMMA, n_bootstrap=3, seed=1, bh_adjust=True
+        )
+        assert dataset["ks_p_value_bootstrap"].dims == ("candidate", "dayofyear", "lat")
+        assert dataset.sizes["dayofyear"] == 366
+        assert dataset["rejection_share"].dims == ("candidate", "dayofyear", "statistic")
+        assert np.isfinite(dataset["ks_p_value_bh"]).sum() > 0
 
     def test_default_call_adds_the_statistics_and_the_naive_p_value(self):
         dataset = _compare(_grid())
@@ -635,12 +799,17 @@ class TestSizeUnderTheNull:
 
 
 class TestAgainstScipy:
-    @pytest.mark.parametrize("seed", [0, 1])
+    @pytest.mark.parametrize("seed", [0, 1, 2])
     def test_gamma_bootstrap_agrees_with_scipy_goodness_of_fit_in_distribution(self, seed):
-        # SciPy refits by maximum likelihood and the library by Thom's approximation, so the p-values agree
-        # to Monte-Carlo and estimator error, not exactly; a misfitted series is rejected by both.
-        series = _gamma(seed)[0::12]
-        for sample in (series, 1.0 + 0.02 * series**2.0):
+        # SciPy refits by maximum likelihood and the library by Thom's approximation, so the p-values agree to
+        # Monte-Carlo and estimator error, not exactly. A bimodal sample is a poor gamma fit that both reject
+        # at the 1 / 200 floor of 199 samples; a gamma sample is rejected by neither.
+        rng = np.random.default_rng(100 + seed)
+        samples = {
+            "gamma": _gamma(seed)[0::12],
+            "bimodal": np.concatenate([rng.normal(10, 1, 20), rng.normal(100, 5, 20)]),
+        }
+        for name, sample in samples.items():
             values = np.repeat(sample, 12)  # every calendar step holds the same sample
             ours = _gof(values, candidates=(Distribution.gamma,), n_bootstrap=199, seed=seed)
             reference = scipy.stats.goodness_of_fit(
@@ -651,6 +820,7 @@ class TestAgainstScipy:
                 n_mc_samples=199,
                 rng=np.random.default_rng(seed),
             )
-            assert abs(ours.ad_p_value_bootstrap[0, 0] - reference.pvalue) < 0.2
-            assert ours.ad_statistic[0, 0] == pytest.approx(reference.statistic, rel=0.2)
-            assert (ours.ad_p_value_bootstrap[0, 0] < 0.05) == (reference.pvalue < 0.05)
+            p_ours, p_reference = ours.ad_p_value_bootstrap[0, 0], reference.pvalue
+            assert abs(p_ours - p_reference) < 0.1, name
+            assert ours.ad_statistic[0, 0] == pytest.approx(reference.statistic, rel=0.05), name
+            assert (p_ours < 0.05) == (p_reference < 0.05) == (name == "bimodal"), (name, p_ours, p_reference)

@@ -128,7 +128,7 @@ class GoodnessOfFit:
     ad_p_value_bootstrap: np.ndarray | None
     ks_p_value_bh: np.ndarray | None      # BH-adjusted across cells; None unless bh_adjust
     ad_p_value_bh: np.ndarray | None       # None unless bh_adjust and n_bootstrap > 0 (AD has no naive p-value)
-    rejection_share: np.ndarray | None    # (candidate, step, statistic): share of cells with p < alpha
+    rejection_share: np.ndarray | None    # (candidate, step, statistic): share of cells with p <= alpha
     n_bootstrap: int
 
 def drought_category(index_values, *, output_scale: Literal["normal", "probability", "bounded"]) -> np.ndarray | xr.DataArray
@@ -410,7 +410,7 @@ Historical shared footer used to draft the children; the ADR is now canonical:
 - **Edge cases:**
   - Bootstrap refits that fail are counted and excluded, and their share is reported.
   - The p-value is (1 + #≥)/(B_ok + 1), where B_ok is the number of successful refits, so failed draws leave the denominator as well as the statistics. The p-value is NaN when B_ok = 0, and its floor is 1/(B_ok + 1).
-  - Exact zeros are excluded from the continuous statistics, as `fit_diagnostics` does today (it filters missing values and exact zeros only). Repeated positive observations are retained with their frequency. When the caller passes `resolution` (a positive, finite rounding unit such as 0.1 or 0.01), bootstrap draws are rounded to it so the observed and simulated samples share the same tie structure, and the p-values are calibrated against that tie-aware null. The resolution is never inferred from the values, because the same observations (such as `[0.1, 0.2]`) can come from records rounded to different units. `resolution=None` (the default) draws continuous samples, which is the right null only for an unrounded record. A non-positive or non-finite `resolution` raises, and the value used is recorded in the provenance metadata.
+  - Exact zeros are excluded from the continuous statistics of a family with a zero mass (gamma, Pearson Type III), as `fit_diagnostics` does today (it filters missing values and exact zeros only); log-logistic and GEV have no zero mass, score a zero as an ordinary value (ADR-0016), and keep it. Repeated observations are retained with their frequency. When the caller passes `resolution` (a positive, finite rounding unit such as 0.1 or 0.01), bootstrap draws are rounded to it (a positive draw of a zero-mass family that rounds to zero is set to the unit, because the fitted p0 already counts the zeros the rounding made) so the observed and simulated samples share the same tie structure, and the p-values are calibrated against that tie-aware null. The resolution is never inferred from the values, because the same observations (such as `[0.1, 0.2]`) can come from records rounded to different units. `resolution=None` (the default) draws continuous samples, which is the right null only for an unrounded record. A non-positive or non-finite `resolution` raises, and the value used is recorded in the provenance metadata.
 - **Determinism:** the same seed gives an identical result.
 
 **Acceptance criteria:**

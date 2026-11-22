@@ -874,18 +874,20 @@ the other suitability tools are tracked in ADR-0028.
 Goodness of fit (`gof`, on by default) answers a different question from the criteria: not which
 candidate fits best, but whether it fits at all. Each candidate's probability integral transform over
 the positive calibration values gives a Kolmogorov–Smirnov statistic and an Anderson–Darling statistic
-(`GoodnessOfFit`). Exact zeros are left out, because the zero mass is not part of the continuous
-distribution tested. The parameters were estimated from the same sample, so the **naive K–S p-value is
+(`GoodnessOfFit`). Gamma and Pearson Type III leave out exact zeros, because the zero mass is not part of the
+continuous distribution tested; log-logistic and GEV, which have none, keep them. The parameters were estimated from the same sample, so the **naive K–S p-value is
 uncalibrated and far too high** (a synthetic gamma record rejected 2 of 3,600 series at a nominal 0.05),
 and Anderson–Darling has none. `n_bootstrap` runs a parametric bootstrap: it draws samples of the observed
 size and missing-value pattern from each fitted mixed distribution (zero mass included), refits each with
 the library's own estimator and scores it. The p-value is `(1 + #{statistic* >= statistic}) / (B_ok + 1)`
 over the `B_ok` refits that succeeded; a refit that fails is counted in `bootstrap_failed_share` and left
-out, so with failures a series cannot reach the nominal size exactly. Pass the record's rounding unit as
-`resolution` if it was rounded: without it a record rounded to 10 mm was rejected in 24% of series at a
-nominal 5%. The same `seed` gives an identical result for a cell alone, in a grid, or under any Dask
+out, so with failures a series cannot reach the nominal size exactly. Pass the rounding unit of the prepared
+sample as `resolution` if the record was rounded (the record's own unit for SPI; with `aggregation="mean"` that unit
+divided by the Timescale): without it a record rounded to 10 mm was rejected in 24% of series at a nominal 5%. A unit
+comparable to the mean of a zero-heavy record (35% zeros, unit 1 on a mean of 2.4) still leaves the bootstrap
+anti-conservative, at about 8% (K-S) and 10% (A²), so treat its p-values there as screening evidence. The same `seed` gives an identical result for a cell alone, in a grid, or under any Dask
 chunking, and an unseeded call records its 128-bit seed as a decimal string in `climate_indices_rng_seed`.
-`rejection_share` reports the share of cells below `alpha`, and `bh_adjust=True` adds
+`rejection_share` reports the share of cells at or below `alpha`, and `bh_adjust=True` adds
 Benjamini–Hochberg p-values across cells, whose assumptions spatial correlation weakens. A p-value of the
 candidate that `best` selected is a post-selection statistic, not an ordinary test. The bootstrap costs
 about `n_bootstrap` times the fits ({doc}`performance`), and p-values are invalid above a Timescale of 12

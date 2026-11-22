@@ -136,10 +136,12 @@ _GLO_SHAPE_TOLERANCE = 1e-6
 class GoodnessOfFit:
     """Per-candidate goodness-of-fit evidence from the probability integral transform (PIT).
 
-    The statistics test the continuous part of each fit: exact zeros are excluded, and repeated
-    positive values are kept with their frequency. Shapes follow :class:`DistributionComparison`:
-    ``(candidate, step, *cell)``, NaN where a candidate has no usable fit (``fit_failed``) or no
-    positive value remains. A statistic not named in ``gof`` is not computed and its arrays are NaN.
+    The statistics test the continuous part of each fit. For gamma and Pearson Type III, whose fit carries a zero
+    mass, exact zeros are excluded because they are the mass, not observations of the continuous part. Log-logistic and
+    GEV have no zero mass, so a zero is an ordinary value there and is kept. Repeated values are kept with their
+    frequency. Shapes follow :class:`DistributionComparison`: ``(candidate, step, *cell)``, NaN where a candidate has
+    no usable fit (``fit_failed``) or no value remains. A statistic not named in ``gof`` is not computed and its
+    arrays are NaN.
 
     Both statistics are evaluated at parameters estimated from the same sample, so a naive p-value is
     uncalibrated; the parametric bootstrap (``n_bootstrap > 0``) refits every simulated sample with the
@@ -150,8 +152,8 @@ class GoodnessOfFit:
     #: Kolmogorov-Smirnov D of the PIT against the uniform distribution.
     ks_statistic: np.ndarray
     #: Naive K-S p-value, the exact null distribution of D for a sample of fully specified parameters.
-    #: It is uncalibrated for estimated parameters. It is tabulated per sample size and interpolated
-    #: to within 1e-5.
+    #: It is uncalibrated for estimated parameters. From 7 values on it is tabulated per sample size and
+    #: interpolated to within 1e-5; fewer take SciPy's exact value.
     ks_p_value_naive: np.ndarray
     #: Anderson-Darling A^2 of the PIT. It has no naive p-value.
     ad_statistic: np.ndarray
@@ -166,7 +168,7 @@ class GoodnessOfFit:
     #: Benjamini-Hochberg adjustment of ``ad_p_value_bootstrap``. ``None`` unless ``bh_adjust`` and
     #: ``n_bootstrap > 0``.
     ad_p_value_bh: np.ndarray | None
-    #: Share of cells with ``p < alpha``, ``(candidate, step, 2)`` over the statistics ``("ks", "ad")``,
+    #: Share of cells with ``p <= alpha``, ``(candidate, step, 2)`` over the statistics ``("ks", "ad")``,
     #: from the bootstrap p-value when ``n_bootstrap > 0`` and else from the naive K-S p-value (AD has
     #: none, so NaN). Cells without a p-value are not counted. ``None`` without a cell axis.
     rejection_share: np.ndarray | None
@@ -477,6 +479,8 @@ _PIT_MARGIN = 1e-12
 # the exact K-S p-value is tabulated against t = D sqrt(m); beyond this t it is below 1e-30
 _KS_TABLE_LIMIT = 6.0
 _KS_TABLE_POINTS = 2001
+# fewer values than this take SciPy's exact K-S value: the table's interpolation error reaches 1e-3 there
+_KS_EXACT_BELOW = 7
 
 # elements of one stacked bootstrap batch: it bounds memory and never changes a result. A million holds peak memory
 # near 330 MB on a 100-cell, 40-year block, and is as fast as four times that
@@ -577,29 +581,33 @@ def _ks_naive_p_value(statistic: np.ndarray, count: np.ndarray) -> np.ndarray:
     """Naive two-sided K-S p-value of ``statistic`` for ``count`` fully specified observations.
 
     SciPy's exact distribution costs about 35 microseconds a value and every cell and step needs one,
-    so it is evaluated once per sample size on a fine grid and interpolated to within 1e-5.
-    NaN where ``count`` is 0 or ``statistic`` is NaN.
+    so from ``_KS_EXACT_BELOW`` values on it is evaluated once per sample size on a fine grid and interpolated to
+    within 1e-5. Fewer values are rare, and the survival function has kinks that the grid would smooth over
+    (an error of 1.3e-3 for one value), so they take SciPy's exact value. NaN where ``count`` is 0 or ``statistic``
+    is NaN.
     """
     p_value = np.full(statistic.shape, np.nan)
     for size in np.unique(count[count > 0]):
         picked = (count == size) & np.isfinite(statistic)
-        t, table = _ks_table(int(size))
-        p_value[picked] = np.interp(statistic[picked] * math.sqrt(size), t, table)
+        if size < _KS_EXACT_BELOW:
+            p_value[picked] = np.clip(scipy.stats.kstwo.sf(statistic[picked], int(size)), 0.0, 1.0)
+        else:
+            t, table = _ks_table(int(size))
+            p_value[picked] = np.interp(statistic[picked] * math.sqrt(size), t, table)
     return p_value
 
 
 def _sample_pit(
     distribution: Distribution, sample: np.ndarray, valid: np.ndarray, p: dict[str, np.ndarray]
-) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-    """The probability integral transform of a sample, where it is scored, and where the statistics use it.
+) -> tuple[np.ndarray, np.ndarray]:
+    """The probability integral transform of a sample, and the values it covers.
 
-    A family with a zero mass scores only its positive values (a zero is the mass); a family without scores every
-    valid value, as :func:`_score_fit` does. The statistics use the positive values of either.
+    A family with a zero mass covers only its positive values (a zero is the mass, not an observation of the
+    continuous part). A family without covers every valid value, as :func:`_score_fit` does, so a zero is an ordinary
+    value there. The statistics and the support check use exactly these values.
     """
-    positive = valid & (sample != 0.0)  # NOSONAR (S1244) the zero mass counts exact zeros
-    scored_values = positive if distribution in _ZERO_MASS_FAMILIES else valid
-    pit = _continuous_cdf(distribution, np.where(scored_values, sample, np.nan), p)
-    return pit, scored_values, positive
+    covered = valid & (sample != 0.0) if distribution in _ZERO_MASS_FAMILIES else valid  # NOSONAR (S1244) exact zeros
+    return _continuous_cdf(distribution, np.where(covered, sample, np.nan), p), covered
 
 
 def _observed_statistics(
@@ -609,9 +617,9 @@ def _observed_statistics(
     p: dict[str, np.ndarray],
     scored: np.ndarray,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-    """K-S, A^2 and the count of positive values of the shared sample against one fitted candidate."""
-    pit, _, positive = _sample_pit(distribution, sample, valid, p)
-    return _pit_statistics(np.where(scored & positive, pit, np.nan))
+    """K-S, A^2 and the number of values they cover for the shared sample against one fitted candidate."""
+    pit, _ = _sample_pit(distribution, sample, valid, p)
+    return _pit_statistics(np.where(scored, pit, np.nan))
 
 
 def _column_generators(seed: int, sample: np.ndarray) -> list[np.random.Generator]:
@@ -621,7 +629,10 @@ def _column_generators(seed: int, sample: np.ndarray) -> list[np.random.Generato
     whether a cell is run alone, in a block of a Dask graph or in a full grid, so a chunking cannot change
     a p-value. Two columns with identical values share a stream, which leaves each p-value valid.
     """
-    columns = np.ascontiguousarray(sample.reshape(sample.shape[0], -1).T)
+    # one byte pattern per value: every NaN alike (its sign bit and payload vary by platform), -0.0 as 0.0, little-endian
+    columns = np.ascontiguousarray(
+        (np.where(np.isnan(sample), np.nan, sample) + 0.0).reshape(sample.shape[0], -1).T.astype("<f8")
+    )
     return [
         np.random.Generator(
             np.random.PCG64(
@@ -654,7 +665,10 @@ def _simulate(
 
     A zero-mass family returns an exact zero where ``u <= p0`` and otherwise the continuous quantile
     at ``(u - p0) / (1 - p0)``, so the zero mass is part of every simulated sample. A ``resolution`` rounds the draws
-    to that unit, which gives the simulated sample the observed record's tie structure.
+    to that unit, which gives the simulated sample the observed record's tie structure. The library fits p0 on the
+    rounded record, so p0 already counts the values that rounded to zero: a positive draw that rounds to zero would add
+    zeros beyond p0, and is set to ``resolution`` instead. Every nonzero value is then at least ``resolution``, as in
+    the observed record, and the simulated zero share stays p0.
     """
     with np.errstate(all="ignore"):
         if distribution in _ZERO_MASS_FAMILIES:
@@ -662,10 +676,13 @@ def _simulate(
             positive = uniforms > p0
             conditional = np.clip((uniforms - p0) / (1.0 - p0), _PIT_MARGIN, 1.0 - _PIT_MARGIN)
             draws = np.where(positive, _continuous_ppf(distribution, conditional, p), 0.0)
+            if resolution is not None:
+                rounded = np.round(draws / resolution) * resolution
+                draws = np.where(positive & (rounded == 0.0), resolution, rounded)  # NOSONAR (S1244) an exact zero
         else:
             draws = _continuous_ppf(distribution, np.clip(uniforms, _PIT_MARGIN, 1.0 - _PIT_MARGIN), p)
-        if resolution is not None:
-            draws = np.round(draws / resolution) * resolution
+            if resolution is not None:
+                draws = np.round(draws / resolution) * resolution
     result: np.ndarray = draws
     return result
 
@@ -689,11 +706,11 @@ def _refit_statistics(
         failed = np.full(draws.shape[1:], np.nan)
         return {"ks": failed, "ad": failed}, np.zeros(draws.shape[1:], dtype=bool)
     p = compute._broadcast_parameters(draws, fitted.parameters, full=True)
-    pit, scored_values, positive = _sample_pit(distribution, draws, ~np.isnan(draws), p)
+    pit, covered = _sample_pit(distribution, draws, ~np.isnan(draws), p)
     # a CDF of exactly 0 or 1 is a value on or beyond the end of the fitted support, which the likelihood scores as zero
-    outside = (scored_values & ~((pit > 0.0) & (pit < 1.0))).any(axis=0)
+    outside = (covered & ~((pit > 0.0) & (pit < 1.0))).any(axis=0)
     usable = _usable(distribution, p) & ~outside
-    ks, ad, count = _pit_statistics(np.where(usable & positive, pit, np.nan))
+    ks, ad, count = _pit_statistics(np.where(usable, pit, np.nan))
     return {"ks": ks, "ad": ad}, usable & (count > 0)
 
 
@@ -768,12 +785,16 @@ def _bh_adjust_cells(p: np.ndarray, n_cell_dims: int) -> np.ndarray:
 
 
 def _rejection_share_cells(p: np.ndarray, alpha: float, n_cell_dims: int) -> np.ndarray:
-    """Share of the finite p-values below ``alpha`` over the trailing ``n_cell_dims`` axes; NaN if none is finite."""
+    """Share of the finite p-values at or below ``alpha`` over the trailing ``n_cell_dims`` axes; NaN if none is finite.
+
+    A Monte-Carlo test rejects at ``p <= alpha``: a bootstrap p-value is a multiple of ``1 / (B_ok + 1)``, so with
+    ``(B_ok + 1) alpha`` an integer the test then has size exactly ``alpha``, where ``p < alpha`` would have less.
+    """
     flat = p.reshape(*p.shape[: p.ndim - n_cell_dims], -1)
     finite = np.isfinite(flat)
     with np.errstate(all="ignore"):
         share: np.ndarray = np.where(
-            finite.any(axis=-1), ((flat < alpha) & finite).sum(axis=-1) / finite.sum(axis=-1), np.nan
+            finite.any(axis=-1), ((flat <= alpha) & finite).sum(axis=-1) / finite.sum(axis=-1), np.nan
         )
     return share
 
@@ -824,18 +845,23 @@ def _validate_gof_arguments(
         raise _invalid("gof statistics must be distinct.", "gof", chosen, names)
     if isinstance(n_bootstrap, (bool, np.bool_)) or not isinstance(n_bootstrap, (int, np.integer)) or n_bootstrap < 0:
         raise _invalid("n_bootstrap must be a non-negative integer.", "n_bootstrap", n_bootstrap, "0 or more")
-    if resolution is not None and (
-        isinstance(resolution, (bool, np.bool_))
-        or not isinstance(resolution, (int, float, np.integer, np.floating))
-        or not math.isfinite(resolution)
-        or resolution <= 0
-    ):
-        raise _invalid(
-            "resolution must be a positive, finite rounding unit, or None for a continuous record.",
-            "resolution",
-            resolution,
-            "a positive finite number or None",
-        )
+    if resolution is not None:
+        unit = math.nan
+        if isinstance(resolution, (int, float, np.integer, np.floating)) and not isinstance(
+            resolution, (bool, np.bool_)
+        ):
+            try:
+                unit = float(resolution)
+            except OverflowError:  # an int beyond the float range
+                unit = math.nan
+        # a unit whose reciprocal overflows (a subnormal) would make every rounded draw infinite
+        if not (math.isfinite(unit) and unit > 0.0 and math.isfinite(1.0 / unit)):
+            raise _invalid(
+                "resolution must be a positive, finite rounding unit, or None for a continuous record.",
+                "resolution",
+                resolution,
+                "a positive finite number or None",
+            )
     if not isinstance(bh_adjust, (bool, np.bool_)):
         raise _invalid("bh_adjust must be a boolean.", "bh_adjust", bh_adjust, "True or False")
     if (
@@ -855,6 +881,14 @@ def _validate_gof_arguments(
     if not chosen and (n_bootstrap > 0 or bh_adjust):
         raise _invalid(
             "n_bootstrap and bh_adjust need at least one statistic in gof.", "gof", chosen, "a non-empty sequence"
+        )
+    if bh_adjust and n_bootstrap == 0 and "ks" not in chosen:
+        raise _invalid(
+            "bh_adjust has nothing to adjust: Anderson-Darling has no naive p-value, so without n_bootstrap it "
+            "needs the K-S statistic in gof.",
+            "bh_adjust",
+            bh_adjust,
+            'n_bootstrap > 0, or "ks" in gof',
         )
     return tuple(statistic for statistic in _GOF_STATISTICS if statistic in chosen)
 
@@ -877,11 +911,11 @@ def _gof_parameters(
     recorded: dict[str, Any] = {
         "gof": list(statistics),
         "n_bootstrap": n_bootstrap,
-        "bh_adjust": bh_adjust,
-        "alpha": alpha,
+        "bh_adjust": bool(bh_adjust),
+        "alpha": float(alpha),  # plain Python types, so any NumPy scalar the caller passed serializes
     }
     if n_bootstrap > 0:
-        recorded.update({"resolution": resolution, "seed": str(seed)})
+        recorded.update({"resolution": None if resolution is None else float(resolution), "seed": str(seed)})
     return recorded
 
 
@@ -993,8 +1027,8 @@ def compare_distributions(
 
     ``gof`` adds absolute goodness of fit, in :class:`GoodnessOfFit`. The statistics are the Kolmogorov-Smirnov D
     and the Anderson-Darling A^2 of each candidate's probability integral transform over the calibration
-    sample. Exact zeros are left out, since the zero mass is not part of the continuous distribution under test,
-    and repeated positive values are kept. Because the parameters are estimated from the same sample, the naive
+    sample. Gamma and Pearson Type III leave out exact zeros, since the zero mass is not part of the continuous
+    distribution under test; log-logistic and GEV, which have none, keep them. Repeated values are kept. Because the parameters are estimated from the same sample, the naive
     K-S p-value is uncalibrated and Anderson-Darling has none. With ``n_bootstrap > 0`` every candidate, calendar
     step and cell runs a parametric bootstrap: it draws ``n_bootstrap`` samples of the observed size and
     missing-value pattern from the fitted mixed distribution (zero mass included), refits each with the library's
@@ -1041,12 +1075,16 @@ def compare_distributions(
             fit and leaves ``goodness_of_fit`` as ``None``. A statistic left out has NaN arrays.
         n_bootstrap: Parametric-bootstrap replicates per candidate, step and cell; 0 (the default) computes the
             statistics and the naive K-S p-value only.
-        resolution: Rounding unit of the record, applied to the bootstrap draws; ``None`` draws continuous
-            samples, the right null only for an unrounded record. Must be positive and finite. Used only
-            when ``n_bootstrap > 0``.
+        resolution: Rounding unit of the prepared sample, applied to the bootstrap draws; ``None`` draws continuous
+            samples, the right null only for an unrounded record. Sums of values rounded to a unit are multiples of
+            it, so for SPI it is the record's unit; with ``aggregation="mean"`` the sample's unit is that divided by
+            ``scale``, and a SPEI water balance has a unit only if precipitation and PET share one. A positive draw
+            that rounds to zero is set to ``resolution``, so the simulated zero share stays the fitted p0. Must be
+            positive and finite. Used only when ``n_bootstrap > 0``.
         bh_adjust: Add Benjamini-Hochberg adjusted p-values across cells, apart for every candidate and
             step. It needs a cell axis, so a series without one raises.
-        alpha: Significance level of ``rejection_share``, strictly between 0 and 1.
+        alpha: Significance level of ``rejection_share``, which counts cells with ``p <= alpha`` (a Monte-Carlo
+            test decides at ``p <= alpha``), strictly between 0 and 1.
         seed: Non-negative integer that fixes the bootstrap. ``None`` draws a 128-bit seed from the operating
             system's entropy, which the result records as a decimal string in ``climate_indices_rng_seed``.
             A ``numpy.random.Generator`` is not accepted, because it does not expose the seed that would
@@ -1065,7 +1103,8 @@ def compare_distributions(
         has no such parameter) and per-step variables over ``(month | dayofyear, *cells)``
         (``n``, ``best`` as the winning candidate's name or ``"none"``, ``delta_to_runner_up``).
         When ``gof`` is not empty the Dataset also holds each :class:`GoodnessOfFit` field as a variable of the
-        same name, with ``rejection_share`` over ``(candidate, month | dayofyear, statistic)``.
+        same name, with ``rejection_share`` over ``(candidate, month | dayofyear, statistic)``. ``rejection_share``
+        and the Benjamini-Hochberg variables exist only when the input has a dimension besides time.
         Every variable carries the ADR-0028 section 6 attributes that apply to this route. A fully
         missing input is accepted and scores as no usable fit (``n`` is 0 and ``best`` is
         ``"none"``) instead of raising as the NumPy route does.
@@ -1304,10 +1343,10 @@ def _compare_numpy(
         log_likelihood[position], fit_failed[position] = _score_fit(distribution, sample, full, valid, n, n0)
         fits[distribution] = full
         if statistics:
-            ks, ad, positive_count = _observed_statistics(distribution, sample, valid, full, ~fit_failed[position])
+            ks, ad, covered_count = _observed_statistics(distribution, sample, valid, full, ~fit_failed[position])
             if "ks" in statistics:
                 ks_statistic[position] = ks
-                ks_p_naive[position] = _ks_naive_p_value(ks, positive_count)
+                ks_p_naive[position] = _ks_naive_p_value(ks, covered_count)
             if "ad" in statistics:
                 ad_statistic[position] = ad
 
@@ -1452,7 +1491,8 @@ _FIELD_METADATA: dict[str, dict[str, str]] = {
         "units": "1",
         "description": (
             "Largest gap between the empirical distribution of the candidate's PIT over the positive calibration "
-            "values and the uniform distribution; exact zeros are left out. NaN where the candidate failed to fit."
+            "values and the uniform distribution; exact zeros are left out for a family with a zero mass. NaN where "
+            "the candidate failed to fit."
         ),
     },
     "ks_p_value_naive": {
@@ -1466,7 +1506,7 @@ _FIELD_METADATA: dict[str, dict[str, str]] = {
     "ad_statistic": {
         "long_name": "Anderson-Darling statistic of the probability integral transform",
         "units": "1",
-        "description": "A^2 of the candidate's PIT over the positive calibration values; it has no naive p-value.",
+        "description": "A^2 of the candidate's PIT over the same values as the K-S statistic; it has no naive p-value.",
     },
     "ks_p_value_bootstrap": {
         "long_name": "Parametric-bootstrap Kolmogorov-Smirnov p-value",
@@ -1503,7 +1543,7 @@ _FIELD_METADATA: dict[str, dict[str, str]] = {
         "description": "Adjusted across cells for each candidate and calendar step; present only with a bootstrap.",
     },
     "rejection_share": {
-        "long_name": "Share of cells with a goodness-of-fit p-value below alpha",
+        "long_name": "Share of cells with a goodness-of-fit p-value at or below alpha",
         "units": "1",
         "description": (
             "Per candidate, calendar step and statistic, from the bootstrap p-value when it was computed and else "

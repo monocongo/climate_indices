@@ -272,7 +272,9 @@ library's own estimator and scores it, so it costs roughly `n_bootstrap` times t
 comparison's fits for each candidate: `n_bootstrap x candidates x steps x cells` refits.
 The refits are vectorized in batches that bound memory, and the result does not depend
 on the batch size, so memory stays near 330 MB on a 100-cell, 40-year block whatever
-`n_bootstrap` is. The Dask route runs the bootstrap per spatial chunk, and its
+`n_bootstrap` is. That bound covers the simulated samples. Each calendar step and cell also holds one random
+generator, built once per call (about 1 KB and 35 microseconds each), so a block of a million such columns
+spends about 1 GB and 35 s on them before the first replicate. The Dask route runs the bootstrap per spatial chunk, and its
 Benjamini-Hochberg step rechunks the cell dimensions into one chunk.
 
 | Block (40 years, 12 steps, 100 cells) | Without goodness of fit | Statistics and naive p | `n_bootstrap=99` | `n_bootstrap=499` |
@@ -286,7 +288,7 @@ statistics call in a process also builds the K-S tables (about 0.1 s). The numbe
 on one machine, so re-measure on yours. Run the bootstrap on the calibration series or the
 cells you are auditing, not on a full production grid, and keep `n_bootstrap` at 99, 199 or
 499: with `alpha = 0.05` a bootstrap size where `(n_bootstrap + 1) x alpha` is an integer
-lets a test reach its nominal size when no refit fails.
+lets a test that rejects at `p <= alpha` reach its nominal size when no refit fails.
 
 ## Measuring your own
 

@@ -17,8 +17,11 @@ no p-value and are left out.
 The cases are the four candidate families on a continuous record, gamma on a record rounded to 10 and
 bootstrapped with ``resolution=10``, and two controls that are expected not to pass: the naive K-S p-value
 (estimated parameters make it conservative) and the same rounded record bootstrapped without a resolution.
+One further case probes a harder regime and is reported whether or not it passes: a zero-heavy gamma of shape
+0.8 and scale 3 with 15% exact zeros, rounded to a unit of 1, where 35% of the record is zero and the unit is
+comparable to the mean.
 
-Reproduction is seeded. Runtime is about a minute.
+Reproduction is seeded. Runtime is about half a minute.
 
 Run: uv run scripts/characterize_gof_bootstrap.py --output docs/design/gof-bootstrap-characterization.json
 """
@@ -53,9 +56,15 @@ SEED = 1586
 ROUNDING = 10.0  # the unit of the rounded record, coarse enough that a sample holds many ties
 
 
-def _draw(distribution: Distribution, rng: np.random.Generator) -> tuple[np.ndarray, str, dict[str, Any]]:
+def _draw(
+    distribution: Distribution, rng: np.random.Generator, zero_heavy: bool = False
+) -> tuple[np.ndarray, str, dict[str, Any]]:
     """One record whose every calendar step and cell is iid from ``distribution``, with its route and extra arguments."""
     shape = (YEARS * 12, *CELLS)
+    if distribution is Distribution.gamma and zero_heavy:
+        values = rng.gamma(0.8, 3.0, size=shape)
+        values[rng.random(shape) < 0.15] = 0.0
+        return values, "spi", {}
     if distribution is Distribution.gamma:
         return rng.gamma(2.0, 30.0, size=shape), "spi", {}
     if distribution is Distribution.pearson:
@@ -67,15 +76,23 @@ def _draw(distribution: Distribution, rng: np.random.Generator) -> tuple[np.ndar
     return draw, "spei", {"pet_mm": np.zeros(shape)}  # zero PET leaves the water balance equal to the draw
 
 
-def _run(distribution: Distribution, *, rounded: bool, resolution: float | None, naive: bool = False) -> dict[str, Any]:
+def _run(
+    distribution: Distribution,
+    *,
+    rounded: bool,
+    resolution: float | None,
+    naive: bool = False,
+    zero_heavy: bool = False,
+    unit: float = ROUNDING,
+) -> dict[str, Any]:
     rejected = np.zeros(2, dtype=np.int64)
     series = 0
     failed_shares: list[float] = []
     achievable: list[float] = []  # each series' probability of rejecting, given its successful refits
     for repeat in range(REPEATS):
-        values, index, extra = _draw(distribution, np.random.default_rng([SEED, repeat]))
+        values, index, extra = _draw(distribution, np.random.default_rng([SEED, repeat]), zero_heavy)
         if rounded:
-            values = np.round(values / ROUNDING) * ROUNDING
+            values = np.round(values / unit) * unit
         gof = suitability.compare_distributions(
             values,
             1,
@@ -141,6 +158,9 @@ CASES: dict[str, Callable[[], dict[str, Any]]] = {
     "gamma_rounded_with_resolution": lambda: _run(Distribution.gamma, rounded=True, resolution=ROUNDING),
     "control_gamma_rounded_without_resolution": lambda: _run(Distribution.gamma, rounded=True, resolution=None),
     "control_gamma_naive_k_s": lambda: _run(Distribution.gamma, rounded=False, resolution=None, naive=True),
+    "gamma_zero_heavy_rounded_to_the_mean_with_resolution": lambda: _run(
+        Distribution.gamma, rounded=True, resolution=1.0, zero_heavy=True, unit=1.0
+    ),
 }
 
 

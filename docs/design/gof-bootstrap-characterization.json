@@ -55,7 +55,7 @@
         "mean": 0.0,
         "max": 0.0
       },
-      "seconds": 5.3
+      "seconds": 4.8
     },
     "pearson": {
       "series": 3138,
@@ -92,7 +92,7 @@
         "mean": 0.11968312828733478,
         "max": 0.4545454545454546
       },
-      "seconds": 5.7
+      "seconds": 5.1
     },
     "loglogistic": {
       "series": 3383,
@@ -129,7 +129,7 @@
         "mean": 0.04842990949996565,
         "max": 0.18181818181818177
       },
-      "seconds": 0.9
+      "seconds": 0.8
     },
     "gev": {
       "series": 3600,
@@ -166,30 +166,30 @@
         "mean": 0.002205387205387201,
         "max": 0.11111111111111116
       },
-      "seconds": 1.2
+      "seconds": 1.0
     },
     "gamma_rounded_with_resolution": {
       "series": 3600,
       "statistics": {
         "ks": {
-          "rejected": 155,
-          "rate": 0.043055555555555555,
+          "rejected": 164,
+          "rate": 0.04555555555555556,
           "wilson_95": [
-            0.03689765798579463,
-            0.050187598790011015
+            0.03921488150981551,
+            0.05286504559366049
           ],
-          "z_against_achievable": -1.9117977822546812,
+          "z_against_achievable": -1.223550580642996,
           "within_achievable_band": true,
           "within_nominal_band": true
         },
         "ad": {
-          "rejected": 153,
-          "rate": 0.0425,
+          "rejected": 148,
+          "rate": 0.04111111111111111,
           "wilson_95": [
-            0.03638352329930363,
-            0.049591806737019704
+            0.03509952950179265,
+            0.048100983685824925
           ],
-          "z_against_achievable": -2.064741604835056,
+          "z_against_achievable": -2.447101161285992,
           "within_achievable_band": true,
           "within_nominal_band": true
         }
@@ -203,7 +203,7 @@
         "mean": 0.0,
         "max": 0.0
       },
-      "seconds": 5.5
+      "seconds": 5.0
     },
     "control_gamma_rounded_without_resolution": {
       "series": 3600,
@@ -240,7 +240,7 @@
         "mean": 0.0,
         "max": 0.0
       },
-      "seconds": 5.2
+      "seconds": 4.7
     },
     "control_gamma_naive_k_s": {
       "series": 3600,
@@ -264,6 +264,43 @@
       ],
       "bootstrap_failed_share": null,
       "seconds": 0.0
+    },
+    "gamma_zero_heavy_rounded_to_the_mean_with_resolution": {
+      "series": 3600,
+      "statistics": {
+        "ks": {
+          "rejected": 282,
+          "rate": 0.07833333333333334,
+          "wilson_95": [
+            0.06999875262146718,
+            0.0875668521114647
+          ],
+          "z_against_achievable": 7.8001349515991,
+          "within_achievable_band": false,
+          "within_nominal_band": false
+        },
+        "ad": {
+          "rejected": 350,
+          "rate": 0.09722222222222222,
+          "wilson_95": [
+            0.08796953947379253,
+            0.10733357440153767
+          ],
+          "z_against_achievable": 13.000224919331833,
+          "within_achievable_band": false,
+          "within_nominal_band": false
+        }
+      },
+      "achievable_expected_rejections": 180.0,
+      "nominal_band": [
+        138.0,
+        224.0
+      ],
+      "bootstrap_failed_share": {
+        "mean": 0.0,
+        "max": 0.0
+      },
+      "seconds": 5.8
     }
   }
 }
