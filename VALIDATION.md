@@ -414,6 +414,40 @@ limits. Improving calibration for 36-month persistence or 60-year records needs 
 different method or support contract, and a reopen would need its own predeclared
 characterization.
 
+## Backend Parity and Performance
+
+`tests/test_native_index_edge_parity.py` compares monthly SPI, SPEI, and EDDI
+at Timescale 1. It uses synthetic near-constant input (rain near 40 mm with
+variation of order `1e-3` mm), 8 missing years in a 12-year sample, four complete
+years, and one year with insufficient data for each calendar fit or rank.
+It checks Gamma for SPI and SPEI, plus Pearson for the near-constant case.
+The test requires the recorded calls to the appropriate Rust fitting or ranking
+and CDF kernels. The comparison run disables native dispatch. The test checks
+identical NaN masks and `rtol=atol=1e-10`, including finite scores in supported
+cases and all-NaN output for the one-year case. On macOS arm64 the maximum
+observed finite difference was `7.55e-15`. This is backend agreement only.
+`test-native` builds the extension and collects these unmarked tests in its
+core suite with `CLIMATE_INDICES_REQUIRE_NATIVE=1`. Python-only runs skip them.
+
+The committed [RUST-011 measurements](benchmarks/README.md#rust-kernels-vs-the-python-reference-across-the-parity-registry-rust-011)
+used a 35-year synthetic monthly station series and a cell-count sweep on macOS
+27.0.1 arm64, Python 3.14.7. They report the best of five after warm-up with
+alternating backend order. The 1.06× and 1.78× figures are respectively 32-cell
+Gamma SPI and two-cell EDDI results, not a general range for fitting indices.
+EDDI ranks observations rather than fitting a distribution. The original
+record is `benchmarks/results/rust_vs_python.txt`. On an Apple M5 with macOS
+27.2.1 and Python 3.14.7, the same harness gave 1.08× and 1.94× at those two
+sizes (`--repeat 5 --skip-threads --skip-dask`), with single-series ratios
+of 1.36× for Gamma SPI, 3.18× for Pearson SPI, 1.41× for Gamma SPEI, and
+1.51× for EDDI. These are compute timings, not I/O or operational throughput.
+
+Penman–Monteith has Rust kernels for the final equation and derived inputs.
+The public path can use them for eligible float64 arrays under the native
+floating-point policy. Scalar-only calls, float32 inputs, and the default
+NumPy error policy retain the Python path. `tests/test_native_pet_parity.py`
+checks dispatch as well as numerical parity. The cited harness measured 0.88×
+for its original daily workload and 1.12× on the rerun; neither is a speed guarantee.
+
 ## Flood Evidence Classification
 
 The flood family — effective precipitation (PE), the Effective Drought Index
