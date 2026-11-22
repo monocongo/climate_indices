@@ -348,14 +348,14 @@ sources:
   - REFIMPL-06
   - REFIMPL-27
   notes: Unofficial mirror of the Sibada port; credits Wells, Goddard and Hayes as ctb only; not the UNL original.
-- id: baldwin-chen-2020
+- id: spade-2020
   kind: paper
   family: spi
-  citation: Baldwin and Chen (2020), Major Over- and Underestimation of Drought Found in NOAA's Climate Divisional
-    SPI Dataset, J. Appl. Meteor. Climatol.
-  doi: null
-  url: null
-  status: not-opened
+  citation: Spade, D., de Beurs, K., and Shafer, M. (2020), Major Over- and Underestimation of Drought Found in NOAA's
+    Climate Divisional SPI Dataset, J. Appl. Meteor. Climatol. 59(9), 1469-1480.
+  doi: 10.1175/JAMC-D-19-0272.1
+  url: https://doi.org/10.1175/JAMC-D-19-0272.1
+  status: located
   opened_in: null
   license_class: unknown
   license_evidence: null
@@ -366,7 +366,8 @@ sources:
   tickets:
   - REFIMPL-05
   - REFIMPL-06
-  notes: 'Not opened; cited in tests/fixture/ncei_spi/provenance.json and #1608''s NCEI row.'
+  notes: 'Not opened; metadata verified in references.bib. Cited in tests/fixture/ncei_spi/provenance.json, method-matrix.json
+    and #1608''s NCEI row as "Baldwin and Chen (2020)", which the record contradicts; see literature.md.''
 - id: dficklin-cageo-paper
   kind: code
   family: palmer

@@ -1,0 +1,370 @@
+% Verified bibliography for the reference-implementation papers (REFIMPL-05, #1607).
+%
+% Every entry was checked against a publisher record before it entered this file:
+% journal articles against the Crossref record for the printed DOI, and the rest
+% against the agency, library or proceedings record named in
+% references-verification.json. That JSON carries the fields read from each record;
+% verify_references.py re-reads the Crossref records, and
+% tests/test_reference_bibliography.py compares this file with the JSON offline.
+%
+% Do not add an entry from memory. Add it to the seed list of #1607 or a follow-up
+% ticket, verify it, then add it here with its verification record.
+%
+% DOIs are written as Crossref returned them. DOIs are case-insensitive.
+
+% ---------------------------------------------------------------------------
+% Standardized indices: definition, distribution and estimator choice
+% ---------------------------------------------------------------------------
+
+@inproceedings{mckee1993,
+  author    = {McKee, Thomas B. and Doesken, Nolan J. and Kleist, John},
+  title     = {The relationship of drought frequency and duration to time scales},
+  booktitle = {Proceedings of the 8th Conference on Applied Climatology},
+  year      = {1993},
+  pages     = {179--184},
+  publisher = {American Meteorological Society},
+  address   = {Anaheim, California},
+  note      = {17--22 January 1993}
+}
+
+@article{guttman1999,
+  author  = {Guttman, Nathaniel B.},
+  title   = {Accepting the standardized precipitation index: a calculation algorithm},
+  journal = {JAWRA Journal of the American Water Resources Association},
+  year    = {1999},
+  volume  = {35},
+  number  = {2},
+  pages   = {311--322},
+  doi     = {10.1111/j.1752-1688.1999.tb03592.x}
+}
+
+@article{vicente-serrano2010,
+  author  = {Vicente-Serrano, Sergio M. and Beguer{\'i}a, Santiago and L{\'o}pez-Moreno, Juan I.},
+  title   = {A multiscalar drought index sensitive to global warming: the standardized precipitation evapotranspiration index},
+  journal = {Journal of Climate},
+  year    = {2010},
+  volume  = {23},
+  number  = {7},
+  pages   = {1696--1718},
+  doi     = {10.1175/2009JCLI2909.1}
+}
+
+@article{begueria2014,
+  author  = {Beguer{\'i}a, Santiago and Vicente-Serrano, Sergio M. and Reig, Fergus and Latorre, Borja},
+  title   = {Standardized precipitation evapotranspiration index ({SPEI}) revisited: parameter fitting, evapotranspiration models, tools, datasets and drought monitoring},
+  journal = {International Journal of Climatology},
+  year    = {2014},
+  volume  = {34},
+  number  = {10},
+  pages   = {3001--3023},
+  doi     = {10.1002/joc.3887}
+}
+
+@article{stagge2015,
+  author  = {Stagge, James H. and Tallaksen, Lena M. and Gudmundsson, Lukas and Van Loon, Anne F. and Stahl, Kerstin},
+  title   = {Candidate distributions for climatological drought indices ({SPI} and {SPEI})},
+  journal = {International Journal of Climatology},
+  year    = {2015},
+  volume  = {35},
+  number  = {13},
+  pages   = {4027--4040},
+  doi     = {10.1002/joc.4267}
+}
+
+@article{laimighofer2022,
+  author  = {Laimighofer, Johannes and Laaha, Gregor},
+  title   = {How standard are standardized drought indices? {Uncertainty} components for the {SPI} \& {SPEI} case},
+  journal = {Journal of Hydrology},
+  year    = {2022},
+  volume  = {613},
+  pages   = {128385},
+  doi     = {10.1016/j.jhydrol.2022.128385}
+}
+
+@article{carbone2018,
+  author  = {Carbone, Gregory J. and Lu, Junyu and Brunetti, Michele},
+  title   = {Estimating uncertainty associated with the standardized precipitation index},
+  journal = {International Journal of Climatology},
+  year    = {2018},
+  volume  = {38},
+  number  = {S1},
+  doi     = {10.1002/joc.5393},
+  note    = {Crossref carries no page range or article number}
+}
+
+@article{pieper2020,
+  author  = {Pieper, Patrick and D{\"u}sterhus, Andr{\'e} and Baehr, Johanna},
+  title   = {A universal {Standardized Precipitation Index} candidate distribution function for observations and simulations},
+  journal = {Hydrology and Earth System Sciences},
+  year    = {2020},
+  volume  = {24},
+  number  = {9},
+  pages   = {4541--4565},
+  doi     = {10.5194/hess-24-4541-2020}
+}
+
+@article{hobbins2016,
+  author  = {Hobbins, Michael T. and Wood, Andrew and McEvoy, Daniel J. and Huntington, Justin L. and Morton, Charles and Anderson, Martha and Hain, Christopher},
+  title   = {The evaporative demand drought index. {Part I}: linking drought evolution to variations in evaporative demand},
+  journal = {Journal of Hydrometeorology},
+  year    = {2016},
+  volume  = {17},
+  number  = {6},
+  pages   = {1745--1761},
+  doi     = {10.1175/JHM-D-15-0121.1}
+}
+
+@article{farahmand2015,
+  author  = {Farahmand, Alireza and AghaKouchak, Amir},
+  title   = {A generalized framework for deriving nonparametric standardized drought indicators},
+  journal = {Advances in Water Resources},
+  year    = {2015},
+  volume  = {76},
+  pages   = {140--145},
+  doi     = {10.1016/j.advwatres.2014.11.012}
+}
+
+@techreport{wmo1090,
+  author      = {Svoboda, Mark and Hayes, Michael and Wood, Deborah},
+  title       = {Standardized Precipitation Index User Guide},
+  institution = {World Meteorological Organization},
+  year        = {2012},
+  type        = {WMO-No.},
+  number      = {1090},
+  address     = {Geneva}
+}
+
+% ---------------------------------------------------------------------------
+% Software papers for the packages under comparison
+% ---------------------------------------------------------------------------
+
+@article{bourgault2023,
+  author  = {Bourgault, Pascal and Huard, David and Smith, Trevor James and others},
+  title   = {xclim: xarray-based climate data analytics},
+  journal = {Journal of Open Source Software},
+  year    = {2023},
+  volume  = {8},
+  number  = {85},
+  pages   = {5415},
+  doi     = {10.21105/joss.05415}
+}
+
+@article{vonk2025,
+  author  = {Vonk, Martin A.},
+  title   = {{SPEI}: a {Python} package for calculating and visualizing drought indices},
+  journal = {Journal of Open Source Software},
+  year    = {2025},
+  volume  = {10},
+  number  = {111},
+  pages   = {8454},
+  doi     = {10.21105/joss.08454}
+}
+
+@article{vremec2024,
+  author  = {Vremec, Matev{\v{z}} and Collenteur, Raoul A. and Birk, Steffen},
+  title   = {{PyEt} v1.3.1: a {Python} package for the estimation of potential evapotranspiration},
+  journal = {Geoscientific Model Development},
+  year    = {2024},
+  volume  = {17},
+  number  = {18},
+  pages   = {7083--7103},
+  doi     = {10.5194/gmd-17-7083-2024}
+}
+
+@article{allen2025,
+  author  = {Allen, Sam and Otero, Noelia},
+  title   = {Calculating standardised indices using {SEI}},
+  journal = {The R Journal},
+  year    = {2025},
+  volume  = {16},
+  number  = {4},
+  pages   = {102--122},
+  doi     = {10.32614/RJ-2024-038},
+  note    = {Article dated 2024-12-31; Crossref registers the issue on 2025-07-14}
+}
+
+@article{huntington2017,
+  author  = {Huntington, Justin L. and Hegewisch, Katherine C. and Daudert, Britta and Morton, Charles G. and Abatzoglou, John T. and McEvoy, Daniel J. and Erickson, Tyler},
+  title   = {Climate {Engine}: cloud computing and visualization of climate and remote sensing data for advanced natural resource monitoring and process understanding},
+  journal = {Bulletin of the American Meteorological Society},
+  year    = {2017},
+  volume  = {98},
+  number  = {11},
+  pages   = {2397--2410},
+  doi     = {10.1175/BAMS-D-15-00324.1}
+}
+
+@article{abatzoglou2013,
+  author  = {Abatzoglou, John T.},
+  title   = {Development of gridded surface meteorological data for ecological applications and modelling},
+  journal = {International Journal of Climatology},
+  year    = {2013},
+  volume  = {33},
+  number  = {1},
+  pages   = {121--131},
+  doi     = {10.1002/joc.3413}
+}
+
+% ---------------------------------------------------------------------------
+% Palmer family: source papers, lineage and products
+% ---------------------------------------------------------------------------
+
+@techreport{palmer1965,
+  author      = {Palmer, Wayne C.},
+  title       = {Meteorological Drought},
+  institution = {U.S. Department of Commerce, Weather Bureau},
+  year        = {1965},
+  type        = {Research Paper},
+  number      = {45},
+  address     = {Washington, D.C.},
+  note        = {Office of Climatology; vi + 58 pp.; February 1965}
+}
+
+@article{alley1984,
+  author  = {Alley, William M.},
+  title   = {The {Palmer Drought Severity Index}: limitations and assumptions},
+  journal = {Journal of Climate and Applied Meteorology},
+  year    = {1984},
+  volume  = {23},
+  number  = {7},
+  pages   = {1100--1109},
+  doi     = {10.1175/1520-0450(1984)023<1100:TPDSIL>2.0.CO;2}
+}
+
+@article{karl1986,
+  author  = {Karl, Thomas R.},
+  title   = {The sensitivity of the {Palmer Drought Severity Index} and {Palmer's Z-Index} to their calibration coefficients including potential evapotranspiration},
+  journal = {Journal of Climate and Applied Meteorology},
+  year    = {1986},
+  volume  = {25},
+  number  = {1},
+  pages   = {77--86},
+  doi     = {10.1175/1520-0450(1986)025<0077:TSOTPD>2.0.CO;2}
+}
+
+@inproceedings{heddinghaus1991,
+  author    = {Heddinghaus, Thomas R. and Sabol, Paul},
+  title     = {A review of the {Palmer Drought Severity Index} and where do we go from here?},
+  booktitle = {Preprints of the 7th Conference on Applied Climatology},
+  year      = {1991},
+  pages     = {242--246},
+  publisher = {American Meteorological Society},
+  address   = {Salt Lake City, Utah},
+  note      = {10--13 September 1991}
+}
+
+@article{wells2004,
+  author  = {Wells, Nathan and Goddard, Steve and Hayes, Michael J.},
+  title   = {A self-calibrating {Palmer Drought Severity Index}},
+  journal = {Journal of Climate},
+  year    = {2004},
+  volume  = {17},
+  number  = {12},
+  pages   = {2335--2351},
+  doi     = {10.1175/1520-0442(2004)017<2335:ASPDSI>2.0.CO;2}
+}
+
+@article{jacobi2013,
+  author  = {Jacobi, John and Perrone, Debra and Duncan, Leslie Lyons and Hornberger, George},
+  title   = {A tool for calculating the {Palmer} drought indices},
+  journal = {Water Resources Research},
+  year    = {2013},
+  volume  = {49},
+  number  = {9},
+  pages   = {6086--6089},
+  doi     = {10.1002/wrcr.20342}
+}
+
+@article{ficklin2015,
+  author  = {Ficklin, Darren L. and Letsinger, Sally L. and Gholizadeh, Hamed and Maxwell, Justin T.},
+  title   = {Incorporation of the {Penman--Monteith} potential evapotranspiration method into a {Palmer Drought Severity Index} tool},
+  journal = {Computers \& Geosciences},
+  year    = {2015},
+  volume  = {85},
+  pages   = {136--141},
+  doi     = {10.1016/j.cageo.2015.09.013}
+}
+
+@article{rhee2007,
+  author  = {Rhee, Jinyoung and Carbone, Gregory J.},
+  title   = {A comparison of weekly monitoring methods of the {Palmer} drought index},
+  journal = {Journal of Climate},
+  year    = {2007},
+  volume  = {20},
+  number  = {24},
+  pages   = {6033--6044},
+  doi     = {10.1175/2007JCLI1693.1}
+}
+
+@article{dai2011,
+  author  = {Dai, Aiguo},
+  title   = {Characteristics and trends in various forms of the {Palmer Drought Severity Index} during 1900--2008},
+  journal = {Journal of Geophysical Research},
+  year    = {2011},
+  volume  = {116},
+  number  = {D12},
+  pages   = {D12115},
+  doi     = {10.1029/2010JD015541}
+}
+
+@article{vanderschrier2013,
+  author  = {van der Schrier, Gerard and Barichivich, Jonathan and Briffa, Keith R. and Jones, Philip D.},
+  title   = {A sc{PDSI}-based global data set of dry and wet spells for 1901--2009},
+  journal = {Journal of Geophysical Research: Atmospheres},
+  year    = {2013},
+  volume  = {118},
+  number  = {10},
+  pages   = {4025--4048},
+  doi     = {10.1002/jgrd.50355}
+}
+
+@article{vose2014,
+  author  = {Vose, Russell S. and Applequist, Scott and Squires, Mike and Durre, Imke and Menne, Matthew J. and Williams, Claude N. and Fenimore, Chris and Gleason, Karin and Arndt, Derek},
+  title   = {Improved historical temperature and precipitation time series for {U.S.} climate divisions},
+  journal = {Journal of Applied Meteorology and Climatology},
+  year    = {2014},
+  volume  = {53},
+  number  = {5},
+  pages   = {1232--1251},
+  doi     = {10.1175/JAMC-D-13-0248.1}
+}
+
+@article{spade2020,
+  author  = {Spade, Daniela and de Beurs, Kirsten and Shafer, Mark},
+  title   = {Major over- and underestimation of drought found in {NOAA's} climate divisional {SPI} dataset},
+  journal = {Journal of Applied Meteorology and Climatology},
+  year    = {2020},
+  volume  = {59},
+  number  = {9},
+  pages   = {1469--1480},
+  doi     = {10.1175/JAMC-D-19-0272.1},
+  note    = {Cited in this repository as ``Baldwin and Chen (2020)''; the record gives these three authors}
+}
+
+% ---------------------------------------------------------------------------
+% Input and index uncertainty
+% ---------------------------------------------------------------------------
+
+@article{hoffmann2020,
+  author  = {Hoffmann, David and Gallant, Ailie J. E. and Arblaster, Julie M.},
+  title   = {Uncertainties in drought from index and data selection},
+  journal = {Journal of Geophysical Research: Atmospheres},
+  year    = {2020},
+  volume  = {125},
+  number  = {18},
+  pages   = {e2019JD031946},
+  doi     = {10.1029/2019JD031946}
+}
+
+% ---------------------------------------------------------------------------
+% Prior cross-package comparisons: documentation, not peer reviewed
+% ---------------------------------------------------------------------------
+
+@misc{vonk2023comparison,
+  author       = {Vonk, Martin A.},
+  title        = {Package comparison},
+  year         = {2023},
+  howpublished = {SPEI package documentation, example 04},
+  url          = {https://martinvonk.github.io/SPEI/examples/example04_package_comparison.html},
+  note         = {Page dated 2023; content read 2026-11-22 and showing data to May 2025; not peer reviewed}
+}

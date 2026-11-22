@@ -53,7 +53,9 @@ Each statement was read in the file named.
 
 ## Not verified
 
-These appear in the tickets as items to check, not as findings.
+These appear in the tickets as items to check, not as findings. The bibliographic items below are
+now checked in [literature.md](literature.md) and [references.bib](references.bib) (REFIMPL-05, #1607);
+this list stays as the record of what was open when these notes were written.
 
 - Authorship and year of the R `SEI` article (given in the tickets as Allen and Otero, 2024).
 - Bibliographic details of Bourgault et al. (2023), Stagge et al. (2015), Guttman (1999), Pieper et al. (2020), Dai (2011), van der Schrier et al. (2013), Ficklin et al. (2015), Huntington et al. (2017), Abatzoglou (2013), Vose et al. (2014), Hobbins et al. (2016), and Farahmand and AghaKouchak (2015). REFIMPL-05 verifies each.

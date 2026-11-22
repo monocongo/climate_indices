@@ -85,6 +85,6 @@ merges, those references point at a file not yet on `main`.
 | `ncei-soilcnst-asc` | data | located | pending |
 | `wells-cpp-original` | code | not-opened | pending |
 | `cran-scpdsi-0.1.3` | code | located | no |
-| `baldwin-chen-2020` | paper | not-opened | pending |
+| `spade-2020` | paper | located | pending |
 | `dficklin-cageo-paper` | code | located | pending |
 | `jonking93-pdsi` | code | located | pending |
