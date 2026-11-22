@@ -112,6 +112,7 @@ Behaviour on zeros, ties, gaps, short or constant records, and unfittable period
   4. *error*: an exception, recorded as *clear* when the message names the cause and *unclear* when it does not;
   5. *wrong with warning*: finite values that differ from `expected` (or an infinity), and a warning is emitted;
   6. *silently wrong*: finite values that differ from `expected` (or an infinity), and nothing is emitted.
+- **Mixed cases.** The warning is a property of the case; the value outcome is a property of each value at `affected_mask`. A case whose values disagree takes the most severe outcome present, in this order: *error*, *silently wrong*, *wrong with warning*, *NaN silent*, *NaN with warning*, *correct*. A silent failure therefore outranks the warned form of the same failure. The case table lists the value outcome of each affected value for a mixed case.
 - **Cases.** REFIMPL-11 ([#1613](https://github.com/monocongo/climate_indices/issues/1613)) generates the stress inputs and REFIMPL-22 ([#1624](https://github.com/monocongo/climate_indices/issues/1624)) runs them: all-zero and constant periods, fewer values than the estimator needs, exact ties, missing values inside the accumulation window, a Calibration Period outside or shorter than the record, values beyond the calibration range, and `float32` input, among others.
 - **Report.** The count of each outcome per package, and the case-by-case table. Not a score, and each *silently wrong* case is listed individually.
 
