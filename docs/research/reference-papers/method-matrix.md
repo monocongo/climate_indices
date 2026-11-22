@@ -817,7 +817,7 @@ Read at: monocongo/climate_indices@98578c87.
 | distribution | Empirical (rank based); no distribution is fit | `src/climate_indices/CONTEXT.md:36` |
 | estimator | n/a: Non-parametric |  |
 | location offset | n/a: Non-parametric; accepts a signed series with clip_negatives=False |  |
-| zero handling | Zeros are ordinary ranks; no separate zero mass | `docs/research/earthengine-climate-engine-pilot.md:254` |
+| zero handling | Zeros are ordinary ranks; no separate zero mass | `src/climate_indices/compute.py:3275-3277` |
 | plotting position | (1 + k) / (n + 2), k = calibration values at or below the value (ties take the maximum rank); n = valid calibration values at that calendar step | `src/climate_indices/compute.py:3277`; `src/climate_indices/compute.py:3287` |
 | inverse normal | Exact: scipy.special.ndtri | `src/climate_indices/compute.py:3291` |
 | output bound | Positions lie in (0, 1); then clipped to [-3.09, 3.09] on the normal scale | `src/climate_indices/drought/indices.py:681` |
@@ -836,7 +836,7 @@ Read at: monocongo/climate_indices@98578c87.
 | distribution | Empirical ranking (NOAA PSL method) | `src/climate_indices/drought/indices.py:319` |
 | estimator | n/a: Non-parametric |  |
 | location offset | n/a: Non-parametric |  |
-| zero handling | Ordinary ranks after preparation | `docs/research/earthengine-climate-engine-pilot.md:254` |
+| zero handling | Ordinary ranks after preparation | `src/climate_indices/drought/indices.py:450-456`; `src/climate_indices/compute.py:2383-2385` |
 | plotting position | Tukey with NOAA's rounded constants: (pads + below + 0.66) / (n + pads + 0.33); below = strict count (ties take the minimum rank); leading scale pads count as lower than every value | `src/climate_indices/drought/indices.py:456` |
 | inverse normal | Hastings (Abramowitz and Stegun 26.2.23) approximation, as the NOAA PSL Fortran (that Fortran is not read here) | `src/climate_indices/drought/indices.py:62`; `src/climate_indices/drought/indices.py:277` |
 | output bound | Probability clipped to [1e-10, 1-1e-10], z clipped to [-3.09, 3.09] | `src/climate_indices/drought/indices.py:472`; `src/climate_indices/drought/indices.py:477` |

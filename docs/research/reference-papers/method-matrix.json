@@ -3796,8 +3796,8 @@
               "status": "verified",
               "citations": [
                 {
-                  "file": "docs/research/earthengine-climate-engine-pilot.md",
-                  "lines": "254"
+                  "file": "src/climate_indices/compute.py",
+                  "lines": "3275-3277"
                 }
               ]
             },
@@ -3916,8 +3916,12 @@
               "status": "verified",
               "citations": [
                 {
-                  "file": "docs/research/earthengine-climate-engine-pilot.md",
-                  "lines": "254"
+                  "file": "src/climate_indices/drought/indices.py",
+                  "lines": "450-456"
+                },
+                {
+                  "file": "src/climate_indices/compute.py",
+                  "lines": "2383-2385"
                 }
               ]
             },
