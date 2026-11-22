@@ -309,6 +309,21 @@ They do not validate fragility curves, hazard probabilities, resilience forecast
 The existing analytic event fixture remains specification and regression evidence under
 [ADR-0026](docs/adr/0026-reliability-module-api-and-conventions.md).
 
+## SPI With Consecutive Zero Precipitation
+
+PR #585 addressed the gridded report in #582. `tests/test_spi_gridded_zeros.py`
+exercises the public xarray API with two neighboring cells, monthly precipitation
+in mm from 1990–2020, Timescale 3, and a 1990–2019 Calibration Period. The dry
+cell has 27 zero March totals, one missing total, and two identical positive
+March totals. Accumulation preserves the zeros and propagates the missing month;
+Pearson has too few positive values for L-moments, and Gamma has no positive spread.
+The Python Pearson path logs one `distribution_fitting_failures` event without
+triggering the whole-block fallback. Unfitted positive March totals remain NaN.
+Pearson's zeros keep the classic score in every `zero_handling` mode; Gamma's zeros
+use `p0 = 27/29` and the requested mode. The neighboring cell agrees with its
+standalone result. This is offline policy and regression coverage, not validation
+against the reporter's input or the NDMC executable. No fit policy changed.
+
 ## SPAI Evidence Classification
 
 `indices.spai()` and `climate_indices.spai()` were added in 3.2.0 (#1480) and are Beta on
