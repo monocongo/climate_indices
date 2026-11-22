@@ -164,6 +164,9 @@ Pre-registered, mutually exclusive, and assigned in the order below to each *pai
 
 A pair with no finite pair in common has no class; it is reported as *no overlap*.
 
+A study whose index is not normal-scale (PDSI, for example) replaces the six-class scale in the last two rules with the class edges it fixes in its pre-registration, and the two rules then read against those edges.
+When no class edges apply, the category measures are *not applicable* and a pair with `d > 0.005` is *above reporting precision*: that class carries no category content and the report says so, so the pair never lands in a class it does not have.
+
 - The magnitude classes dominate: a pair with `d <= 0.005` stays in its magnitude class even if one value sits one rounding step across an edge.
 - Report, for every pair, the class, `d`, the mask mismatch, the share of finite pairs that change class on the six-class scale and on the eleven-class scale (NaN when there is no finite pair), and the share of those changes that start or end in a drought class (D0 to D4 on the six-class scale; the five classes below -0.5 on the eleven-class scale).
 - 0.005 is the half-unit of a two-decimal output, so a package that rounds to two decimals can reach *below reporting precision* at best.
