@@ -402,8 +402,9 @@ def _live_triples(result: np.ndarray, completed: np.ndarray | None = None) -> in
 
 
 def test_live_triples_excludes_failed_runs() -> None:
-    results = np.array([[1.0, 0.0, 1.0, 1.0, 2.0, 1.0]])
-    completed = np.array([True, False, True, True, True, True])
+    # two months and three triples, so a transposed grouping of `completed` gives a different count
+    results = np.array([[0.0] * 9, [1.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 2.0, 1.0]])
+    completed = np.array([True, False, False, True, True, True, True, True, True])
     assert _live_triples(results, completed) == 1
 
 
@@ -429,8 +430,9 @@ def test_pdi_recursion_takes_the_same_branches_on_boundary_series(monkeypatch) -
     rust, python, calls = _rust_and_python(monkeypatch, lambda: _pdi_run(z))
     assert calls == {"palmer_pdi"}
     _same_outcome(rust, python)
+    # the record's H3 table measured 28, 14 and 6 live triples for these three outputs
     for output in python:
-        assert _live_triples(output.reshape(_MONTHS, -1)) >= 1
+        assert _live_triples(output.reshape(_MONTHS, -1)) >= 6
 
 
 def test_wells_recursion_takes_the_same_branches_on_boundary_series(monkeypatch) -> None:
@@ -448,7 +450,7 @@ def test_wells_recursion_takes_the_same_branches_on_boundary_series(monkeypatch)
             completed[column] = True
     errors = completed.size - np.count_nonzero(completed)
     assert errors < corpus.shape[1] // 10, "the corpus must mostly complete, or it tests only the error path"
-    assert _live_triples(results, completed) >= 1
+    assert _live_triples(results, completed) >= 4  # measured 4, record's H3 table
 
 
 def _spell_threshold_corpus(factors: DurationFactors) -> np.ndarray:
@@ -484,7 +486,7 @@ def test_pdi_recursion_takes_the_same_branches_at_spell_thresholds(monkeypatch) 
     rust, python, calls = _rust_and_python(monkeypatch, lambda: _pdi_run(z))
     assert calls == {"palmer_pdi"}
     _same_outcome(rust, python)
-    assert _live_triples(python[0].reshape(24, -1)) >= 5
+    assert _live_triples(python[0].reshape(24, -1)) >= 26  # measured 26, record's H3 table
 
 
 def test_wells_recursion_takes_the_same_branches_at_spell_thresholds(monkeypatch) -> None:
@@ -500,7 +502,9 @@ def test_wells_recursion_takes_the_same_branches_at_spell_thresholds(monkeypatch
         if not isinstance(python[0], type):
             results[:, column] = python[0]
             completed[column] = True
-    assert _live_triples(results, completed) >= 5
+    errors = completed.size - np.count_nonzero(completed)
+    assert errors < corpus.shape[1] // 10, "the corpus must mostly complete, or it tests only the error path"
+    assert _live_triples(results, completed) >= 30  # measured 30, record's H3 table
 
 
 @pytest.mark.parametrize("direction", [1.0, -1.0], ids=["wet", "dry"])
@@ -512,7 +516,8 @@ def test_wells_continuation_threshold_right_after_a_spell_ends(monkeypatch, dire
     the spell (``v = 0``), while one ulp below it continues the abatement (REFIMPL-34 review).
     """
     factors = DurationFactors.from_fitted(0.897, 0.333, 0.897, 0.333)
-    threshold = 0.5 * factors.wetm
+    # the two directions are exact negatives of each other while wetm == drym
+    threshold = 0.5 * (factors.wetm if direction > 0 else factors.drym)
     outputs = []
     for value in (np.nextafter(threshold, 0.0), threshold, np.nextafter(threshold, 1.0)):
         z = direction * np.array([-1.0, 3.0, 0.0, value, value, value])
@@ -559,5 +564,5 @@ def test_zero_precipitation_months_match(monkeypatch, palmer_division_inputs, in
     precips[np.random.default_rng(1636).random(precips.shape) < 0.08] = 0.0
     precips[600:612] = 0.0
     rust, python, calls = _rust_and_python(monkeypatch, index(precips, pet, awc))
-    assert "palmer_water_balance" in calls
+    assert {"palmer_water_balance", "palmer_pdi" if index is _pdsi else "palmer_wells"} <= calls
     _assert_parity(rust, python)
