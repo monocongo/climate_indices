@@ -13,9 +13,10 @@ Page numbers below are the printed page numbers; the PDF page is printed page + 
 
 ## Files
 
-All quantities are in inches (precipitation, PE, soil moisture) and degrees
-Fahrenheit, exactly as printed. An empty field is a dashed or blank cell in the
-print; `T` (trace) is kept as a token.
+Physical quantities are in inches (precipitation, PE, soil moisture) and degrees
+Fahrenheit, exactly as printed; coefficients, weights, indices, and percentages
+are dimensionless. An empty field is a dashed or blank cell in the print; `T`
+(trace) is kept as a token.
 
 | File | Table (printed page) | Content |
 | --- | --- | --- |
@@ -118,12 +119,13 @@ partly constrained: `t_f` in Tables 1 and 2, Table 1's `delta_ss_in` and `delta_
 (audited only as their sum), Table 3 column `k` for central Iowa (no printed d to test it
 against), Table 4 `pro_in` and, for the most part, `pr_in` (gamma and beta are small), and
 Table 12 `v`, `pe_pct` and the X1/X2/X3 cells printed as 0. For those the guard is the blind
-second pass and the checksum. The Table 12 count of 32 matching months depends on the 0.02
+second pass; the checksum detects later edits to the CSVs, not a slip already present when the
+digest was recorded. The Table 12 count of 32 matching months depends on the 0.02
 tolerance: November and December 1890 (0.016, 0.0197) are inside it and October 1890 (0.0210)
 is not.
 
 Not tested: Table 9 Equation 26 produces K' only inside the library's calibration loop, so
 the library is exercised for the normalization step (D-bar injected), not for K' itself.
 Seventeen of the 92 coefficient intervals are wider than 0.02 (the test's `informative`
-counter pins the other 75), so a last-digit transcription slip in those cells is caught by
-the checksum, not by H2.
+counter pins the other 75), so H2 does not constrain a last-digit transcription slip in those
+cells.
