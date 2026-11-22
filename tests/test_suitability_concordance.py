@@ -4,10 +4,12 @@ from __future__ import annotations
 
 import logging
 import math
+from collections.abc import Iterator
 from typing import Any
 
 import numpy as np
 import pytest
+import xarray as xr
 
 from climate_indices import suitability
 from climate_indices.exceptions import BetaFeatureWarning, InputTypeError, InvalidArgumentError
@@ -17,7 +19,7 @@ pytestmark = pytest.mark.filterwarnings("ignore::climate_indices.exceptions.Beta
 
 
 @pytest.fixture(scope="module", autouse=True)
-def disable_logging():
+def disable_logging() -> Iterator[None]:
     """Silence the calculation lifecycle events during these tests."""
     logging.disable(logging.CRITICAL)
     yield
@@ -224,6 +226,16 @@ def test_an_unmatched_run_next_to_an_unknown_step_is_censored() -> None:
     assert result.index_right_censored == 0
 
 
+def test_an_unmatched_run_before_an_unknown_step_is_right_censored() -> None:
+    # the mirror of the test above, so both neighbours of a run are checked on an unknown step
+    valid = np.ones(10, dtype=bool)
+    valid[6] = False
+    result = concordance(manual([4], [5]), manual([0], [1]), valid=valid)
+
+    assert result.index_left_censored == 0
+    assert result.index_right_censored == 1
+
+
 def test_a_run_crossing_an_unknown_step_is_rejected() -> None:
     valid = np.ones(10, dtype=bool)
     valid[4] = False
@@ -326,6 +338,19 @@ def test_category_agreement_handles_unsigned_codes() -> None:
         0.0,
         1.0,
     )
+
+
+def test_category_agreement_rejects_a_data_array() -> None:
+    # a DataArray carries labels that a positional comparison would discard, and neither function has
+    # an xarray route, so the input is rejected rather than compared by position
+    labels = {"time": np.arange("2000-01", "2000-03", dtype="datetime64[M]")}
+    codes = xr.DataArray([0, 1], dims="time", coords=labels)
+
+    with pytest.raises(InvalidArgumentError, match="no xarray route"):
+        suitability.category_agreement(codes, codes)
+
+    with pytest.raises(InvalidArgumentError, match="no xarray route"):
+        suitability.category_agreement([0, 1], codes)
 
 
 def test_category_agreement_rejects_a_shape_mismatch() -> None:

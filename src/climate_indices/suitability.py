@@ -1666,8 +1666,8 @@ def event_concordance(
     Raises:
         InvalidArgumentError: For a ``RunSet`` that is inconsistent or crosses an unknown observation,
             or for an unsupported ``cadence``.
-        InputTypeError: If a source is not a ``RunSet``, ``valid`` is not a plain Boolean array, or the
-            dates are not ``datetime64``.
+        InputTypeError: If a source is not a ``RunSet``, ``valid`` is not a plain Boolean array, a
+            ``RunSet``'s index fields are not plain integer arrays, or the dates are not ``datetime64``.
         DataShapeError: If ``time`` or ``valid`` has the wrong shape, or a ``RunSet``'s fields disagree
             in length.
         CoordinateValidationError: For an empty axis, NaT, repeated or unordered dates, or an
@@ -1732,8 +1732,8 @@ def category_agreement(index_categories: Any, reference_categories: Any) -> tupl
     value never counts as agreement.
 
     Args:
-        index_categories: Integer category codes, as :func:`drought_category` returns them: -1
-            missing, 0 none, 1 to 5 for D0 to D4.
+        index_categories: Integer category codes as a NumPy array, as :func:`drought_category` returns
+            them for NumPy input: -1 missing, 0 none, 1 to 5 for D0 to D4.
         reference_categories: The reference's codes, with the same shape.
 
     Returns:
@@ -1741,12 +1741,23 @@ def category_agreement(index_categories: Any, reference_categories: Any) -> tupl
         when no such pair exists.
 
     Raises:
-        InvalidArgumentError: The codes are not integers from -1 to 5, or the inputs differ in shape.
+        InvalidArgumentError: The codes are not integers from -1 to 5, the inputs differ in shape, or
+            either input is an xarray ``DataArray``. There is no xarray route, so a ``DataArray`` is
+            rejected instead of being compared position by position, which would ignore its labels.
 
     Warns:
         BetaFeatureWarning: Always; the module is Beta.
     """
     warnings.warn(_BETA_MESSAGE, BetaFeatureWarning, stacklevel=2)
+    for name, values in (("index_categories", index_categories), ("reference_categories", reference_categories)):
+        if isinstance(values, xr.DataArray):
+            raise _invalid(
+                f"{name} must be a NumPy array; category_agreement has no xarray route, and comparing a "
+                "DataArray position by position would ignore its labels.",
+                name,
+                type(values).__name__,
+                "integer codes -1 to 5 as a NumPy array",
+            )
     index_codes = _as_codes(index_categories, "index_categories")
     reference_codes = _as_codes(reference_categories, "reference_categories")
     if index_codes.shape != reference_codes.shape:
