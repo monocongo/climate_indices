@@ -143,7 +143,9 @@ Implementation decisions of SUIT-05 ([#1586](https://github.com/monocongo/climat
   without it.
 - **Across cells.** `rejection_share` and the Benjamini–Hochberg p-values are computed from the bootstrap p-value when one was
   run and otherwise from the naive K–S p-value. `rejection_share` counts cells with `p <= alpha`, the decision rule of a
-  Monte-Carlo test, which has size exactly `alpha` when `(B_ok + 1) alpha` is an integer. The Benjamini–Hochberg family is
+  Monte-Carlo test: when `(B_ok + 1) alpha` is an integer, `alpha` is a value the p-value can take, so the rule loses no size to the
+  p-value grid. That is the attainable resolution, not a calibration; the size of the bootstrap is measured (`VALIDATION.md`),
+  and exchangeability, ties and the filtering of failed refits can move it. The Benjamini–Hochberg family is
   the cells of one candidate and one calendar step, with NaN p-values left out. These need every cell, so the xarray route adds
   them after its blocks are joined. A series without a cell axis has neither, and `bh_adjust=True` raises there, as it does for
   `gof=("ad",)` without a bootstrap, which leaves nothing to adjust.

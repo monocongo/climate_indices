@@ -145,8 +145,10 @@ class GoodnessOfFit:
 
     Both statistics are evaluated at parameters estimated from the same sample, so a naive p-value is
     uncalibrated; the parametric bootstrap (``n_bootstrap > 0``) refits every simulated sample with the
-    library's own estimator and gives calibrated p-values. The p-value of the candidate that ``best``
-    selects is a post-selection statistic, not an ordinary confirmatory test.
+    library's own estimator, so its null carries the estimation of the parameters. Its size is measured, not
+    guaranteed: near nominal in the characterized conditions (``VALIDATION.md``), below nominal for a series whose
+    refits fail, and anti-conservative for a zero-heavy record rounded to a coarse unit. The p-value of the
+    candidate that ``best`` selects is a post-selection statistic, not an ordinary confirmatory test.
     """
 
     #: Kolmogorov-Smirnov D of the PIT against the uniform distribution.
@@ -802,7 +804,8 @@ def _rejection_share_cells(p: np.ndarray, alpha: float, n_cell_dims: int) -> np.
     """Share of the finite p-values at or below ``alpha`` over the trailing ``n_cell_dims`` axes; NaN if none is finite.
 
     A Monte-Carlo test rejects at ``p <= alpha``: a bootstrap p-value is a multiple of ``1 / (B_ok + 1)``, so with
-    ``(B_ok + 1) alpha`` an integer the test then has size exactly ``alpha``, where ``p < alpha`` would have less.
+    ``(B_ok + 1) alpha`` an integer ``alpha`` is a value the p-value can take, so ``p <= alpha`` loses none of its
+    size to the grid, where ``p < alpha`` would. That is the attainable resolution, not a measured calibration.
     """
     flat = p.reshape(*p.shape[: p.ndim - n_cell_dims], -1)
     finite = np.isfinite(flat)

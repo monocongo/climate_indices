@@ -873,7 +873,7 @@ the other suitability tools are tracked in ADR-0028.
 
 Goodness of fit (`gof`, on by default) answers a different question from the criteria: not which
 candidate fits best, but whether it fits at all. Each candidate's probability integral transform over
-the positive calibration values gives a Kolmogorov–Smirnov statistic and an Anderson–Darling statistic
+the calibration values gives a Kolmogorov–Smirnov statistic and an Anderson–Darling statistic
 (`GoodnessOfFit`). Gamma and Pearson Type III leave out exact zeros, because the zero mass is not part of the
 continuous distribution tested; log-logistic and GEV, which have none, keep them. The parameters were estimated from the same sample, so the **naive K–S p-value is
 uncalibrated and far too high** (a synthetic gamma record rejected 2 of 3,600 series at a nominal 0.05),
