@@ -12,6 +12,8 @@ Skipped when the extension is not built (``uv run maturin develop --release``),
 unless ``CLIMATE_INDICES_REQUIRE_NATIVE=1`` is set, as in CI's native legs.
 """
 
+import json
+import platform
 import weakref
 from collections.abc import Callable
 from pathlib import Path
@@ -31,6 +33,12 @@ native = conftest.import_native()
 
 RTOL = 1e-10
 ATOL = 1e-10
+# REFIMPL-34 (#1636) measured every output of pdsi() and scpdsi() on the 344 divisions
+# as bit-identical between the two paths on macOS arm64 (docs/research/reference-papers/
+# palmer-rust-parity.md), so that platform pins a maximum of exactly 0.0. Other
+# platforms keep the registry contract until the reproducibility workflow reports them.
+_PINNED = (platform.system(), platform.machine()) == ("Darwin", "arm64")
+PINNED_RTOL, PINNED_ATOL = (0.0, 0.0) if _PINNED else (RTOL, ATOL)
 
 _START = 1895
 _CALIBRATION = (1931, 1990)
@@ -81,7 +89,9 @@ def _rust_and_python(monkeypatch: pytest.MonkeyPatch, run: Callable[[], Any]) ->
     return rust, python, recorder.calls
 
 
-def _assert_parity(rust: Any, python: Any, *, error: type[Exception] | None = None) -> None:
+def _assert_parity(
+    rust: Any, python: Any, *, error: type[Exception] | None = None, rtol: float = RTOL, atol: float = ATOL
+) -> None:
     if isinstance(python, tuple) and python and isinstance(python[0], type):
         assert python[0] is error, f"unexpected error: {python}"
         assert rust == python
@@ -90,12 +100,12 @@ def _assert_parity(rust: Any, python: Any, *, error: type[Exception] | None = No
     if isinstance(python, dict):
         assert rust.keys() == python.keys()
         for key in python:
-            _assert_parity(rust[key], python[key])
+            _assert_parity(rust[key], python[key], rtol=rtol, atol=atol)
         return
     if isinstance(python, tuple):
         assert len(rust) == len(python)
         for rust_item, python_item in zip(rust, python, strict=True):
-            _assert_parity(rust_item, python_item)
+            _assert_parity(rust_item, python_item, rtol=rtol, atol=atol)
         return
     if python is None:
         assert rust is None
@@ -103,7 +113,7 @@ def _assert_parity(rust: Any, python: Any, *, error: type[Exception] | None = No
     rust, python = np.asarray(rust), np.asarray(python)
     assert rust.shape == python.shape
     assert rust.dtype == python.dtype
-    np.testing.assert_allclose(rust, python, rtol=RTOL, atol=ATOL, equal_nan=True)
+    np.testing.assert_allclose(rust, python, rtol=rtol, atol=atol, equal_nan=True)
     # the backtracking selects a candidate (x1 >= 0, x2 <= 0, or none at exactly 0.0),
     # and that categorical choice must match exactly, not within tolerance
     np.testing.assert_array_equal(np.sign(rust), np.sign(python))
@@ -179,7 +189,7 @@ def test_every_division_matches_for_pdsi(monkeypatch, palmer_division_dir: Path,
     precips, pet, awc = palmer_division_inputs[palmer_division_dir.name]
     rust, python, calls = _rust_and_python(monkeypatch, _pdsi(precips, pet, awc))
     assert calls == _PDSI_KERNELS
-    _assert_parity(rust, python)
+    _assert_parity(rust, python, rtol=PINNED_RTOL, atol=PINNED_ATOL)
 
 
 def test_every_division_matches_for_scpdsi(monkeypatch, palmer_division_dir: Path, palmer_division_inputs) -> None:
@@ -188,7 +198,7 @@ def test_every_division_matches_for_scpdsi(monkeypatch, palmer_division_dir: Pat
     assert calls == _SCPDSI_KERNELS
     # the fitted duration factors are in the parameter dictionary
     assert {"wetm", "wetb", "drym", "dryb"} <= python[4].keys()
-    _assert_parity(rust, python)
+    _assert_parity(rust, python, rtol=PINNED_RTOL, atol=PINNED_ATOL)
 
 
 @pytest.mark.parametrize("per_cell_awc", [True, False], ids=["per-cell-awc", "scalar-awc"])
@@ -336,3 +346,217 @@ def test_pdi_dispatch_scans_z_for_infinities_only_when_the_kernel_can_take_it(mo
     monkeypatch.setattr(np, "isinf", lambda values: pytest.fail("the dispatch guard scanned z"))
 
     assert palmer._pdi_recursion(np.zeros(shape), _PDI_FACTORS) == "python path"
+
+
+# --- branch stability (REFIMPL-34, #1636) ---------------------------------------------
+# The recursions branch on exact zeros and fixed thresholds (docs/algorithm_refs/palmer.md,
+# "Exact-zero comparisons"), so a one-ulp difference upstream could flip a branch. The
+# corpus puts boundary values (-0.0, which equals 0, and +-0.15, +-0.5, +-1, each with one ulp either side) into
+# random Z series, then repeats each series with one boundary entry moved one ulp down
+# and up. Both paths must agree on every series; the liveness floors prove that moving
+# an entry by one ulp does change the answer for some series, so agreement is not vacuous.
+
+_BOUNDARIES = (0.0, 0.15, 0.5, 1.0)
+_CORPUS_SEED = 1636
+_MONTHS = 60
+_LIVE_DIFFERENCE = 1e-6  # a smooth response to one ulp is ~1e-16; a flipped branch moves the index
+
+
+def _boundary_values() -> np.ndarray:
+    edges = {-0.0}
+    for boundary in _BOUNDARIES:
+        for signed in (boundary, -boundary):
+            edges.update((signed, np.nextafter(signed, np.inf), np.nextafter(signed, -np.inf)))
+    return np.array(sorted(edges, key=lambda value: (value, np.signbit(value))))
+
+
+def _straddling_corpus(series: int) -> np.ndarray:
+    """``(_MONTHS, 3 * series)`` Z series; columns ``3k..3k+2`` are one series with one
+    boundary entry one ulp below, on, and one ulp above the boundary."""
+    rng = np.random.default_rng(_CORPUS_SEED)
+    edges = _boundary_values()
+    base = np.where(
+        rng.random((_MONTHS, series)) < 0.6,
+        rng.choice(edges, (_MONTHS, series)),
+        rng.normal(0.0, 1.5, (_MONTHS, series)),
+    )
+    corpus = np.repeat(base, 3, axis=1)
+    for column in range(series):
+        # the entry moved is a boundary value already, so it is the one at stake
+        positions = np.flatnonzero(np.isin(base[:, column], edges))
+        if positions.size:
+            month = rng.choice(positions)
+            value = base[month, column]
+            corpus[month, 3 * column] = np.nextafter(value, -np.inf)
+            corpus[month, 3 * column + 2] = np.nextafter(value, np.inf)
+    return corpus
+
+
+def _live_triples(result: np.ndarray, completed: np.ndarray | None = None) -> int:
+    """Count complete (below, on, above) triples with a change above the liveness floor."""
+    triples = result.reshape(result.shape[0], -1, 3)
+    if completed is not None:
+        triples = triples[:, completed.reshape(-1, 3).all(axis=1), :]
+    spread = np.abs(triples[:, :, [0, 2]] - triples[:, :, [1]]).max(axis=(0, 2))
+    return int(np.count_nonzero(spread > _LIVE_DIFFERENCE))
+
+
+def test_live_triples_excludes_failed_runs() -> None:
+    # two months and three triples, so a transposed grouping of `completed` gives a different count
+    results = np.array([[0.0] * 9, [1.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 2.0, 1.0]])
+    completed = np.array([True, False, False, True, True, True, True, True, True])
+    assert _live_triples(results, completed) == 1
+
+
+def _same_outcome(rust: Any, python: Any) -> None:
+    """Both paths return the same values, or raise the same error with the same message."""
+    if isinstance(python, tuple) and python and isinstance(python[0], type):
+        assert rust == python
+        return
+    _assert_parity(rust, python)
+    # a branch flip moves a value to the other side of a threshold, far above 1e-10
+    for rust_item, python_item in zip(rust, python, strict=True):
+        np.testing.assert_array_equal(rust_item == 0.0, python_item == 0.0)
+
+
+def _pdi_run(z: np.ndarray, factors: PdiDurationFactors = _PDI_FACTORS) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    result = palmer._pdi_recursion(z, factors)
+    return result.pdsi, result.phdi, result.pmdi
+
+
+def test_pdi_recursion_takes_the_same_branches_on_boundary_series(monkeypatch) -> None:
+    corpus = _straddling_corpus(series=1500)
+    z = corpus.reshape(_MONTHS // 12, 12, corpus.shape[1])
+    rust, python, calls = _rust_and_python(monkeypatch, lambda: _pdi_run(z))
+    assert calls == {"palmer_pdi"}
+    _same_outcome(rust, python)
+    # the record's H3 table measured 28, 14 and 6 live triples for these three outputs
+    for output in python:
+        assert _live_triples(output.reshape(_MONTHS, -1)) >= 6
+
+
+def _wells_corpus_outcomes(monkeypatch, corpus: np.ndarray, factors: DurationFactors) -> tuple[np.ndarray, np.ndarray]:
+    """Run each corpus column through both paths; return the Python PDSI and the completed columns."""
+    results = np.zeros(corpus.shape)
+    completed = np.zeros(corpus.shape[1], dtype=bool)
+    for column in range(corpus.shape[1]):
+        z = np.ascontiguousarray(corpus[:, column])
+        rust, python, calls = _rust_and_python(monkeypatch, lambda z=z: palmer._wells_recursion(z, factors))
+        assert calls == {"palmer_wells"} or isinstance(python[0], type)
+        _same_outcome(rust, python)
+        if not isinstance(python[0], type):
+            results[:, column] = python[0]
+            completed[column] = True
+    errors = completed.size - np.count_nonzero(completed)
+    assert errors < corpus.shape[1] // 10, "the corpus must mostly complete, or it tests only the error path"
+    return results, completed
+
+
+def test_wells_recursion_takes_the_same_branches_on_boundary_series(monkeypatch) -> None:
+    results, completed = _wells_corpus_outcomes(
+        monkeypatch, _straddling_corpus(series=600), DurationFactors.from_defaults()
+    )
+    assert _live_triples(results, completed) >= 4  # measured 4, record's H3 table
+
+
+def _spell_threshold_corpus(factors: DurationFactors) -> np.ndarray:
+    """``(24, 3 * n)`` series: an established spell, then a threshold value and one ulp either side.
+
+    The Wells continuation test ``direction * z >= 0.5 * slope`` and the ``pv`` sign tests
+    of the ``pdi.f`` abatement statements only run once a spell is established, which random
+    draws rarely reach with the entry exactly on the boundary.
+    """
+    wet, dry = 0.5 * (factors.wetm + factors.wetb), 0.5 * (factors.drym + factors.dryb)
+    # abatement_z = slope * 0.5 in _continue_spell; the establishment test is x1 = z / (m + b) >= 0.5
+    thresholds = {0.15, 0.5, 1.0, wet, dry, 0.5 * factors.wetm, 0.5 * factors.drym}
+    thresholds |= {2 * wet, 2 * dry, factors.wetm + factors.wetb, factors.drym + factors.dryb}
+    thresholds |= {-value for value in thresholds}
+    columns = []
+    for prefix_sign in (1.0, -1.0):
+        for magnitude in (1.0, 3.0):
+            for length in (1, 2, 4, 6):
+                for threshold in sorted(thresholds):
+                    for tail in (0.0, -prefix_sign * 2.0):
+                        for value in (np.nextafter(threshold, -np.inf), threshold, np.nextafter(threshold, np.inf)):
+                            z = np.zeros(24)
+                            z[10 : 10 + length] = prefix_sign * magnitude
+                            z[10 + length] = value
+                            z[11 + length :] = tail
+                            columns.append(z)
+    return np.stack(columns, axis=1)
+
+
+def test_pdi_recursion_takes_the_same_branches_at_spell_thresholds(monkeypatch) -> None:
+    corpus = _spell_threshold_corpus(DurationFactors.from_defaults())
+    z = corpus.reshape(2, 12, corpus.shape[1])
+    rust, python, calls = _rust_and_python(monkeypatch, lambda: _pdi_run(z))
+    assert calls == {"palmer_pdi"}
+    _same_outcome(rust, python)
+    assert _live_triples(python[0].reshape(24, -1)) >= 26  # measured 26, record's H3 table
+
+
+def test_wells_recursion_takes_the_same_branches_at_spell_thresholds(monkeypatch) -> None:
+    factors = DurationFactors.from_defaults()
+    results, completed = _wells_corpus_outcomes(monkeypatch, _spell_threshold_corpus(factors), factors)
+    assert _live_triples(results, completed) >= 30  # measured 30, record's H3 table
+
+
+@pytest.mark.parametrize("direction", [1.0, -1.0], ids=["wet", "dry"])
+def test_wells_continuation_threshold_right_after_a_spell_ends(monkeypatch, direction: float) -> None:
+    """``direction * z >= 0.5 * slope`` is not redundant while a terminated spell's carry is open.
+
+    After a spell terminates and a new one is established in the same month, the state has
+    ``probability == 100`` and a nonzero ``v``. A ``z`` exactly on the threshold then restarts
+    the spell (``v = 0``), while one ulp below it continues the abatement (REFIMPL-34 review).
+    """
+    factors = DurationFactors.from_fitted(0.897, 0.333, 0.897, 0.333)
+    # the two directions are exact negatives of each other while wetm == drym
+    threshold = 0.5 * (factors.wetm if direction > 0 else factors.drym)
+    outputs = []
+    for value in (np.nextafter(threshold, 0.0), threshold, np.nextafter(threshold, 1.0)):
+        z = direction * np.array([-1.0, 3.0, 0.0, value, value, value])
+        rust, python, calls = _rust_and_python(monkeypatch, lambda z=z: palmer._wells_recursion(z, factors))
+        assert calls == {"palmer_wells"}
+        _same_outcome(rust, python)
+        outputs.append(python[0])
+    below, on, above = outputs
+    assert abs(below[4] - on[4]) > 0.1  # one ulp changes the answer, so agreement is not vacuous
+    np.testing.assert_allclose(on, above, atol=1e-12)  # same branch, a smooth ulp-level response
+
+
+_SEQUENCES = Path(__file__).parents[1] / "docs/research/reference-papers/palmer-recursion-divergence-sequences.json"
+
+
+@pytest.mark.skipif(not _SEQUENCES.exists(), reason="the research record is not part of an installed copy")
+@pytest.mark.parametrize("label", sorted(json.loads(_SEQUENCES.read_text())) if _SEQUENCES.exists() else [])
+def test_divergence_sequences_match_between_paths(monkeypatch, label: str) -> None:
+    """The minimal sequences on which pdi.f and Wells disagree, run on Rust and Python alike."""
+    record = json.loads(_SEQUENCES.read_text())[label]
+    z = np.asarray(record["z"], dtype=float)
+    z = np.concatenate([np.zeros(-len(z) % 12), z])
+    wells = DurationFactors.from_defaults()
+    pdi = PdiDurationFactors.from_fitted(wells.wetm, wells.wetb, wells.drym, wells.dryb)
+
+    rust, python, calls = _rust_and_python(monkeypatch, lambda: palmer._wells_recursion(z, wells))
+    assert calls == {"palmer_wells"}
+    _same_outcome(rust, python)
+
+    def run() -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+        result = palmer._pdi_recursion(z.reshape(-1, 12, 1), pdi)
+        return result.pdsi, result.phdi, result.pmdi
+
+    rust, python, calls = _rust_and_python(monkeypatch, run)
+    assert calls == {"palmer_pdi"}
+    _same_outcome(rust, python)
+
+
+@pytest.mark.parametrize("index", [_pdsi, _scpdsi], ids=["pdsi", "scpdsi"])
+def test_zero_precipitation_months_match(monkeypatch, palmer_division_inputs, index) -> None:
+    """Dry months and a whole dry year: the registry's input builders never produce zero precipitation."""
+    precips, pet, awc = palmer_division_inputs["4002"]
+    precips = precips.copy()
+    precips[np.random.default_rng(1636).random(precips.shape) < 0.08] = 0.0
+    precips[600:612] = 0.0
+    rust, python, calls = _rust_and_python(monkeypatch, index(precips, pet, awc))
+    assert {"palmer_water_balance", "palmer_pdi" if index is _pdsi else "palmer_wells"} <= calls
+    _assert_parity(rust, python)
