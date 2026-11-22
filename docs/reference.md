@@ -929,9 +929,12 @@ reference-centrically: a hit is a reference event overlapped by at least one ind
 reference event overlapped by none, and a false alarm is an index event overlapping no reference event.
 POD, FAR and CSI follow from those counts, and each ratio is NaN only when its own denominator is empty, so
 reference events without index events give POD and CSI of zero and leave only FAR NaN. Runs that touch the
-record edge or an unknown step are counted as censored, because their physical onset or end is unknown.
+record edge or an unknown step are counted as censored, because their physical onset or end is unknown; a
+censored run still takes part in the counts like any other, so an event extending past the record can be
+scored as a miss or a false alarm. Every ratio is a point estimate with no interval.
 `category_agreement` returns the exact and within-one shares of two `drought_category` classifications over
-the pairs where both are present, the two definitions the Earth Engine pilot uses.
+the pairs where both are present, the two definitions the Earth Engine pilot uses. It takes NumPy arrays
+only and rejects a `DataArray`, which would otherwise be compared position by position and lose its labels.
 
 ```{eval-rst}
 .. automodule:: climate_indices.suitability
