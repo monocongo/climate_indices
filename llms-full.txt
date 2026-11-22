@@ -540,7 +540,8 @@ compound event catalog. The Swedish summer reproduction above uses declared
 indicators and the source's inclusive thresholds, not this route's probability
 thresholds. A synthetic integration case in `tests/test_compound_reference_fixture.py`
 uses 1–5 June 2000 with strict thresholds `heat > 0.8` and `drought < 0.2`.
-It excludes threshold ties and the day with a missing drought probability.
+Values equal to a threshold do not count as events for that hazard, but those days remain eligible.
+Only the day with a missing drought probability is ineligible.
 Four eligible days give exact marginal counts 2 and 1, one joint day,
 dimensionless joint probability `1/4`, and LMF `2`. These are hand counts,
 not real-world event rates, tests of probability calibration, or significance.
@@ -1984,7 +1985,7 @@ Application guides are available for selected families: [wildfire](docs/wildfire
 
 Each index implements a published method: a journal article or an agency technical report. Examples are McKee et al. (1993) for SPI, Vicente-Serrano et al. (2010) for SPEI, Thornthwaite (1948) and Hargreaves and Samani (1985) for evapotranspiration, Palmer (1965) and Wells et al. (2004) for the Palmer indices, and Allen et al. (1998), FAO-56, for Penman-Monteith. The [algorithm descriptions](docs/algorithms.md) and the [algorithm references](docs/algorithm-reference.md) cite the sources and record where this implementation makes a documented choice.
 
-Evidence differs by index, and the repository records the difference rather than asserting validation everywhere. `VALIDATION.md` in the repository root classifies each index as externally validated, reproduced from a published example, characterized on synthetic data, or covered by regression and specification tests only. For example, EDDI is compared with NOAA PSL reference values, SPEI with SPEIbase and the R `SPEI` package, and the standard Palmer indices with NOAA NCEI nClimDiv. The flood family and SPAI have no matched observed-input reference yet. Flood API has a comparison against R `ahrapi` on synthetic inputs.
+Evidence differs by index, and the repository records the difference rather than asserting validation everywhere. `VALIDATION.md` in the repository root classifies each index as externally validated, reproduced from a published example, characterized on synthetic data, or covered by regression and specification tests only. For example, EDDI is compared with NOAA PSL reference values, SPEI with SPEIbase and the R `SPEI` package, and the standard Palmer indices with NOAA NCEI nClimDiv. The flood family and SPAI have no matched observed-input reference yet. On synthetic inputs, the tests compare the Antecedent Precipitation Index (API) recurrence with the R package `ahrapi`.
 
 The optional Rust backend has a separate check. A parity registry runs each ported kernel through the Rust extension and the Python implementation on generated inputs and compares the results within a stated tolerance. See [Architecture](docs/architecture.md#parity-tolerance).
 

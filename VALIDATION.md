@@ -339,7 +339,8 @@ compound event catalog. The Swedish summer reproduction above uses declared
 indicators and the source's inclusive thresholds, not this route's probability
 thresholds. A synthetic integration case in `tests/test_compound_reference_fixture.py`
 uses 1–5 June 2000 with strict thresholds `heat > 0.8` and `drought < 0.2`.
-It excludes threshold ties and the day with a missing drought probability.
+Values equal to a threshold do not count as events for that hazard, but those days remain eligible.
+Only the day with a missing drought probability is ineligible.
 Four eligible days give exact marginal counts 2 and 1, one joint day,
 dimensionless joint probability `1/4`, and LMF `2`. These are hand counts,
 not real-world event rates, tests of probability calibration, or significance.
