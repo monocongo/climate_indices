@@ -659,16 +659,22 @@ def _draw_uniforms(
 
 
 def _simulate(
-    distribution: Distribution, uniforms: np.ndarray, p: dict[str, np.ndarray], resolution: float | None
+    distribution: Distribution,
+    uniforms: np.ndarray,
+    p: dict[str, np.ndarray],
+    resolution: float | None,
+    origin: float = 0.0,
 ) -> np.ndarray:
     """Draw from the fitted mixed distribution by inverting its CDF at ``uniforms``.
 
     A zero-mass family returns an exact zero where ``u <= p0`` and otherwise the continuous quantile
     at ``(u - p0) / (1 - p0)``, so the zero mass is part of every simulated sample. A ``resolution`` rounds the draws
-    to that unit, which gives the simulated sample the observed record's tie structure. The library fits p0 on the
-    rounded record, so p0 already counts the values that rounded to zero: a positive draw that rounds to zero would add
-    zeros beyond p0, and is set to ``resolution`` instead. Every nonzero value is then at least ``resolution``, as in
-    the observed record, and the simulated zero share stays p0.
+    to that unit, which gives the simulated sample the observed record's tie structure. The values lie on the lattice
+    ``origin + k * resolution``: the prepared SPEI sample carries an offset (``+1000`` per summed step), so its
+    multiples of the unit start at ``origin``, not at zero. The library fits p0 on the rounded record, so p0 already
+    counts the values that rounded to zero: a positive draw that rounds to zero or below would add zeros beyond p0, and
+    is set to the smallest positive lattice value instead. Every nonzero value is then at least that, as in the observed
+    record, and the simulated zero share stays p0.
     """
     with np.errstate(all="ignore"):
         if distribution in _ZERO_MASS_FAMILIES:
@@ -677,12 +683,13 @@ def _simulate(
             conditional = np.clip((uniforms - p0) / (1.0 - p0), _PIT_MARGIN, 1.0 - _PIT_MARGIN)
             draws = np.where(positive, _continuous_ppf(distribution, conditional, p), 0.0)
             if resolution is not None:
-                rounded = np.round(draws / resolution) * resolution
-                draws = np.where(positive & (rounded == 0.0), resolution, rounded)  # NOSONAR (S1244) an exact zero
+                lattice = np.round((draws - origin) / resolution) * resolution + origin
+                smallest = (origin % resolution) or resolution  # the least positive point of the lattice
+                draws = np.where(positive, np.where(lattice <= 0.0, smallest, lattice), 0.0)
         else:
             draws = _continuous_ppf(distribution, np.clip(uniforms, _PIT_MARGIN, 1.0 - _PIT_MARGIN), p)
             if resolution is not None:
-                draws = np.round(draws / resolution) * resolution
+                draws = np.round((draws - origin) / resolution) * resolution + origin
     result: np.ndarray = draws
     return result
 
@@ -728,6 +735,7 @@ def _bootstrap_p_values(
     n_bootstrap: int,
     seed: int,
     resolution: float | None,
+    origin: float = 0.0,
 ) -> tuple[dict[GofStatistic, np.ndarray], np.ndarray]:
     """Parametric-bootstrap p-values of the requested statistics and the share of failed refits.
 
@@ -751,7 +759,7 @@ def _bootstrap_p_values(
             if parameters is None:
                 continue
             expanded = {key: value[..., np.newaxis] for key, value in parameters.items()}
-            draws = _simulate(distribution, uniforms, expanded, resolution)
+            draws = _simulate(distribution, uniforms, expanded, resolution, origin)
             draws = np.where((valid & scored[position])[..., np.newaxis], draws, np.nan)
             statistics, succeeded_here = _refit_statistics(distribution, draws, period, periodicity)
             succeeded[position] += succeeded_here.sum(axis=-1)
@@ -1080,8 +1088,9 @@ def compare_distributions(
             samples, the right null only for an unrounded record. Sums of values rounded to a unit are multiples of
             it, so for SPI it is the record's unit; with ``aggregation="mean"`` the sample's unit is that divided by
             ``scale``, and a SPEI water balance has a unit only if precipitation and PET share one. A positive draw
-            that rounds to zero is set to ``resolution``, so the simulated zero share stays the fitted p0. Must be
-            positive and finite. Used only when ``n_bootstrap > 0``.
+            that rounds to zero is set to ``resolution``, so the simulated zero share stays the fitted p0. For ``"spei"``
+            the draws lie on ``1000 * scale + k * resolution``, the lattice of the prepared sample with its
+            ``+1000`` offset per summed step. Must be positive and finite. Used only when ``n_bootstrap > 0``.
         bh_adjust: Add Benjamini-Hochberg adjusted p-values across cells, apart for every candidate and
             step. It needs a cell axis, so a series without one raises.
         alpha: Significance level of ``rejection_share``, which counts cells with ``p <= alpha`` (a Monte-Carlo
@@ -1372,6 +1381,9 @@ def _compare_numpy(
                 n_bootstrap=n_bootstrap,
                 seed=bootstrap_seed,
                 resolution=resolution,
+                # SPEI sums `scale` water balances that each carry the +1000 of _spei_water_balance, so its sample
+                # lies on 1000 * scale + k * resolution
+                origin=1000.0 * scale if index == "spei" else 0.0,
             )
             not_run = np.full(ks_statistic.shape, np.nan)
             ks_p_bootstrap, ad_p_bootstrap = p_values.get("ks", not_run), p_values.get("ad", not_run)

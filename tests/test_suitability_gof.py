@@ -340,6 +340,19 @@ class TestBootstrap:
         assert (draws == 0).mean() > 0.2
         assert np.allclose(draws / 2.0, np.round(draws / 2.0))
 
+    def test_the_draws_lie_on_the_lattice_of_the_prepared_sample_not_on_multiples_of_the_unit(self):
+        # a SPEI sample of values recorded in 3s carries +1000 per step, so it lies on 1000 + 3k, not on 3k
+        uniforms = np.random.default_rng(3).uniform(size=(2000, 1))
+        p = {"loc": np.array([1000.0]), "scale": np.array([20.0]), "shape": np.array([0.0])}
+        draws = suitability._simulate(Distribution.loglogistic, uniforms, p, 3.0, origin=1000.0)
+        np.testing.assert_allclose((draws - 1000.0) / 3.0, np.round((draws - 1000.0) / 3.0), atol=1e-9)
+        assert not np.allclose(draws / 3.0, np.round(draws / 3.0))
+        # a zero-mass family keeps its exact zeros and puts a positive draw that rounds to zero on the least positive point
+        gamma = {"alpha": np.array([0.8]), "beta": np.array([3.0]), "prob_zero": np.array([0.15])}
+        shifted = suitability._simulate(Distribution.gamma, uniforms, gamma, 3.0, origin=1000.0)
+        assert (shifted == 0).mean() == pytest.approx((uniforms <= 0.15).mean(), abs=1e-12)
+        assert (shifted[shifted > 0] >= 1.0).all()  # 1000 % 3 = 1, the least positive point of 1000 + 3k
+
     def test_a_refit_with_a_value_beyond_its_support_fails_by_the_rule_of_an_observed_fit(self, monkeypatch):
         # a GEV with shape 0.5 ends at loc + scale / shape = 2: the second replicate holds a 5, which the likelihood
         # would score as zero, so that refit is a failed one and the first, wholly inside, is not
