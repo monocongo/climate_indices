@@ -193,6 +193,27 @@ def test_compound_api_reproduces_public_summer_reference(case: dict[str, Any]) -
         assert sources[name]["comparator"] == source_metadata[name]["comparator"]
 
 
+def test_probability_route_excludes_threshold_ties_and_incomplete_days() -> None:
+    dates = np.arange("2000-06-01", "2000-06-06", dtype="datetime64[D]")
+    hazards = compound.harmonize(
+        {"heat": np.array([0.9, 0.9, 0.8, 0.1, 0.9]), "drought": np.array([0.1, 0.2, 0.2, 0.8, np.nan])},
+        time={"heat": dates, "drought": dates},
+        cadence={"heat": "daily", "drought": "daily"},
+        input_scale={"heat": "probability", "drought": "probability"},
+        thresholds={"heat": 0.8, "drought": 0.2},
+        directions={"heat": "above", "drought": "below"},
+        target_cadence="daily",
+    )
+    result = compound.joint_statistics(hazards, groupby="pooled", min_samples=1)
+    # Eligible days: both, heat only, neither, neither. The last day is unknown.
+    assert int(result.n_valid) == 4
+    assert int(result.n_joint) == 1
+    np.testing.assert_array_equal(result.n_marginal, [2, 1])
+    assert float(result.joint_probability) == 0.25
+    assert float(result.independent_probability) == 0.125
+    assert float(result.likelihood_multiplication_factor) == 2.0
+
+
 def test_author_comparators_are_inclusive_and_do_not_mutate_inputs(preparation: dict[str, Any]) -> None:
     hwi = np.array([0.0, -0.1, 2.0, -2.0])
     spei = np.array([-1.0, -2.0, 0.0, 1.0])
