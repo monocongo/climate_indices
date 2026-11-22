@@ -4,7 +4,7 @@ Reads ``references.bib`` next to this file and refreshes ``references-verificati
 
 * An entry with a ``doi`` field is checked against the Crossref record for that DOI.
   The script records the fields read from Crossref and reports every disagreement about
-  the DOI, year, volume, number, pages, container or first author.
+  the DOI, year, volume, number, pages, title, container or first author.
 * An entry without a ``doi`` keeps the record already in the JSON: a human reads the
   publisher, agency or library page and writes ``record_url`` with ``record_states``.
   The script fails on a DOI-less entry that has no such record.
@@ -23,6 +23,7 @@ the test suite never touches the network.
 
 from __future__ import annotations
 
+import html
 import json
 import re
 import sys
@@ -72,10 +73,16 @@ def parse_bib(text: str) -> dict[str, dict[str, str]]:
     return entries
 
 
-def _letters(value: object) -> str:
-    """ASCII letters of a name, with LaTeX accent commands and combining marks removed."""
-    plain = unicodedata.normalize("NFKD", str(value))
-    return re.sub(r"[^A-Za-z]", "", plain).lower()
+def _plain(value: object) -> str:
+    """Compare key for a title, container or name: lower-case ASCII letters and digits only.
+
+    Drops HTML superscripts and tags, HTML entities, LaTeX commands and braces, accents and punctuation, so
+    ``Computers \\& Geosciences`` equals ``Computers &amp; Geosciences`` and ``{SPI}`` equals ``<scp>SPI</scp>``.
+    """
+    text = re.sub(r"<sup>.*?</sup>", "", str(value), flags=re.IGNORECASE | re.DOTALL)
+    text = html.unescape(re.sub(r"<[^>]+>", "", text))
+    text = re.sub(r"\\(?:[A-Za-z]+|.)", "", text)
+    return re.sub(r"[^a-z0-9]", "", unicodedata.normalize("NFKD", text).lower())
 
 
 def fetch(doi: str) -> dict[str, Any]:
@@ -160,12 +167,19 @@ def mismatches(key: str, entry: dict[str, str], record: dict[str, Any]) -> list[
         elif value.replace("--", "-") != str(recorded).replace("--", "-"):
             found.append(f"{key}: {bib_field} {value!r} != record {recorded!r}")
 
-    if record.get("container") and not (entry.get("journal") or entry.get("booktitle")):
-        found.append(f"{key}: no journal or booktitle for a record with a container")
-    family = _letters(record.get("first_author_family") or "")
+    if _plain(entry.get("title", "")) != _plain(record.get("title") or ""):
+        found.append(f"{key}: title {entry.get('title')!r} != record {record.get('title')!r}")
+
+    container = entry.get("journal") or entry.get("booktitle") or ""
+    recorded_container = record.get("container") or ""
+    if _plain(container) != _plain(recorded_container):
+        found.append(f"{key}: journal or booktitle {container!r} != record {recorded_container!r}")
+
+    family = _plain(record.get("first_author_family") or "")
+    first_author = _plain(entry.get("author", "").split(" and ")[0].split(",")[0])
     if not family:
         found.append(f"{key}: the record carries no first author")
-    elif not _letters(entry.get("author", "")).startswith(family[:5]):
+    elif first_author != family:
         found.append(f"{key}: first author differs from the record ({record.get('first_author_family')!r})")
     return found
 

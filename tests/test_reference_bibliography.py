@@ -105,3 +105,28 @@ def test_a_doi_less_entry_records_what_the_page_states(verification: dict[str, A
         assert len(record["record_states"]) > 40
         assert record["year"]
         assert record["checked"]
+
+
+@pytest.mark.parametrize(
+    ("key", "field", "value", "expected"),
+    [
+        ("spade2020", "title", "Unrelated text about something else", "title"),
+        ("guttman1999", "journal", "Nature", "journal or booktitle"),
+        ("guttman1999", "author", "Guttmann, Nathaniel B.", "first author"),
+        ("allen2025", "author", "Allender, Sam and Otero, Noelia", "first author"),
+        ("carbone2018", "author", "Carbonell, Gregory J. and Lu, Junyu", "first author"),
+    ],
+)
+def test_a_substantive_change_is_reported(
+    bibliography: dict[str, dict[str, str]],
+    verification: dict[str, Any],
+    verifier: ModuleType,
+    key: str,
+    field: str,
+    value: str,
+    expected: str,
+) -> None:
+    """A wrong title, container or first-author family name no longer certifies."""
+    entry = {**bibliography[key], field: value}
+    problems = cast(Any, verifier).mismatches(key, entry, verification["entries"][key])
+    assert any(expected in problem for problem in problems), problems
