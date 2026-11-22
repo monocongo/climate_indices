@@ -29,6 +29,16 @@ def test_generic_curve_regions_and_exact_boundaries(dtype: Any) -> None:
     np.testing.assert_array_equal(result[[0, 1, 2, 6, 7, 8, 9]], [0, 0, 0, 1, 1, 0, 0])
 
 
+def test_mean_capacity_factor_uses_each_hour_before_averaging() -> None:
+    wind_m_s = np.array([3.5, 13, 25, np.nan])
+
+    hourly = energy.wind_capacity_factor(wind_m_s, "generic")
+
+    np.testing.assert_array_equal(hourly, [0, 1, 0, np.nan])
+    assert float(np.nanmean(hourly)) == 1 / 3
+    assert float(energy.wind_capacity_factor(float(np.nanmean(wind_m_s)), "generic")) == 1.0
+
+
 def test_curve_boundary_neighbors() -> None:
     wind = np.array([np.nextafter(3.5, 0), np.nextafter(3.5, 13), np.nextafter(13, 0), np.nextafter(25, 0), 25])
     result = energy.wind_capacity_factor(wind, "generic")

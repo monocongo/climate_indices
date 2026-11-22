@@ -1029,7 +1029,12 @@ def spi(
         zeros, so the modes' mean properties are approximate there. A
         normal-scale result is still clipped to [-3.09, 3.09]. On the probability
         and bounded scales both non-classic modes place a zero at ``p0 / 2``.
-        See ADR-0015.
+        See ADR-0015. A zero accumulation is an observation, not missing data.
+        For an unfitted calendar step, a positive accumulation has no score
+        unless the existing Pearson-to-gamma fallback supplies a valid fit.
+        Pearson logs fit failures; an isolated failed step need not trigger
+        the whole-block fallback. Gamma can still score zero accumulations
+        from their estimated mass when the positive sample has no spread.
     :return: SPI values fitted to the gamma distribution at the specified time
         step scale, unitless
     :rtype: 1-D numpy.ndarray of floats of the same length as the input array

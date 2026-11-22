@@ -1,8 +1,8 @@
 # Flood reference status
 
-No numeric oracle artifact is committed here, so this directory intentionally
-has no `provenance.json`. The schema applies when an external reference dataset
-is added. `tests/test_flood_reference.py` asserts the selected Eq. (2) identity,
+`api.csv` compares the API recurrence against R `ahrapi` on synthetic inputs.
+No numeric reference is committed for PE, EDI, or I_F.
+`tests/test_flood_reference.py` asserts the selected Eq. (2) identity,
 its endpoint weights, and the API closed form. The paper's candidate identities
 are recorded here to make the ADR-0014 selection explicit:
 
@@ -17,13 +17,33 @@ are recorded here to make the ADR-0014 selection explicit:
 These are specification-level contract checks, not external scientific
 validation or implementation-generated regression vectors.
 
+## API vector comparison
+
+The eight daily inputs in mm come from the example in the pinned `R/compute_api.R`
+linked in `provenance.json`. The days are consecutive and synthetic, so there
+are no calendar dates. The initial state is zero. There is no spin-up,
+calibration, or missing precipitation. Both implementations use `k=0.95`.
+Use R 4.6.2 and save the pinned file as `compute_api.R`. Run:
+
+```sh
+Rscript --vanilla -e 'source("compute_api.R"); p <- c(0, 0, 5, 2, 0, 0, 1, 0); a <- compute_api(p, k=0.95, initial=0); cat("precipitation_mm,api_mm\n"); cat(sprintf("%.17g,%.17g\n", p, a), sep="")' > api.csv
+```
+
+The source SHA-256 is `709d5ba42393130b2e899b9ee9ae4ca57204591114bc7f201ac3a678e4d1a86e`.
+The 17 significant digits preserve binary64 values on read-back. The `1e-14` mm
+absolute tolerance allows about eleven ulps at the maximum API of about 6.79 mm.
+This allows rounding differences from eight recurrence steps, not a method change.
+The fixture contains only numbers, not the MIT-licensed R code. The test does not
+require R or network access. The R grid route treats missing rain as zero and
+is not a reference for this library's gap policy.
+
 ## Deferred numeric oracles
 
 | Index | Needed before committing an oracle |
 | --- | --- |
 | PE / EDI | Reconstruct the paper's 113-station High Plains subset and 100 km substitution rule; pin the 30-year MEP window within the 1960–1996 record; resolve AMS reuse terms. The published Table 5 uses variable-duration EDI, not the fixed-window public contract. |
 | I_F | Retrieve Deo et al. (2015) or Byun and Jung (1998), obtain reproducible rainfall inputs, and confirm reuse terms. The 2014 USQ conference paper is another retrieval path. |
-| API | Retrieve the remaining Kohler and Linsley (1951) pages and confirm whether they contain reproducible numeric values. The pages currently held are definitional only. |
+| API | Retrieve the remaining Kohler and Linsley (1951) pages to check for published numeric values. The R comparison does not establish agreement on observed inputs or validate flood prediction. |
 
 Any future artifact must add schema-valid `provenance.json` metadata and must
 not be generated from `climate_indices` output.
