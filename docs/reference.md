@@ -933,8 +933,8 @@ record edge or an unknown step are counted as censored, because their physical o
 censored run still takes part in the counts like any other, so an event extending past the record can be
 scored as a miss or a false alarm. Every ratio is a point estimate with no interval.
 `category_agreement` returns the exact and within-one shares of two `drought_category` classifications over
-the pairs where both are present, the two definitions the Earth Engine pilot uses. It takes NumPy arrays
-only and rejects a `DataArray`, which would otherwise be compared position by position and lose its labels.
+the pairs where both are present, the two definitions the Earth Engine pilot uses. It rejects an xarray
+`DataArray`, which would otherwise be compared position by position and lose its labels.
 
 ```{eval-rst}
 .. automodule:: climate_indices.suitability
