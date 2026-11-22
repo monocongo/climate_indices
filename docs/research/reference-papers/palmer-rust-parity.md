@@ -2,7 +2,7 @@
 
 **Ticket:** REFIMPL-34, [#1636](https://github.com/monocongo/climate_indices/issues/1636). **Map:** [#1602](https://github.com/monocongo/climate_indices/issues/1602).
 **Pinned version:** `380aa01f` (`origin/main`, 2026-11-21).
-**Status:** The study measured macOS arm64. The other four platforms remain unmeasured. Commit `eb710e28` records the original plan. See D1–D7 for differences between that plan and this record. Reproduce with `uv run python scripts/measure_palmer_parity.py measure --out parity.json` (about 25 seconds on four workers) and `CLIMATE_INDICES_REQUIRE_NATIVE=1 uv run pytest tests/test_native_parity_palmer.py`; without `uv run maturin develop --release`, or without that variable, the test module skips rather than fails.
+**Status:** The study measured macOS arm64. The other four platforms remain unmeasured. Commit `eb710e28` records the original plan. See D1–D7 for differences between that plan and this record. Reproduce with `uv run python scripts/measure_palmer_parity.py measure --out parity.json` (about 25 seconds on four workers) and `CLIMATE_INDICES_REQUIRE_NATIVE=1 uv run pytest tests/test_native_parity_palmer.py`. `uv run maturin develop --release` builds the extension that the tests need, and the tests run whenever it is present. `CLIMATE_INDICES_REQUIRE_NATIVE=1` makes a missing extension fail instead of skip the module.
 
 ## Question
 
