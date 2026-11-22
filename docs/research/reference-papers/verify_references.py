@@ -55,6 +55,8 @@ def parse_bib(text: str) -> dict[str, dict[str, str]]:
             continue
         match = ENTRY.match(stripped)
         if match:
+            if key is not None:
+                raise ValueError(f"{key}: entry is not closed before the next entry starts")
             new_key = match.group(2).strip()
             if new_key in entries:
                 raise ValueError(f"duplicate bibliography key: {new_key}")
@@ -70,6 +72,8 @@ def parse_bib(text: str) -> dict[str, dict[str, str]]:
         if not field:
             raise ValueError(f"{key}: unparsed line {line!r}; write one field per line with its value on that line")
         entries[key][field.group(1).lower()] = field.group(2).strip()
+    if key is not None:
+        raise ValueError(f"{key}: entry is not closed at the end of the file")
     return entries
 
 
@@ -91,7 +95,7 @@ def fetch(doi: str) -> dict[str, Any]:
         CROSSREF + urllib.parse.quote(doi), headers={"User-Agent": USER_AGENT, "Accept": "application/json"}
     )
     try:
-        with urllib.request.urlopen(request, timeout=60) as response:  # noqa: S310 - fixed https endpoint
+        with urllib.request.urlopen(request, timeout=60) as response:  # noqa: S310  # nosec B310 # fixed https endpoint
             message = json.load(response)["message"]
     except (OSError, ValueError, KeyError) as error:
         raise RuntimeError(f"Crossref lookup for {doi} failed") from error
@@ -111,6 +115,7 @@ def _date(record: dict[str, Any], field: str) -> str | None:
 def summarise(record: dict[str, Any], checked: str) -> dict[str, Any]:
     """Keep the fields the bibliography is checked against."""
     authors = record.get("author") or []
+    container = (record.get("container-title") or [None])[0]
     return {
         "check": "crossref",
         "doi": record["DOI"],
@@ -118,7 +123,7 @@ def summarise(record: dict[str, Any], checked: str) -> dict[str, Any]:
         "first_author_family": authors[0].get("family") if authors else None,
         "issued": _date(record, "issued"),
         "published_print": _date(record, "published-print"),
-        "container": (record.get("container-title") or [None])[0],
+        "container": html.unescape(container) if container else None,
         "volume": record.get("volume"),
         "issue": record.get("issue"),
         "pages": record.get("page") or record.get("article-number"),
@@ -153,6 +158,8 @@ def mismatches(key: str, entry: dict[str, str], record: dict[str, Any]) -> list[
         found.append(f"{key}: doi {doi!r} != record {record.get('doi')!r}")
 
     # A journal issue prints in its volume year, which can follow the online-first date.
+    if record.get("cited_year") and not record.get("note"):
+        found.append(f"{key}: cited_year overrides the Crossref date without a note saying why")
     printed = record.get("cited_year") or record.get("published_print") or record.get("issued") or ""
     year = entry.get("year", "")
     if str(printed)[:4] != year:

@@ -130,3 +130,27 @@ def test_a_substantive_change_is_reported(
     entry = {**bibliography[key], field: value}
     problems = cast(Any, verifier).mismatches(key, entry, verification["entries"][key])
     assert any(expected in problem for problem in problems), problems
+
+
+def test_a_cited_year_override_needs_a_note(
+    bibliography: dict[str, dict[str, str]], verification: dict[str, Any], verifier: ModuleType
+) -> None:
+    """A manual cited_year with no explanatory note does not certify."""
+    record = {**verification["entries"]["allen2025"]}
+    record.pop("note", None)
+    problems = cast(Any, verifier).mismatches("allen2025", bibliography["allen2025"], record)
+    assert any("cited_year" in problem for problem in problems), problems
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "@article{a,\n  title = {One},\n@article{b,\n  title = {Two},\n}\n",
+        "@article{a,\n  title = {One},\n",
+    ],
+    ids=["next-entry-starts-first", "end-of-file"],
+)
+def test_an_unclosed_entry_is_rejected(verifier: ModuleType, text: str) -> None:
+    """An entry with no closing brace is a malformed bibliography."""
+    with pytest.raises(ValueError, match="not closed"):
+        cast(Any, verifier).parse_bib(text)
