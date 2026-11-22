@@ -697,11 +697,13 @@ computation stage against numbers printed in Research Paper No. 45, a source old
 software lineage. One-month water-balance steps from the printed state agree within one print
 unit (0.01 in) except three months (1933-08, 1934-05, 1934-07; at most 0.0201 in); CAFEC
 coefficients follow from Table 2's rounded means in 91 of 92 testable cases (western Kansas May
-beta is 0.0007 outside the rounding interval); K normalization, P-hat, d and Z agree within
-propagated print rounding (the paper's printing errors are itemized in
-`tests/fixture/palmer_literature/README.md`); and the `pdsi()` recursion reproduces Table 12's printed X within 0.02
-in 32 of 40 months, the other eight following from three arithmetic inconsistencies in the print
-(repairing them from the print's own arithmetic brings every month within 0.02). The Wells recursion
+beta is 0.0007 outside the rounding interval); and K normalization, P-hat, d and Z agree within
+propagated print rounding. Equation 26 for K' is the exception: central Iowa December measures
+0.0158 against a bound of 0.0131, and its cause is not established. The paper's printing errors
+are itemized in `tests/fixture/palmer_literature/README.md`. The pdi.f-lineage recursion used by
+`pdsi()` reproduces Table 12's printed X within 0.02 in 32 of 40 months. The other eight follow
+from three arithmetic inconsistencies in the print, and repairing them from the print's own
+arithmetic brings every month within 0.02. The Wells recursion
 used by `scpdsi()` differs from the printed X in 7 further months where `pdi.f` agrees, all from
 its 0.5 establishment threshold where Palmer's example and `pdi.f` use 1. This is stage-level evidence on printed
 excerpts, not a full-series validation, and it does not change the classification above.

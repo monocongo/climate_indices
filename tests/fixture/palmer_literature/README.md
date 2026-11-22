@@ -57,7 +57,7 @@ All were re-read at 600 dpi: the CSV matches the page.
 | Table 4, April 1934, columns 8 and 9 | gamma PRO = 0.26, delta PL = 0.06 | gamma PRO = 0.0359 x 1.65 = 0.06; delta PL = 0.2688 x 0.95 = 0.26. `P-hat = 2.43` only holds with the two values swapped | Columns 8 and 9 are transposed in the print for that row. `P-hat`, `d`, `z`, `Z` are consistent. |
 | Table 9, western Kansas, April and May, row K | 1.38 (April), 1.54 (May) | `17.67 K' / 15.41` gives 1.54 (April), 1.38 (May), which is also what Table 3 column 7 prints | The K values for April and May are transposed in Table 9. Table 3 is used as the reference. Table 4's Z values agree with Table 3. |
 | Table 9, western Kansas, February, row D-bar K' | blank | `0.43 x 1.92 = 0.83` | One illegible/omitted cell, left empty. |
-| Table 12, June 1889, X1 | 1.10 | X1 (May) 0.95 + dX1 0.25 = 1.20 | X1 and X3 carry 1.10 forward, so the printed X3 from June 1889 onward is 0.10 below the printed recursion's own arithmetic (decaying by 0.897 a month). |
+| Table 12, June 1889, X1 | 1.10 | X1 (May) 0.95 + dX1 0.25 = 1.20 | X1 and X3 carry 1.10 forward, so the printed X3 from June 1889 onward is 0.10 below the value the corrected X1 gives (an offset decaying by 0.897 a month). |
 | Table 12, June 1890, Z | -2.92 | Z/3 prints -0.94, i.e. Z = -2.82; the printed dX2 (-0.84) is consistent with -0.94 | The Z column and Z/3 column disagree. |
 | Table 12, July 1891, Z | 4.22 | Z/3 prints 1.74, i.e. Z = 5.22; printed dX3 (1.46) and X3 (4.21) are consistent with 1.74 | The Z column and Z/3 column disagree. |
 
@@ -67,7 +67,8 @@ A tolerance is set by print precision, never by what makes a test pass. The
 half-unit of a printed quantity is 0.005 for two decimals and 0.00005 for four.
 Where a library result is built from several rounded printed inputs, the bound is
 the sum of the half-units of each input weighted by its coefficient (worst-case
-propagation, computed in the test).
+propagation, computed in the test for the H2, H3 and H4 bounds). The audit identity
+tolerance is one print unit (0.01) plus 0.0005 for accumulated floating-point error.
 
 | Stage | Library code | Hypothesis | Tolerance |
 | --- | --- | --- | --- |
@@ -95,8 +96,8 @@ rounding that the paper itself documents, and one count was mis-stated; the tole
 
 * H4: Table 4's footnote says column 10 is `col 6 + col 7 + col 8 - col 9`, so the printed
   P-hat is the sum of four products each rounded to 0.01. The first-run bound left those four
-  roundings out and P-hat for June 1933 missed it by 0.003; the committed bound adds
-  `4 x 0.005`. The audit already confirms the footnote holds.
+  roundings out, so June 1933 measured 0.0142 against 0.0066 and missed by 0.0076; the committed
+  bound adds `4 x 0.005`. The audit already confirms the footnote holds.
 * H2: the number of coefficient-months whose interval is defined is 92 (not the 93 first
   written down).
 
@@ -104,7 +105,7 @@ rounding that the paper itself documents, and one count was mis-stated; the tole
 
 | Stage | Outcome |
 | --- | --- |
-| H1 water balance | One month from the printed start state: reproduced within 0.01 in in 33 of 36 months. 1933-08 (0.012), 1934-05 (0.0201) and 1934-07 (0.0124) are not. Print rounding of P, PE, Ss and Su explains 1933-08 but not 1934-05 (bound 0.016) and only just misses 1934-07 (0.0115). In all three the printed loss is smaller than `(PE - P) S'u / AWC` computed from the printed values; cause not established. Carrying the library's own state over the 36 months drifts from the print by up to 0.0286 (S'u, July 1934), as expected when 72 inputs are rounded to 0.01. |
+| H1 water balance | One month from the printed start state: reproduced within 0.01 in in 33 of 36 months. 1933-08 (0.012), 1934-05 (0.0201) and 1934-07 (0.0124) are not. Print rounding of P, PE, Ss and Su explains 1933-08 but not 1934-05 (print-rounding bound 0.016) and only just misses 1934-07 (print-rounding bound 0.0115). In all three the printed loss is smaller than `(PE - P) S'u / AWC` computed from the printed values; cause not established. Carrying the library's own state over the 36 months drifts from the print by up to 0.0286 (S'u, July 1934), as expected when 72 inputs are rounded to 0.01. |
 | H2 coefficients | 91 of 92 testable Table 3 values lie inside the interval implied by Table 2's rounded means (75 of the 92 intervals are narrower than 0.02, so informative). Western Kansas May beta prints 0.1155; R = 0.38 and PR = 3.36 allow at most 0.1148. |
 | H3 K normalization | Reproduced for both regions within the propagated bound (largest difference 0.0053, western Kansas). Equation 26 for K' from Table 2's means and Table 9's D-bar holds in 23 of 24 months; central Iowa December prints 1.55 where the means give 1.566 (0.016 against a bound of 0.013). |
 | H4 P-hat, d, Z | Reproduced for all 36 months within the propagated bound (largest differences: P-hat 0.0142, d 0.0142, Z 0.0272). |
@@ -112,15 +113,17 @@ rounding that the paper itself documents, and one count was mis-stated; the tole
 | H6 X, Wells lineage | Differs from the printed X in 7 further months where pdi.f agrees (1889-02 to 1889-05, 1890-01 to 1890-03). Switching only the establishment threshold in a copy of the pdi.f recursion (mechanism E of #1631) reproduces the Wells series exactly on this input. |
 
 Limits of the transcription audits: they catch gross slips, not last-digit ones (a 0.01 error
-goes unnoticed in most Table 1 and Table 4 cells), and some columns are only partly constrained:
-Table 3 column `k` for central Iowa (no printed d to test it against), Table 4 `pro_in` and, for
-the most part, `pr_in` (gamma and beta are small), and Table 12 `v`, `pe_pct` and the X1/X2/X3
-cells printed as 0. For those the guard is the blind second pass and the checksum. The Table 12
-count of 32 matching months depends on the 0.02 tolerance: November and December 1890 (0.016,
-0.0197) are inside it and October 1890 (0.0210) is not.
+goes unnoticed in most Table 1 and Table 4 cells). Some columns are unconstrained or only
+partly constrained: `t_f` in Tables 1 and 2, Table 1's `delta_ss_in` and `delta_su_in`
+(audited only as their sum), Table 3 column `k` for central Iowa (no printed d to test it
+against), Table 4 `pro_in` and, for the most part, `pr_in` (gamma and beta are small), and
+Table 12 `v`, `pe_pct` and the X1/X2/X3 cells printed as 0. For those the guard is the blind
+second pass and the checksum. The Table 12 count of 32 matching months depends on the 0.02
+tolerance: November and December 1890 (0.016, 0.0197) are inside it and October 1890 (0.0210)
+is not.
 
 Not tested: Table 9 Equation 26 produces K' only inside the library's calibration loop, so
 the library is exercised for the normalization step (D-bar injected), not for K' itself.
-The coefficient intervals are uninformative where a printed mean is 0.05 or below (for
-example western Kansas January alpha), so a transcription slip there is caught by the
-checksum, not by H2.
+Seventeen of the 92 coefficient intervals are wider than 0.02 (the test's `informative`
+counter pins the other 75), so a last-digit transcription slip in those cells is caught by
+the checksum, not by H2.

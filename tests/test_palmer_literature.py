@@ -3,16 +3,19 @@
 The numbers are transcribed from Tables 1, 2, 3, 4, 9 and 12 of Palmer, W. C. (1965),
 *Meteorological Drought*, U.S. Weather Bureau Research Paper No. 45, in
 ``tests/fixture/palmer_literature/``. The tolerances, the hypotheses and the printing
-inconsistencies found in the paper are described in that directory's README; they were
-committed before any library comparison was run.
+inconsistencies found in the paper are described in that directory's README. They were
+committed before any library comparison was run; the README records the two corrections made
+after the first run, and the 0.01 and 0.02 tolerances did not change.
 
-Two kinds of test live here:
+Three kinds of test live here:
 
 * *Audits* use the printed numbers alone. They protect the transcription and establish
   which printed cells are inconsistent with their own neighbours; no library code runs.
 * *Stage tests* feed the printed inputs of one stage to the library function that owns
   that stage and compare with the printed outputs. A bound is the sum of the half-units of
   every rounded printed quantity that enters the result, weighted by its coefficient.
+* A *fixture-integrity* test hashes the six CSVs and compares the digest with
+  ``provenance.json``; it guards the cells that no audit constrains.
 
 Where the library does not reproduce the print, the test pins the measured deviation and
 states its cause or that none was established; no tolerance is widened to make a month pass.
@@ -320,8 +323,9 @@ _WATER_BALANCE_COLUMNS = (
 # One month of the water balance from the printed start state: months where the library differs
 # from the print by more than one print unit even from the printed state, with the measured
 # deviation. Print rounding of P, PE, Ss and Su explains 1933-08 but not 1934-05 (0.0201 against
-# a propagated bound of 0.016) and only just misses 1934-07; in each, the printed loss is smaller
-# than (PE - P) S'u / AWC with the printed values. Logged in the discrepancy ledger (#1626).
+# a print-rounding bound of 0.016) and only just misses 1934-07 (0.0124 against 0.0115); in each,
+# the printed loss is smaller than (PE - P) S'u / AWC with the printed values. Logged in the
+# discrepancy ledger (#1626).
 _WATER_BALANCE_EXCEEDS = {(1933, 8): 0.012, (1934, 5): 0.0201, (1934, 7): 0.0124}
 
 
@@ -371,7 +375,9 @@ def test_h1_water_balance_carrying_the_library_state_stays_within_print_rounding
     }
     assert all(np.isfinite(values).all() for values in library.values())
     worst = max(float(np.abs(values.reshape(-1) - _col(rows, name)).max()) for name, values in library.items())
-    assert 0.02 < worst < 0.03
+    # A ceiling, not a tolerance: the measured maximum is 0.0286 (S'u, July 1934). Less drift is an
+    # improvement and must not fail this validation test.
+    assert worst < 0.03
     # PRO is the soil moisture at the start of the month: the previous month's printed S.
     np.testing.assert_allclose(prepared.spdat.reshape(-1)[1:], _col(rows, "s_in")[:-1], atol=0.03)
 
@@ -381,6 +387,27 @@ def _ratio_interval(numerator: float, denominator: float) -> tuple[float, float]
     if denominator - HALF_2DP <= 0:
         return None
     return max(numerator - HALF_2DP, 0.0) / (denominator + HALF_2DP), (numerator + HALF_2DP) / (denominator - HALF_2DP)
+
+
+def test_h2_cafec_coefficients_apply_the_zero_sum_conventions() -> None:
+    """`_calc_cafec_coefficients` wires the ratios and the printed zero-sum conventions.
+
+    The stage test below calls the ratio function directly, so it takes the conventions from the
+    test; this pins the production wiring: 1.0 when both sums of alpha, beta or gamma are zero, 0.0
+    for delta's, and 0.0 when only the denominator vanishes.
+    """
+    prepared = palmer._initialize_prepared(np.zeros(24), np.zeros(24), 10.0, 2000, 2000, 2001)
+    for name in ("etsum", "petsum", "rsum", "prsum", "rosum", "spsum", "tlsum", "plsum"):
+        setattr(prepared, name, np.zeros((12, 1)))
+    prepared.etsum[0], prepared.petsum[0] = 6.0, 24.0  # alpha = 0.25
+    prepared.rsum[1], prepared.prsum[1] = 0.0, 0.0  # both zero: 1.0
+    prepared.rosum[2], prepared.spsum[2] = 0.0, 5.0  # only the numerator is zero: 0.0
+    prepared.tlsum[3], prepared.plsum[3] = 0.0, 0.0  # delta's both zero: 0.0
+    palmer._calc_cafec_coefficients(prepared)
+    assert prepared.alpha[0, 0] == 0.25
+    assert prepared.beta[1, 0] == 1.0
+    assert prepared.gamma[2, 0] == 0.0
+    assert prepared.delta[3, 0] == 0.0
 
 
 def test_h2_cafec_coefficients_follow_from_the_printed_means() -> None:
@@ -452,7 +479,7 @@ def test_h3_k_factors_normalize_to_table_3(region: str, monkeypatch: pytest.Monk
 
 
 def test_h4_cafec_precipitation_d_and_z_for_western_kansas(python_path: None) -> None:
-    """Table 4: from printed PE, PR, PRO, PL, P and Table 3's coefficients and K, the library's P-hat, d and Z."""
+    """Table 4: from printed PE, PR, PRO, PL, P and Table 3's coefficients and K, the library's P-hat and Z."""
     coefficients = _region(_rows("table3_coefficients.csv"), "western_kansas")
     prepared = palmer._initialize_prepared(np.zeros(48), np.zeros(48), 6.0, 1932, 1932, 1935)
     for name in ("alpha", "beta", "gamma", "delta"):
@@ -479,6 +506,8 @@ def test_h4_cafec_precipitation_d_and_z_for_western_kansas(python_path: None) ->
         summed_terms = 4 * HALF_2DP
         tag = _ym(row)
         assert abs(p_hat - value["p_hat_in"]) <= carried + summed_terms, tag
+        # The library returns no d: this composes it from P and the library's P-hat, so the printed
+        # identity above and the P-hat bound already imply the tolerance used here.
         assert abs(d_library - value["d_in"]) <= carried + summed_terms + 2 * HALF_2DP, tag
         z_bound = coef["k_weight"] * (carried + summed_terms + HALF_2DP) + abs(value["d_in"]) * HALF_2DP + HALF_2DP
         assert abs(float(z[year, month, 0]) - value["z_big_in"]) <= z_bound, tag
@@ -583,7 +612,13 @@ def test_h6_wells_recursion_differs_from_table_12_by_the_establishment_threshold
     assert spec is not None and spec.loader is not None
     script: ModuleType = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(script)
-    variant: Any = script.build_pdi_variant(("E",))
+    try:
+        variant: Any = script.build_pdi_variant(("E",))
+    except RuntimeError as error:  # the variant edits the library source text by design
+        raise AssertionError(
+            "scripts/characterize_palmer_recursion_divergence.py no longer matches the library "
+            f"source, so update its mechanism-E edits: {error}"
+        ) from error
     factors = DurationFactors.from_defaults()
     harmonized = variant.calculate(
         z.reshape(4, 12, 1), variant.PdiDurationFactors(factors.wetm, factors.wetb, factors.drym, factors.dryb)

@@ -131,6 +131,30 @@ class TestProvenanceChecksum:
             f"regenerate the checksum and update provenance.json."
         )
 
+    def test_palmer_literature_checksum_matches(self) -> None:
+        """Verify the Palmer (1965) table transcription matches provenance.json.
+
+        The six CSVs hold printed values rather than arrays, so they are hashed directly in
+        filename-sorted order. This runs unmarked so the transcription is guarded by the core
+        suite as well as by the validation run.
+        """
+        fixture_dir = FIXTURE_DIR / "palmer_literature"
+        provenance_path = fixture_dir / "provenance.json"
+        assert provenance_path.exists(), "palmer_literature provenance.json missing"
+
+        with provenance_path.open() as f:
+            provenance = json.load(f)
+
+        hasher = hashlib.sha256()
+        for table in sorted(fixture_dir.glob("table*.csv")):
+            hasher.update(table.read_bytes())
+        assert hasher.hexdigest() == provenance["checksum_sha256"], (
+            f"Palmer literature fixture checksum mismatch. "
+            f"Expected: {provenance['checksum_sha256']}, "
+            f"Actual: {hasher.hexdigest()}. "
+            f"Regenerate the checksum if the transcription was intentionally updated."
+        )
+
     def test_pet_literature_checksum_matches(self) -> None:
         """Verify PET literature fixture checksum matches provenance.json."""
         fixture_dir = FIXTURE_DIR / "pet_literature"
