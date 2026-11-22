@@ -64,7 +64,7 @@ of indices, or of a product against its own documentation. Six kinds of prior wo
 | Spade et al. (2020), *J. Appl. Meteor. Climatol.* (abstract; full text not read) | NCEI's published climate divisional SPI against SPI recomputed by the NOAA/NCEI method | 3- and 6-month September SPI for the U.S. climate divisions, 1931-2019 | Drought frequency is mischaracterised: the published SPI is biased toward or away from drought by region and its standard deviation differs from 1, because NCEI calibrates over a sliding 1895-2019 period instead of the cited fixed 1931-90 period; the authors recommend a fixed baseline | A product against its own documented procedure, not implementation against implementation |
 | Laimighofer and Laaha (2022), *J. Hydrol.* | Uncertainty components inside one standardized-index procedure | Precipitation and water-balance series | Distribution choice and observation window dominate; the estimator matters less (abstract as recorded in [`research-notes.md`](research-notes.md)) | A method study, not an implementation study |
 | Guttman (1999), *JAWRA* | Candidate distributions for the SPI | As summarised by Allen and Otero (2024) | Pearson III is preferred for its third parameter | A distribution argument, not a package comparison |
-| Stagge et al. (2015), *Int. J. Climatol.* | Candidate distributions for SPI and SPEI | As summarised by Allen and Otero (2024) | Weibull fits their monthly accumulations better than the alternatives | A distribution study, contested by a published comment and response; not a package comparison |
+| Stagge et al. (2015), *Int. J. Climatol.* | Candidate distributions for SPI and SPEI | 0.5° gridded Watch Forcing Dataset over Europe; abstract read | The two-parameter gamma is recommended for SPI across all accumulation periods and regions within Europe, and the generalized extreme value distribution for SPEI. The Weibull serves the short-accumulation group (1-2 months) only | A distribution study, contested by a published comment and response; the Weibull result covers short accumulations, not all of them |
 | Pieper et al. (2020), *HESS* | A universal SPI candidate distribution for observations and simulations | Not read | Not stated here; the title only | A distribution study, not a package comparison |
 
 The Palmer literature adds no implementation comparison beyond Jacobi et al. (2013). Dai (2011) and van der
@@ -88,11 +88,14 @@ metadata was verified and the content was not opened, so no content claim is mad
 - **Beguería et al. (2014).** The SPEI revisited: parameter fitting, evapotranspiration models, tools, datasets
   and drought monitoring. [`research-notes.md`](research-notes.md) records the abstract's recommendation of
   unbiased PWM. Not read in full.
-- **Stagge et al. (2015).** Candidate distributions for SPI and SPEI. Allen and Otero (2024) summarise its
-  result as the Weibull distribution fitting their monthly accumulations better than the alternatives. There is
-  a published comment by Vicente-Serrano and Beguería (2016, doi:[10.1002/joc.4474](https://doi.org/10.1002/joc.4474))
+- **Stagge et al. (2015).** Candidate distributions for SPI and SPEI on a European gridded dataset. The
+  abstract recommends the two-parameter gamma for SPI across all accumulation periods and regions within Europe,
+  and the generalized extreme value distribution for SPEI. It sorts the SPI candidates into a short-accumulation
+  group (1-2 months), which the Weibull serves, and a long-accumulation group. Allen and Otero (2024) summarise
+  only the SPI part, as the Weibull fitting monthly accumulations better than the alternatives. There is a
+  published comment by Vicente-Serrano and Beguería (2016, doi:[10.1002/joc.4474](https://doi.org/10.1002/joc.4474))
   and a response by Stagge et al. (2016, doi:[10.1002/joc.4564](https://doi.org/10.1002/joc.4564)), so any claim
-  drawn from it must say which side it rests on. Not read.
+  drawn from it must say which side it rests on. Abstract read; the full text was not.
 - **Laimighofer and Laaha (2022).** Uncertainty components for SPI and SPEI. The abstract, as recorded in
   [`research-notes.md`](research-notes.md), reports that the distribution choice and the observation window
   dominate while the estimator and the goodness-of-fit test matter little. This is the basis for the protocol's
@@ -237,10 +240,10 @@ A paper that states only those adds nothing.
 - **Publisher-blocked full texts.** Wiley returned 403 for Wells et al. (2004) in an earlier ticket. The AMS articles were not opened. Bibliographic fields are verified; content
   claims for the unopened works are carried from `research-notes.md` and are marked as carried.
 - **Pagination absent from the record.** Carbone et al. (2018) has no page range in Crossref or OpenAlex.
-- **Second-hand content.** The annotations for Guttman (1999), Stagge et al. (2015), McKee et al. (1993) and
-  Beguería et al. (2014) rest on statements in Allen and Otero (2024) or in `research-notes.md`; the Hoffmann et
-  al. (2020) annotation rests on its publisher abstract. Reading the originals would strengthen them and is worth
-  doing before submission.
+- **Second-hand content.** The annotations for Guttman (1999), McKee et al. (1993) and Beguería et al. (2014)
+  rest on statements in Allen and Otero (2024) or in `research-notes.md`; the Hoffmann et al. (2020) and Stagge et
+  al. (2015) annotations rest on their publisher abstracts. Reading the originals would strengthen them and is
+  worth doing before submission.
 - **A living source.** Vonk's comparison notebook is a web page with no archived snapshot and no version tag, so
   a later reader may see different content. Take a dated copy for `sources/external/` before any manuscript cites
   its numbers (REFIMPL-41).
