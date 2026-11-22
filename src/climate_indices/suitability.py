@@ -1490,9 +1490,9 @@ _FIELD_METADATA: dict[str, dict[str, str]] = {
         "long_name": "Kolmogorov-Smirnov statistic of the probability integral transform",
         "units": "1",
         "description": (
-            "Largest gap between the empirical distribution of the candidate's PIT over the positive calibration "
-            "values and the uniform distribution; exact zeros are left out for a family with a zero mass. NaN where "
-            "the candidate failed to fit."
+            "Largest gap between the empirical distribution of the candidate's PIT over the calibration values and the "
+            "uniform distribution; exact zeros are left out for a family with a zero mass. NaN where the candidate "
+            "failed to fit."
         ),
     },
     "ks_p_value_naive": {

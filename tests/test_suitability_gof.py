@@ -372,21 +372,53 @@ class TestBootstrap:
         for name, values in variants.items():
             np.testing.assert_array_equal(first_draws(values), expected, err_msg=name)
 
-    def test_simulated_samples_add_no_warning_or_log_event_of_their_own(self, capfd):
+    def test_simulated_samples_add_no_warning_or_log_event_of_their_own(self, monkeypatch):
         values = _gamma(20, 2, 2)
         values[:, 0, 0] = np.nan  # a cell with no value: its refits have an empty column
 
-        def run(**kwargs: Any) -> tuple[list[str], int]:
-            capfd.readouterr()
+        class Recorder:
+            """Stands in for the module logger, so the test does not depend on how logging is configured."""
+
+            def __init__(self) -> None:
+                self.events: list[str] = []
+
+            def bind(self, **_fields: Any) -> Recorder:
+                return self
+
+            def __getattr__(self, _level: str) -> Any:
+                return lambda event, **_kwargs: self.events.append(event)
+
+        def run(**kwargs: Any) -> tuple[list[str], list[str]]:
+            recorder = Recorder()
+            monkeypatch.setattr(compute, "_logger", recorder)
             with warnings.catch_warnings(record=True) as caught:
                 warnings.simplefilter("always")
                 _compare(values, spatial_time_major=True, candidates=GAMMA, **kwargs)
-            captured = capfd.readouterr()
-            return sorted(str(w.message) for w in caught), (captured.out + captured.err).count("distribution_fitting_")
+            return sorted(str(w.message) for w in caught), recorder.events
 
         without_bootstrap = run()
-        assert without_bootstrap[1] > 0  # the observed fit does log, so the count below means something
+        assert (
+            "distribution_fitting_started" in without_bootstrap[1]
+        )  # the observed fit logs, so the next line means something
         assert run(n_bootstrap=6, seed=1) == without_bootstrap
+
+    def test_the_empty_column_warning_stays_on_the_normal_path_and_is_dropped_in_a_refit(self, monkeypatch):
+        monkeypatch.setattr(
+            compute, "_native", None
+        )  # the native gamma fit does not warn; the Python one is under test
+        values = np.arange(1.0, 361.0).reshape(30, 12)
+        values[:, 0] = np.nan
+
+        def empty_slice_warnings() -> list[str]:
+            with warnings.catch_warnings(record=True) as caught, np.errstate(all="ignore"):
+                warnings.simplefilter("always")
+                compute.gamma_parameters(values, 1895, 1895, 1924, MONTHLY)
+            return [str(w.message) for w in caught if "Mean of empty slice" in str(w.message)]
+
+        assert empty_slice_warnings()  # the documented outcome for a column with no value
+        with compute._fit_warnings_suppressed():
+            assert not empty_slice_warnings()
+        assert empty_slice_warnings()
 
     def test_the_fit_warning_switch_is_scoped_to_its_thread(self):
         entered, release = threading.Event(), threading.Event()

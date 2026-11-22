@@ -2037,12 +2037,16 @@ def _native_hastings_inverse_normal(probabilities: np.ndarray) -> np.ndarray | N
 
 
 def _nanmean_axis0(values: np.ndarray) -> np.ndarray:
-    """``np.nanmean(values, axis=0)`` that gives NaN, not a RuntimeWarning, for a column with no value.
+    """``np.nanmean(values, axis=0)``, which warns "Mean of empty slice" for a column with no value.
 
-    ``warnings.catch_warnings()`` is the only way to silence ``np.nanmean``'s empty-slice warning, and it
-    mutates process-global filter state, so a concurrent spatial block could lose or leak a filter (see the
-    percentage-of-normal note in ``drought/indices.py``). The explicit count and sum give the same values.
+    The warning is the gamma fit's documented outcome for such a column (the native-parity tests pin it), so it
+    stays. Inside :func:`_fit_warnings_suppressed`, where a bootstrap refits simulated samples, it describes no real
+    series, and the only other way to silence it, ``warnings.catch_warnings()``, mutates process-global filter state
+    that a concurrent spatial block could lose or leak (see the percentage-of-normal note in ``drought/indices.py``).
+    There an explicit count and sum give the same values, and NaN for an empty column, with no warning.
     """
+    if _FIT_WARNINGS_ENABLED.get():
+        return np.asarray(np.nanmean(values, axis=0))
     counts = np.count_nonzero(~np.isnan(values), axis=0)
     return np.where(counts > 0, np.nansum(values, axis=0) / np.maximum(counts, 1), np.nan)
 

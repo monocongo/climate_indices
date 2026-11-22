@@ -138,8 +138,9 @@ Implementation decisions of SUIT-05 ([#1586](https://github.com/monocongo/climat
 - **No warnings or log events from simulated samples.** The library's calibration-quality and goodness-of-fit warnings, and the
   log events of its fitting functions, describe a real series, so a context variable (`compute._fit_warnings_suppressed`)
   turns them off for the refits. It is scoped to the calling thread or task, unlike `warnings.catch_warnings`, which would race
-  with concurrent Dask blocks. The gamma fit's `np.nanmean` empty-slice warning, which no context variable controls, is
-  replaced by an explicit count and sum.
+  with concurrent Dask blocks. The gamma fit's `np.nanmean` empty-slice warning, which no context variable controls, stays
+  as the documented outcome for a column with no value; inside the refits an explicit count and sum give the same means
+  without it.
 - **Across cells.** `rejection_share` and the Benjamini–Hochberg p-values are computed from the bootstrap p-value when one was
   run and otherwise from the naive K–S p-value. `rejection_share` counts cells with `p <= alpha`, the decision rule of a
   Monte-Carlo test, which has size exactly `alpha` when `(B_ok + 1) alpha` is an integer. The Benjamini–Hochberg family is
