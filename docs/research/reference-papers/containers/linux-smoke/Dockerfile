@@ -3,7 +3,8 @@
 # checks that each download uses its own locked hash. The build fails if a downloaded sdist or
 # CRAN tarball does not match its recorded sha256. Neither the Python transitive dependencies
 # nor the CRAN ones are pinned, and the two images and the apt packages are tag-pinned only:
-# the versions the image resolves are printed by run.sh and recorded in comparators.md.
+# the versions the image resolves are printed by run.sh and recorded in comparators.md. The
+# sdist and CRAN build backends run as the unprivileged smoke user, not as root.
 #
 #   docker build -t refimpl-linux-smoke docs/research/reference-papers/containers/linux-smoke
 #   docker run --rm --network none -v "$PWD/tests/fixture:/fixture:ro" refimpl-linux-smoke
@@ -15,12 +16,18 @@ FROM rocker/r-ver:4.6.2
 
 COPY --from=ghcr.io/astral-sh/uv:0.13.9 /uv /usr/local/bin/uv
 
+# The smoke user owns the install targets and /work, so the install-time code cannot write as root.
 USER root
 RUN apt-get update \
  && apt-get install -y --no-install-recommends ca-certificates curl git \
- && rm -rf /var/lib/apt/lists/*
+ && rm -rf /var/lib/apt/lists/* \
+ && useradd --create-home smoke \
+ && mkdir -p /opt/venvs /opt/python /opt/rlib /opt/PyETo /work \
+ && chown -R smoke /opt/venvs /opt/python /opt/rlib /opt/PyETo /work
 
 COPY fetch.sh /usr/local/bin/fetch.sh
+
+USER smoke
 
 # Python: one Python 3.12.16 venv per package. PyETo is pinned by commit (not on PyPI).
 ENV UV_PYTHON_INSTALL_DIR=/opt/python
@@ -71,7 +78,6 @@ RUN set -eu; mkdir -p /opt/rlib; \
     rm -f /tmp/*.tar.gz
 
 COPY inputs.py smoke_py.py smoke_r.R expected.tsv run.sh /smoke/
-RUN useradd --create-home smoke && mkdir /work && chown smoke /work
 USER smoke
 WORKDIR /work
 CMD ["sh", "/smoke/run.sh"]
