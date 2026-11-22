@@ -57,7 +57,7 @@ of indices, or of a product against its own documentation. Six kinds of prior wo
 
 | Work | What it compared | Data and scope | What it concluded | Limit for this project's novelty |
 | --- | --- | --- | --- | --- |
-| Jacobi et al. (2013), *Water Resour. Res.* | Their MATLAB Palmer tool against the NCDC Fortran | Palmer indices, checked on shared inputs | Discrepancies documented (abstract as recorded in [`research-notes.md`](research-notes.md); full text not readable here, Wiley returned 403) | One tool against one lineage, PDSI only, no pre-registered criteria and no per-axis attribution |
+| Jacobi et al. (2013), *Water Resour. Res.* | Their MATLAB Palmer tool against the NCDC Fortran | Monthly PDSI, 1895-2011, five climate divisions (AL-1, AZ-5, KS-5, WA-1, NY-2), against the published NCDC values | Two discrepancies, read in §11-13 of a local copy ([doi:10.1002/wrcr.20342](https://doi.org/10.1002/wrcr.20342)): the NCDC code uses a transformed Thornthwaite PET equation, and it adds an inch to AWC in the underlying-layer loss (changed by NCDC in April 2013). Their combined effect: mean RMSE 0.44, 2.75% opposite sign, 2.45% differing by more than one (Table 1) | One tool against one lineage, PDSI only, five divisions, no pre-registered criteria. It names both causes but reports only their combined effect; there is no per-cause decomposition |
 | Vonk's `spei` package comparison notebook (2023, read) | SPI 3-month from `spei`, `standard_precip`, `climate_indices`, R `SPEI`; SGI from `spei` and `pastas` | One station (DEBILT), monthly precipitation, one scale | "Difference is very small between SPEI and the standard_precip package"; the difference from R `SPEI` is attributed to gamma fitting as a hypothesis, and "more research is needed". The `climate_indices` cell is commented out because it could not be installed, and the R call fails in the published build | One station, one index, no reported number for `climate_indices`, no method-axis alignment, not peer reviewed |
 | Vremec et al. (2024), *GMD* (read) | Each PET method in `PyEt` against the R `Evapotranspiration` package (Guo et al.) and against published values | Method-by-method benchmarks, daily PET | Agreement is the benchmarking criterion, and each new method must ship benchmark data and tests | PET equations only: no drought index, no distribution or estimator axis, and no effect of PET choice on SPEI or PDSI output |
 | Allen and Otero (2024), *The R Journal* (read) | `SEI` positioned against `SCI`, `SPEI`, `standard-precip`, `spei`, `climate-indices`, `standaRdized` and `SPIGA` | Functional description of each package | Existing packages are limited in flexibility and assumptions; `SEI` is more general | Functional comparison, no numeric cross-package comparison and no per-axis attribution |
@@ -145,7 +145,7 @@ metadata was verified and the content was not opened, so no content claim is mad
   retrieve the full text (HTTP 403) and this session did not retry. `docs/algorithm_refs/palmer-provenance.md`
   records that REFIMPL-26 read a local copy, so the paper's content is cited there, not here.
 - **Jacobi et al. (2013).** The MATLAB tool, checked against the NCDC Fortran. The closest precedent for
-  manuscript 2. The publisher page returned 403, so the content claim is carried from `research-notes.md`.
+  manuscript 2. Read from a local copy; it names two causes but reports only their combined effect.
 - **Ficklin et al. (2015).** The Penman-Monteith PET method inside a Palmer tool. Not read. A precedent for the
   PET axis of manuscript 2, not for its provenance axis.
 - **Rhee and Carbone (2007).** Weekly monitoring methods of the Palmer index. Not read. The precedent the
@@ -234,8 +234,7 @@ A paper that states only those adds nothing.
 
 ## Not verified, and for the maintainer
 
-- **Publisher-blocked full texts.** Wiley returned 403 for Jacobi et al. (2013) in this session, and for Wells et
-  al. (2004) in an earlier ticket. The AMS articles were not opened. Bibliographic fields are verified; content
+- **Publisher-blocked full texts.** Wiley returned 403 for Wells et al. (2004) in an earlier ticket. The AMS articles were not opened. Bibliographic fields are verified; content
   claims for the unopened works are carried from `research-notes.md` and are marked as carried.
 - **Pagination absent from the record.** Carbone et al. (2018) has no page range in Crossref or OpenAlex.
 - **Second-hand content.** The annotations for Guttman (1999), Stagge et al. (2015), McKee et al. (1993) and

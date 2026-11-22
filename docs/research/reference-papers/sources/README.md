@@ -79,7 +79,7 @@ merges, those references point at a file not yet on `main`.
 | `sibada-scpdsi-0.1.3` | code | opened | no |
 | `heddinghaus-sabol-1991` | paper | not-opened | pending |
 | `karl-knight-1985` | paper | not-opened | pending |
-| `jacobi-2013` | paper | not-opened | pending |
+| `jacobi-2013` | paper | opened | pending |
 | `ncei-pdi-f` | code | located | pending |
 | `ncei-spi-f` | code | located | pending |
 | `ncei-soilcnst-asc` | data | located | pending |
