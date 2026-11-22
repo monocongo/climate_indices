@@ -129,6 +129,7 @@ Same numbers across platforms, backends, and chunkings; recorded parameters and 
 Wall time, peak resident memory, and throughput.
 
 - **Measure.** Wall-clock seconds for the computation only (input read and output write timed separately); peak resident set size in bytes (converting `ru_maxrss` for the platform); `series_per_s = n_series / wall_s` per run, and also cell-months per second where the input is a grid, as REFIMPL-23 ([#1625](https://github.com/monocongo/climate_indices/issues/1625)) reports.
+- **Process per memory measurement.** `ru_maxrss` is the highest value over a process's lifetime, so each timed run takes its peak in a fresh child process, from that process's own value. A peak measured in a shared process, or inherited from a warm-up or an earlier comparator, is not reportable.
 - **Repetition.** At least 3 timed runs after the warm-up call (a study may require more); report the median, minimum, and maximum. A cold start is timed separately when it is the object of study.
 - **Record.** Hardware (processor, core count, memory), operating system, thread settings, and whether the input was in memory or read lazily.
 - **No threshold.** Performance is described, not judged against a limit.
