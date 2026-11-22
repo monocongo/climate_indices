@@ -814,7 +814,7 @@ Read at: monocongo/climate_indices@98578c87.
 | accumulation | Sum over `scale` steps; a window holding a NaN is NaN; first scale-1 steps NaN<br>Option: Mean of the window (`standardized_index(aggregation='mean')`) [`src/climate_indices/CONTEXT.md:50`] | `src/climate_indices/compute.py:243-245`; `src/climate_indices/compute.py:309` |
 | calendar grouping | Calendar month (12) or day of year on a 366-column calendar, every year a leap year; Feb 29 interpolated in non-leap years | `src/climate_indices/CONTEXT.md:27-28`; `src/climate_indices/compute.py:724-725` |
 | calibration period | Required calibration_year_initial/final; parameters fit on that window, every year standardized against it; a window the record does not cover is clamped to the record (a window ending one year past it keeps its start) with CalibrationPeriodClampedWarning. The 30-year minimum raises InsufficientDataError only in the xarray adapter, for an in-memory single series containing NaN; the NumPy functions only warn (ShortCalibrationWarning) | `src/climate_indices/compute.py:699`; `src/climate_indices/_calibration_period.py:24`; `src/climate_indices/xarray_adapter.py:2056`; `src/climate_indices/compute.py:1249` |
-| distribution | Empirical (rank based); no distribution is fit | `src/climate_indices/compute.py:3248`; `src/climate_indices/compute.py:3399` |
+| distribution | Empirical (rank based); no distribution is fit | `src/climate_indices/compute.py:3255`; `src/climate_indices/compute.py:3405-3409` |
 | estimator | n/a: Non-parametric |  |
 | location offset | n/a: Non-parametric; accepts a signed series with clip_negatives=False |  |
 | zero handling | Zeros are ordinary ranks; no separate zero mass | `src/climate_indices/compute.py:3275-3277` |

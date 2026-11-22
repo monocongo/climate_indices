@@ -3779,11 +3779,11 @@
               "citations": [
                 {
                   "file": "src/climate_indices/compute.py",
-                  "lines": "3248"
+                  "lines": "3255"
                 },
                 {
                   "file": "src/climate_indices/compute.py",
-                  "lines": "3399"
+                  "lines": "3405-3409"
                 }
               ]
             },
