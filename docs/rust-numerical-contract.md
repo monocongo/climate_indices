@@ -34,11 +34,15 @@ outside what is listed.
   keeps IEEE semantics, and the build sets no `target-cpu`. FMA appears in the crate only
   in `special::mul_add` on aarch64 (`crates/climate-indices/src/special/mod.rs`).
 
-In the `pdi.f` recursion the entry test `z >= 0.15` duplicates the `pv` sign test that the
-abatement statement applies next, so at exactly `z == 0.15` the `pv` sign test decides the
-spell state. The Wells continuation test `direction * z >= 0.5 * slope` is not redundant:
-right after a spell ends, with `probability == 100`, a `z` exactly on the threshold restarts
-the spell and one ulp below continues the abatement, and a test pins that case.
+In the `pdi.f` recursion the entry test `z >= 0.15` is not equivalent to the `pv` sign test
+that the abatement statement applies next: statement 170 clamps the spell carry with
+`min(v, 0)`, so with a negative carry at exactly `z == 0.15` it continues the abatement where
+the entry test would reset prob(end) to 0. The study record therefore claims no equivalence
+for the two `pdi.f` threshold mutants, and its corpora did not catch them (see "Which
+boundaries are live"). The Wells continuation test `direction * z >= 0.5 * slope` is not
+redundant either: right after a spell ends, with `probability == 100`, a `z` exactly on the
+threshold restarts the spell and one ulp below continues the abatement, and a test pins
+that case.
 
 Cross-platform results for Linux (x86-64 and
 aarch64), macOS x86-64 and Windows come from `.github/workflows/palmer-reproducibility.yml`

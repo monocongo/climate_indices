@@ -2,7 +2,7 @@
 
 **Ticket:** REFIMPL-34, [#1636](https://github.com/monocongo/climate_indices/issues/1636). **Map:** [#1602](https://github.com/monocongo/climate_indices/issues/1602).
 **Pinned version:** `380aa01f` (`origin/main`, 2026-11-21).
-**Status:** The study measured macOS arm64. The other four platforms remain unmeasured. Commit `eb710e28` records the original plan. See D1–D7 for differences between that plan and this record. Reproduce with `uv run python scripts/measure_palmer_parity.py measure --out parity.json` (about 25 seconds on four workers) and `uv run pytest tests/test_native_parity_palmer.py`.
+**Status:** The study measured macOS arm64. The other four platforms remain unmeasured. Commit `eb710e28` records the original plan. See D1–D7 for differences between that plan and this record. Reproduce with `uv run python scripts/measure_palmer_parity.py measure --out parity.json` (about 25 seconds on four workers) and `CLIMATE_INDICES_REQUIRE_NATIVE=1 uv run pytest tests/test_native_parity_palmer.py`; without `uv run maturin develop --release`, or without that variable, the test module skips rather than fails.
 
 ## Question
 
@@ -50,7 +50,7 @@ H5 is a control: if H4 holds and H5 does not, the difference lies in NumPy or th
 
 ## Branch inventory
 
-Boundaries the engineered series target, from `_palmer_wells.py` and `_palmer_pdi.py` and their Rust mirrors `palmer_wells.rs` and `palmer_pdi.rs`:
+From `_palmer_wells.py` and `_palmer_pdi.py` and their Rust mirrors `palmer_wells.rs` and `palmer_pdi.rs`. The engineered series target the spell thresholds and the exact zeros directly; the probability bounds and clamps are state the series reach only through those:
 
 - Spell thresholds: `direction * z >= 0.5 * slope` (signed; `slope` is `wetm` or `drym`) in the Wells continuation, taken only when `probability` is 0 or 100; `x1 >= 0.5` and `x2 <= -0.5` in the Wells establishment; `|x3| <= 0.5`, `x3 > 0.5`, `x3 < -0.5` and `z >= 0.15`, `z <= -0.15` in the `pdi.f` month advance.
 - Probability bounds: `prob <= 0` and `prob >= 100` in `_pmdi`, the `abatement_underway` test (`probability` not 0 or 100) in `_continue_spell`, and `prob >= 100 - 1e-5` (`_TOLERANCE`) in `_abatement_transition`.
@@ -59,7 +59,7 @@ Boundaries the engineered series target, from `_palmer_wells.py` and `_palmer_pd
 
 ## Thresholds
 
-- **Measured maximum (H1):** The measurement checks whether the maximum absolute difference for each output is at most `1e-10`.
+- **Measured maximum (H1):** The measurement records the maximum absolute difference for each output and its sign and NaN-position mismatch counts; `tests/test_native_parity_palmer.py` enforces the bound (`0.0` on macOS arm64, `1e-10` elsewhere). A measurement-only run exits 0 even above `1e-10`.
 - **Test tolerance:** The tests use `assert_allclose`, which checks `|rust - python| <= atol + rtol * |python|`, with matching signs and NaN positions. The full-division tests use a single platform-wide tolerance: `rtol = atol = 0.0` on macOS arm64 and `1e-10` elsewhere. Boundary tests use `rtol = atol = 1e-10` on all platforms. The measurement reports separate maxima per output; these are not separate test thresholds.
 - **Cross-platform** (H4, H5): equality of the float64 bytes, no tolerance. A difference is a finding to attribute (fused multiply-add, the math library, NumPy), not a failure to hide.
 - **Branch flip:** any engineered or fixture case where the paths take a different branch, recorded in the REFIMPL-24 ledger ([#1626](https://github.com/monocongo/climate_indices/issues/1626)) with its cause and owner.
@@ -97,10 +97,10 @@ For `pdsi()` and `scpdsi()`, all four index arrays had maximum absolute and rela
 | Established spell, then a threshold value, one ulp either side, `pdi.f` | 384 triples | 26 | 0 |
 | Same, Wells | 384 triples | 30 | 0 |
 | The twelve minimal divergence sequences of REFIMPL-29 ([#1631](https://github.com/monocongo/climate_indices/issues/1631)) | 12, both recursions | n/a | 0 |
-| Wells, a spell terminated and a new one established in the same month, then `z` one ulp below, on, and one ulp above `0.5 * wetm` (wet and dry) | 2 triples | 2 | 0 |
+| Wells, a spell terminated and a new one established in the same month, then `z` one ulp below, on, and one ulp above `0.5 * wetm` (wet) or `0.5 * drym` (dry) | 2 triples | 2 | 0 |
 | Division 4002 with 8% of months and one whole year set to zero precipitation | `pdsi()`, `scpdsi()` | n/a | 0 |
 
-The random corpora use -0.0 (equal to 0), +-0.15, +-0.5, +-1 and one ulp either side. The spell corpora add thresholds computed from the default duration factors (`wetm = drym = 0.309`, `wetb = dryb = 2.691`): `0.5 * wetm`, `0.5 * (m + b)` and their multiples, so the wet and dry sides of those corpora are not independent. No Palmer-fitted factors with `wetm != drym` are exercised.
+The random corpora use -0.0 (equal to 0), +-0.15, +-0.5, +-1 and one ulp either side. The spell corpora add thresholds computed from the default duration factors (`wetm = drym = 0.309`, `wetb = dryb = 2.691`): `0.5 * wetm`, `0.5 * (m + b)` and their multiples, so the wet and dry sides of those corpora are not independent. The two spell-termination triples are exact negatives of each other for the same reason. No Palmer-fitted factors with `wetm != drym` are exercised.
 
 The outputs agreed within the test tolerance. In the Wells counts, all three runs of each counted triple returned results. These tests did not observe which branches ran, so H3 remains unverified.
 
@@ -131,4 +131,4 @@ H4 and H5 are open. `.github/workflows/palmer-reproducibility.yml` runs all five
 
 ### Sentence for the manuscript
 
-On macOS arm64, Rust and Python returned byte-identical outputs and fitted parameters for `pdsi()` and `scpdsi()` across 344 climate divisions. The tests found no output disagreement across 2,868 engineered boundary triples, 12 divergence sequences, two Wells spell-termination triples, or the zero-precipitation case. The tests did not compare internal branch decisions. The other four release targets remain unmeasured.
+On macOS arm64, Rust and Python returned byte-identical outputs and fitted parameters for `pdsi()` and `scpdsi()` across 344 climate divisions. The tests found no output disagreement across 2,868 engineered boundary triples, 12 divergence sequences, two mirrored Wells spell-termination triples, or the zero-precipitation case. The tests did not compare internal branch decisions. The other four release targets remain unmeasured.
