@@ -39,7 +39,7 @@ None of these is a finding yet. Each is a lead to confirm or refute at the pinne
 
 H2 and H3 state the original hypotheses. The tests observe the returned values, not the internal spell state or branch decisions. Output agreement alone cannot confirm the internal claims.
 
-H5 is a control: if H4 holds and H5 does not, the difference lies in NumPy or the platform math library, not in the Rust kernels.
+H5 is a control: if H4 holds and H5 does not, the Python outputs differ end to end across platforms. This does not identify which Python-path operation caused the difference. It also does not show that the Rust intermediate values are platform-invariant. Attribution needs further isolation.
 
 ## Method
 
@@ -59,7 +59,7 @@ From `_palmer_wells.py` and `_palmer_pdi.py` and their Rust mirrors `palmer_well
 
 ## Thresholds
 
-- **Measured maximum (H1):** The measurement records the maximum absolute difference for each output and its sign and NaN-position mismatch counts; `tests/test_native_parity_palmer.py` enforces the bound (`0.0` on macOS arm64, `1e-10` elsewhere). A measurement-only run exits 0 even above `1e-10`.
+- **Measured maximum (H1):** The measurement records the maximum absolute difference for each output and its sign and NaN-position mismatch counts; `tests/test_native_parity_palmer.py` enforces a combined `assert_allclose` tolerance (`0.0` on macOS arm64, `1e-10` elsewhere), not the H1 absolute bound alone. On non-macOS platforms, `python = 10` and `rust = 10 + 5e-10` pass the test tolerance of `1.1e-9`, but the absolute difference exceeds the H1 bound of `1e-10`. The recorded maximum absolute difference is the H1 evidence. A measurement-only run exits 0 even above `1e-10`.
 - **Test tolerance:** The tests use `assert_allclose`, which checks `|rust - python| <= atol + rtol * |python|`, with matching signs and NaN positions. The full-division tests use a single platform-wide tolerance: `rtol = atol = 0.0` on macOS arm64 and `1e-10` elsewhere. Boundary tests use `rtol = atol = 1e-10` on all platforms. The measurement reports separate maxima per output; these are not separate test thresholds.
 - **Cross-platform** (H4, H5): equality of the float64 bytes, no tolerance. A difference is a finding to attribute (fused multiply-add, the math library, NumPy), not a failure to hide.
 - **Branch flip:** any engineered or fixture case where the paths take a different branch, recorded in the REFIMPL-24 ledger ([#1626](https://github.com/monocongo/climate_indices/issues/1626)) with its cause and owner.
@@ -127,8 +127,8 @@ The Wells entry test is **not** redundant. It is equivalent to the abatement pat
 | macOS x86-64 | not run | not run | not run |
 | Windows x86-64 | not run | not run | not run |
 
-H4 and H5 are open. `.github/workflows/palmer-reproducibility.yml` runs all five targets and compares the digests; it has not been dispatched. What can be said without it: the Palmer kernels contain no `mul_add`, the build sets no `target-cpu` and no fast-math flag, and the scPDSI rescale and percentile run in NumPy on both paths, so the floating-point work specific to the Rust path is exactly the kernels it dispatches: the water balance, K-prime and dbar, the raw Z-Index, and either `palmer_pdi` (`pdsi()`) or `palmer_wells` with `scpdsi_duration_factors` (`scpdsi()`). The CAFEC coefficients and `trat` are NumPy on both paths. A difference on another platform would most plausibly come from the math library (`log10` in the K' factor) or from NumPy's own vectorized kernels, which is what the Python control separates.
+H4 and H5 are open. `.github/workflows/palmer-reproducibility.yml` runs all five targets and compares the digests; it has not been dispatched. What can be said without it: the Palmer kernels contain no `mul_add`, the build sets no `target-cpu` and no fast-math flag, and the scPDSI rescale and percentile run in NumPy on both paths, so the floating-point work specific to the Rust path is exactly the kernels it dispatches: the water balance, K-prime and dbar, the raw Z-Index, and either `palmer_pdi` (`pdsi()`) or `palmer_wells` with `scpdsi_duration_factors` (`scpdsi()`). The CAFEC coefficients and `trat` are NumPy on both paths. A difference on another platform would most plausibly come from the math library (`log10` in the K' factor) or from NumPy's own vectorized kernels. The Python control shows only whether the Python outputs differ end to end; it does not attribute the difference.
 
 ### Sentence for the manuscript
 
-On macOS arm64, Rust and Python returned byte-identical outputs and fitted parameters for `pdsi()` and `scpdsi()` across 344 climate divisions. The tests found no output disagreement across 2,868 engineered boundary triples, 12 divergence sequences, two mirrored Wells spell-termination triples, or the zero-precipitation case. The tests did not compare internal branch decisions. The other four release targets remain unmeasured.
+On macOS arm64, Rust and Python returned byte-identical outputs and fitted parameters for `pdsi()` and `scpdsi()` across 344 climate divisions. The boundary tests use `rtol = atol = 1e-10`. The outputs agreed within that test tolerance across 2,868 engineered boundary triples, 12 divergence sequences, two mirrored Wells spell-termination triples, and the zero-precipitation case. The tests did not compare internal branch decisions. The other four release targets remain unmeasured.
