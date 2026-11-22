@@ -1,4 +1,5 @@
 import types
+from pathlib import Path
 
 import numpy as np
 import pytest
@@ -450,7 +451,7 @@ def test_finish_up_falls_back_to_pdsi_when_no_spell_is_established():
     """_finish_up repeats the no-established-spell fallback for the months left
     pending when the record ends, under the same exact-zero test."""
     state = _state()
-    state.k8max = np.array([2])
+    state.k8 = np.array([2])
     state.indexj[0, 0], state.indexm[0, 0] = 0, 0
     state.indexj[1, 0], state.indexm[1, 0] = 0, 1
     state.x[0, 0, 0] = 3.0
@@ -466,6 +467,53 @@ def test_finish_up_falls_back_to_pdsi_when_no_spell_is_established():
     # a sub-epsilon px3 is still an established spell, so PHDI keeps it rather
     # than falling back to the PDSI value
     assert state.phdi[0, 1, 0] == -np.finfo(float).tiny
+
+
+def test_finish_up_leaves_months_of_a_resolved_spell_alone():
+    """_finish_up flushes only the months still pending (#1665, ADR-0030).
+
+    Slots at or beyond k8 hold months a closed spell already resolved; a second
+    flush would overwrite their recorded values with the provisional ones.
+    """
+    state = _state()
+    state.k8 = np.array([1])  # only the first slot is still pending
+    for slot, month in enumerate((0, 1)):
+        state.indexj[slot, 0], state.indexm[slot, 0] = 0, month
+        state.x[0, month, 0] = 9.0
+    state.pdsi[0, 1, 0], state.phdi[0, 1, 0], state.wplm[0, 1, 0] = 1.5, 2.5, 3.5
+
+    _palmer_pdi._finish_up(state)
+
+    assert state.pdsi[0, 0, 0] == 9.0  # pending: flushed
+    assert (state.pdsi[0, 1, 0], state.phdi[0, 1, 0], state.wplm[0, 1, 0]) == (1.5, 2.5, 3.5)
+
+
+def test_resolved_months_survive_truncating_the_record_division_0101():
+    """#1665: truncating division 0101 at December 2002 must not change resolved months.
+
+    Before the fix the stale ``k8max`` re-flushed February-November 2002, replacing their
+    PMDI with the final month's 1.783. Only the months a spell still holds open at the
+    truncation point (here December 2002) may differ from the full-record run.
+    """
+    z = np.load(Path(__file__).parent / "fixture" / "palmer" / "0101" / "zindex.npy")
+    wetm = drym = (1.0 - 0.897) / (1.0 / 3.0)
+    wetb = dryb = 0.897 / (1.0 / 3.0)
+    factors = _palmer_pdi.PdiDurationFactors(wetm, wetb, drym, dryb)
+    end = (2002 - 1895 + 1) * 12
+    full = _palmer_pdi.calculate(z.reshape(-1, 12, 1), factors)
+    cut = _palmer_pdi.calculate(z[:end].reshape(-1, 12, 1), factors)
+
+    resolved = slice(0, end - 1)  # every month before December 2002
+    for name in ("pdsi", "phdi", "pmdi"):
+        # same arithmetic sequence in both runs, so agreement is to rounding only
+        np.testing.assert_allclose(
+            getattr(cut, name).reshape(-1)[resolved],
+            getattr(full, name).reshape(-1)[resolved],
+            rtol=0,
+            atol=1e-12,
+            err_msg=name,
+        )
+    assert not np.allclose(cut.pmdi.reshape(-1)[end - 11 : end - 1], 1.783, atol=1e-3)
 
 
 def test_non_contracting_duration_factor_override_is_attributed_to_pdsi():

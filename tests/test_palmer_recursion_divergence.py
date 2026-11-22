@@ -13,7 +13,12 @@ harmonization, not to every subset that removes the disagreement.
 The tests characterize behavior: they pin what ``_palmer_pdi.calculate`` (NCEI ``pdi.f``
 lineage) and ``_palmer_wells.calculate`` (Wells lineage) return on the same Z-Index series at
 Palmer's national duration factors.  They do not say which recursion is right, and they must be
-updated, not relaxed, if either recursion is deliberately changed.  Sequences are left-padded
+updated, not relaxed, if either recursion is deliberately changed.  #1665 (ADR-0030) did that
+for class F: the end-of-record flush now rewrites only the months still pending, so the library
+no longer disagrees with Wells on the F case, "E+F" reclassifies as "E", and the "E+T+C" case
+loses the five months (15-19) its stale flush had rewritten.  ``_CASES`` keeps
+the sequences and the values recorded at the pinned commit (the committed JSON); the two
+overrides below say what the current library returns.  Sequences are left-padded
 with zeros to whole years, which both recursions treat as no-ops.
 """
 
@@ -201,6 +206,20 @@ _CASES = {
 }
 
 
+# What the library returns after #1665, where it differs from the pinned-commit record in _CASES.
+_LIVE_EXPECTED: dict[str, dict[int, tuple[float, float]]] = {
+    "F": {},
+    # months 15-19 were stale-flush victims at the pinned commit; only 20-23 still differ
+    "E+T+C": {
+        20: (0.080070753, -0.500643138),
+        21: (0.538490132, 0.017589771),
+        22: (0.816358982, 0.349111358),
+        23: (1.398940674, 0.979819555),
+    },
+}
+_CLASS_AFTER_1665: dict[str, str | None] = {"F": None, "E+F": "E"}
+
+
 def _run(active: list[float]) -> tuple[np.ndarray, np.ndarray]:
     padded = np.concatenate([np.zeros(-len(active) % 12), np.asarray(active, dtype=float)])
     wells_factors = DurationFactors.from_defaults()
@@ -214,7 +233,8 @@ def _run(active: list[float]) -> tuple[np.ndarray, np.ndarray]:
 
 @pytest.mark.parametrize("label", sorted(_CASES))
 def test_reduced_sequence_pins_both_recursions(label: str) -> None:
-    active, expected = _CASES[label]
+    active, recorded = _CASES[label]
+    expected = _LIVE_EXPECTED.get(label, recorded)
     pdi, wells = _run(active)
 
     differing = np.flatnonzero(np.abs(pdi - wells) > 1e-9)
@@ -228,7 +248,18 @@ def test_reduced_sequence_pins_both_recursions(label: str) -> None:
 def test_sequence_still_reproduces_its_class(label: str) -> None:
     """The study's own classifier must still return the class the case is named for."""
     active, _ = _CASES[label]
-    assert _load_finder().label_of(active) == label
+    assert _load_finder().label_of(active) == _CLASS_AFTER_1665.get(label, label)
+
+
+def test_flush_fix_resolves_the_f_case_to_the_wells_value() -> None:
+    """#1665: the month the stale flush rewrote keeps its resolved value, which Wells also gives."""
+    active, recorded = _CASES["F"]
+    pdi, wells = _run(active)
+    ((index, (stale_value, _)),) = recorded.items()
+
+    assert pdi[index] == pytest.approx(1.0, abs=1e-12)
+    assert pdi[index] == pytest.approx(wells[index], abs=1e-12)
+    assert stale_value == pytest.approx(-0.618839086, abs=1e-8)  # the pinned-commit (stale) value
 
 
 def test_generator_rejects_source_drift_before_reading_results(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:

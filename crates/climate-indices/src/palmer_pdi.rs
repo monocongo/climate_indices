@@ -101,7 +101,6 @@ struct Cell<'a> {
     sx2: Vec<f64>,
     sx3: Vec<f64>,
     k8: usize,
-    k8max: usize,
     iass: u8,
     v: f64,
     pro: f64,
@@ -133,7 +132,6 @@ impl<'a> Cell<'a> {
             sx2: vec![0.0; n],
             sx3: vec![0.0; n],
             k8: 0,
-            k8max: 0,
             iass: 0,
             v: 0.0,
             pro: 0.0,
@@ -281,7 +279,6 @@ impl<'a> Cell<'a> {
             self.sx3[k8] = self.px3[t];
             self.x[t] = self.px3[t];
             self.k8 += 1;
-            self.k8max = self.k8;
         }
         self.statement_220();
     }
@@ -376,9 +373,12 @@ impl<'a> Cell<'a> {
 
     /// Flush a spell still open when the record ends. Python: `_finish_up`.
     ///
-    /// Reads `k8max`, not `k8`, exactly as Python does.
+    /// Flushes only the `k8` months still pending, as Python does (#1665, ADR-0030).
+    ///
+    /// `pdi.f` flushes to a high-water mark its ASSIGN never resets, which re-flushes
+    /// months a closed spell already resolved; this departs from it on purpose.
     fn finish_up(&mut self) {
-        if self.k8max == 0 {
+        if self.k8 == 0 {
             return;
         }
         let last = self.z.len() - 1;
@@ -388,7 +388,7 @@ impl<'a> Cell<'a> {
             self.px2[last],
             self.px3[last],
         );
-        for k in 0..self.k8max {
+        for k in 0..self.k8 {
             let t = self.index[k];
             let x = self.x[t];
             let px3 = self.px3[t];
@@ -507,6 +507,26 @@ mod tests {
         assert_eq!(result.phdi[[1, 0]], x3);
         // the final month's PMDI interpolates toward the incipient dry index
         assert!(result.pmdi[[1, 0]] < x3);
+    }
+
+    #[test]
+    fn finish_up_leaves_months_of_a_resolved_spell_alone() {
+        let factors = palmer_defaults();
+        // REFIMPL-29 class "F": the spell resolves at month 4 and month 5 resolves
+        // directly, leaving nothing pending. The stale k8max once re-flushed
+        // month 4 to its provisional X3 (-0.618839...) instead of the resolved 1.0.
+        let z = ndarray::array![[-2.0], [-1.0], [-1.3], [-2.0], [3.0], [3.0]];
+        let result = calculate(z.view(), factors);
+        // values pinned from the Python recursion, which shares this contract
+        let expected = [
+            (result.pdsi[[4, 0]], 1.0),
+            (result.phdi[[4, 0]], -0.618_839_086_253_999_4),
+            (result.pmdi[[4, 0]], 0.900_397_291_389_687_8),
+        ];
+        for (got, want) in expected {
+            // same operation order as Python, so agreement is to rounding
+            assert!((got - want).abs() <= 1e-12, "got {got}, want {want}");
+        }
     }
 
     #[test]

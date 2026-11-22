@@ -40,7 +40,7 @@ def test_initialize_state_defaults_the_recursion_state():
     assert prepared.cell_shape == ()
     np.testing.assert_array_equal((state.x1, state.x2, state.x3, state.v, state.pro), [[0.0]] * 5)
     np.testing.assert_array_equal((state.pv, state.ze, state.ud, state.uw), [[0.0]] * 4)
-    np.testing.assert_array_equal((state.k8, state.k8max, state.iass), [[0]] * 3)
+    np.testing.assert_array_equal((state.k8, state.iass), [[0]] * 2)
     assert (state.year, state.month) == (0, 0)
     assert state.pdsi.shape == (2, 12, 1)
     assert state.indexj.shape == (prepared.n_years * 12, prepared.n_cells)
