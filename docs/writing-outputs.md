@@ -89,7 +89,10 @@ is the staged example.
 ## Read and write Icechunk snapshots
 
 Install the optional extra with `pip install 'climate_indices[icechunk]'`, which
-installs `icechunk>=2.2,<3`. Icechunk requires Python 3.12 or later and Zarr v3.
+installs `icechunk>=2.2,<3`. Releases up to and including 3.2.0 pin
+`icechunk>=1.1.21,<2` instead, and no release on PyPI provides the new pin yet.
+Until one does, install the current extra from a checkout with
+`pip install '.[icechunk]'`. Icechunk requires Python 3.12 or later and Zarr v3.
 The existing `xarray>=2025.6.1` requirement exceeds the `to_icechunk` floor of
 2025.1.1. Without the extra, the base package installs no Icechunk dependency.
 On Python 3.11 the extra installs no Icechunk dependency, so `open_icechunk` and
