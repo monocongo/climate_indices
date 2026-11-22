@@ -168,8 +168,8 @@ Implementation decisions of SUIT-05 ([#1586](https://github.com/monocongo/climat
 - Dimensional fitted parameters (`beta`, `loc`, `scale`) carry the sample's `units` string,
   unchanged for `sum` and `mean`, when it is known; otherwise the attribute is absent, never
   `"1"`. Every other fitted parameter is `"1"`. `fit_diagnostics()` implements this rule
-  (#1650). When implemented, the xarray route (#1585) will adopt the same helper; for SPEI,
-  it will treat the units as known only when `values` and `pet_mm` carry the same string.
+  (#1650). The xarray route (#1585) uses the same helper; for SPEI, it treats the units as
+  known only when `values` and `pet_mm` carry the same string.
 
 ### 7. Surface
 
