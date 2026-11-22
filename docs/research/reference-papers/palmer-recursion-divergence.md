@@ -187,6 +187,8 @@ Months in any class containing a mechanism: E 96.6%, A 3.9%, T 3.4%, C 2.1%, F 0
 
 Line numbers are for `src/climate_indices/drought/` at the pinned commit. Palmer quotations are from an OCR of the scanned report. Page numbers are the page of the PDF file; the printed numbers were not checked.
 
+A subsequent check of Palmer's printed p. 32 confirms inclusive thresholds (`X1 ≥ 1.00` and `X2 ≤ −1.00`). The row below preserves the study's original OCR reading. The [case E review packet](palmer-1631-review/evidence-sheet.md) gives the printed citations and traces the spell decision.
+
 | Mechanism | `pdi.f` port | Wells port | Palmer (1965) | Determined by the text? |
 | --- | --- | --- | --- | --- |
 | **E** establishment threshold | promote at \|X\| >= 1 (`_palmer_pdi.py:375,386`) | at \|X\| >= 0.5 (`_palmer_wells.py:217,227`) | X3 is "reserved for indicating the severity of any wet spell or any drought which has become definitely established; i.e., X3 > 1.00 or X3 < -1.00" (PDF p. 38) | **Partly.** The text supports a threshold magnitude of 1.0. The quoted `X3 > 1.00 or X3 < -1.00` is strict, while the port establishes at `>= 1`, so equality handling at exactly 1.00 is not determined by the quotation. Whether Wells intends 0.5 could not be checked |
