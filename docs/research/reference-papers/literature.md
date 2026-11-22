@@ -11,8 +11,8 @@ comparison, and one novelty statement per planned paper with the observation tha
 
 Two companions carry the evidence:
 
-- [`references.bib`](references.bib) is the bibliography. Every entry was checked against a publisher record
-  before it entered the file.
+- [`references.bib`](references.bib) is the bibliography. Each entry was checked against the record named in
+  [`references-verification.json`](references-verification.json) before it entered the file.
 - [`references-verification.json`](references-verification.json) records what each record states. `verify_references.py`
   re-reads the Crossref records, and `tests/test_reference_bibliography.py` compares the two files offline.
 
@@ -60,11 +60,11 @@ of indices, or of a product against its own documentation. Six kinds of prior wo
 | Jacobi et al. (2013), *Water Resour. Res.* | Their MATLAB Palmer tool against the NCDC Fortran | Palmer indices, checked on shared inputs | Discrepancies documented (abstract as recorded in [`research-notes.md`](research-notes.md); full text not readable here, Wiley returned 403) | One tool against one lineage, PDSI only, no pre-registered criteria and no per-axis attribution |
 | Vonk's `spei` package comparison notebook (2023, read) | SPI 3-month from `spei`, `standard_precip`, `climate_indices`, R `SPEI`; SGI from `spei` and `pastas` | One station (DEBILT), monthly precipitation, one scale | "Difference is very small between SPEI and the standard_precip package"; the difference from R `SPEI` is attributed to gamma fitting as a hypothesis, and "more research is needed". The `climate_indices` cell is commented out because it could not be installed, and the R call fails in the published build | One station, one index, no reported number for `climate_indices`, no method-axis alignment, not peer reviewed |
 | Vremec et al. (2024), *GMD* (read) | Each PET method in `PyEt` against the R `Evapotranspiration` package (Guo et al.) and against published values | Method-by-method benchmarks, daily PET | Agreement is the benchmarking criterion, and each new method must ship benchmark data and tests | PET equations only: no drought index, no distribution or estimator axis, and no effect of PET choice on SPEI or PDSI output |
-| Allen and Otero (2025), *The R Journal* (read) | `SEI` positioned against `SCI`, `SPEI`, `standard-precip`, `spei`, `climate-indices`, `standaRdized` and `SPIGA` | Functional description of each package | Existing packages are limited in flexibility and assumptions; `SEI` is more general | Functional comparison, no numeric cross-package comparison and no per-axis attribution |
-| Spade et al. (2020), *J. Appl. Meteor. Climatol.* | Title and repository role only; the paper was not read | One provider product, as `tests/fixture/ncei_spi/provenance.json` records it | The title states over- and underestimation of drought in NOAA's climate divisional SPI dataset; the calibration-window finding is carried from the fixture note | A product against its own documentation, not implementation against implementation |
+| Allen and Otero (2024), *The R Journal* (read) | `SEI` positioned against `SCI`, `SPEI`, `standard-precip`, `spei`, `climate-indices`, `standaRdized` and `SPIGA` | Functional description of each package | Existing packages are limited in flexibility and assumptions; `SEI` is more general | Functional comparison, no numeric cross-package comparison and no per-axis attribution |
+| Spade et al. (2020), *J. Appl. Meteor. Climatol.* (abstract; full text not read) | NCEI's published climate divisional SPI against SPI recomputed by the NOAA/NCEI method | 3- and 6-month September SPI for the U.S. climate divisions, 1931-2019 | Drought frequency is mischaracterised: the published SPI is biased toward or away from drought by region and its standard deviation differs from 1, because NCEI calibrates over a sliding 1895-2019 period instead of the cited fixed 1931-90 period; the authors recommend a fixed baseline | A product against its own documented procedure, not implementation against implementation |
 | Laimighofer and Laaha (2022), *J. Hydrol.* | Uncertainty components inside one standardized-index procedure | Precipitation and water-balance series | Distribution choice and observation window dominate; the estimator matters less (abstract as recorded in [`research-notes.md`](research-notes.md)) | A method study, not an implementation study |
-| Guttman (1999), *JAWRA* | Candidate distributions for the SPI | As summarised by Allen and Otero (2025) | Pearson III is preferred for its third parameter | A distribution argument, not a package comparison |
-| Stagge et al. (2015), *Int. J. Climatol.* | Candidate distributions for SPI and SPEI | As summarised by Allen and Otero (2025) | Weibull fits their monthly accumulations better than the alternatives | A distribution study, contested by a published comment and response; not a package comparison |
+| Guttman (1999), *JAWRA* | Candidate distributions for the SPI | As summarised by Allen and Otero (2024) | Pearson III is preferred for its third parameter | A distribution argument, not a package comparison |
+| Stagge et al. (2015), *Int. J. Climatol.* | Candidate distributions for SPI and SPEI | As summarised by Allen and Otero (2024) | Weibull fits their monthly accumulations better than the alternatives | A distribution study, contested by a published comment and response; not a package comparison |
 | Pieper et al. (2020), *HESS* | A universal SPI candidate distribution for observations and simulations | Not read | Not stated here; the title only | A distribution study, not a package comparison |
 
 The Palmer literature adds no implementation comparison beyond Jacobi et al. (2013). Dai (2011) and van der
@@ -79,16 +79,16 @@ metadata was verified and the content was not opened, so no content claim is mad
 ### Standardized indices
 
 - **McKee et al. (1993).** The paper that introduced the SPI and the classification thresholds. Not read beyond
-  its title page; Allen and Otero (2025) state that McKee et al. introduced the index and that the thresholds 1,
+  its title page; Allen and Otero (2024) state that McKee et al. introduced the index and that the thresholds 1,
   1.5 and 2 are the common moderate, severe and extreme levels.
-- **Guttman (1999).** The SPI calculation algorithm, and the argument for Pearson III. Allen and Otero (2025)
+- **Guttman (1999).** The SPI calculation algorithm, and the argument for Pearson III. Allen and Otero (2024)
   summarise the argument as the extra flexibility of a third parameter. Not read.
 - **Vicente-Serrano et al. (2010).** The SPEI definition: a multiscalar index on the water balance, built to be
   sensitive to global warming. Not read.
 - **Beguería et al. (2014).** The SPEI revisited: parameter fitting, evapotranspiration models, tools, datasets
   and drought monitoring. [`research-notes.md`](research-notes.md) records the abstract's recommendation of
   unbiased PWM. Not read in full.
-- **Stagge et al. (2015).** Candidate distributions for SPI and SPEI. Allen and Otero (2025) summarise its
+- **Stagge et al. (2015).** Candidate distributions for SPI and SPEI. Allen and Otero (2024) summarise its
   result as the Weibull distribution fitting their monthly accumulations better than the alternatives. There is
   a published comment by Vicente-Serrano and Beguería (2016, doi:[10.1002/joc.4474](https://doi.org/10.1002/joc.4474))
   and a response by Stagge et al. (2016, doi:[10.1002/joc.4564](https://doi.org/10.1002/joc.4564)), so any claim
@@ -121,7 +121,7 @@ metadata was verified and the content was not opened, so no content claim is mad
 - **Vremec et al. (2024), `PyEt` (read).** The model description for the PET comparator. Section 2 benchmarks
   20 methods against the R `Evapotranspiration` package and against published values, and states that new
   methods must ship benchmark data and tests. This is the closest precedent for the PET criterion of manuscript 1.
-- **Allen and Otero (2025), `SEI` (read).** The software paper for a package that computes standardised indices
+- **Allen and Otero (2024), `SEI` (read).** The software paper for a package that computes standardised indices
   in general. It names the other packages, including this one, and compares them functionally. It reports no
   numeric cross-package result.
 - **Huntington et al. (2017), Climate Engine.** The software and data-service paper behind one provider
@@ -157,8 +157,9 @@ metadata was verified and the content was not opened, so no content claim is mad
 - **Vose et al. (2014).** nClimDiv: the dataset behind the 344-division PDSI and SPI references. Not read. It is
   the source for the input side of every nClimDiv comparison.
 - **Spade et al. (2020).** The NCEI divisional SPI critique, misattributed in this repository (see the
-  corrections table). Not read: its title states the over- and underestimation finding, and the calibration-window
-  result is carried from `tests/fixture/ncei_spi/provenance.json`, which cites it and no other paper for it.
+  corrections table). Full text not read: the comparison and the calibration-window result (a sliding 1895-2019
+  period in place of the cited 1931-90) rest on its Crossref abstract, and `tests/fixture/ncei_spi/provenance.json`
+  cites it and no other paper for that result.
 
 ### Input and index uncertainty
 
@@ -219,7 +220,7 @@ decomposition, narrows the claim without falsifying it.
 ### JOSS software paper (conditional)
 
 **Nearest prior work.** The software papers above, in particular Bourgault et al. (2023), Vonk (2025), Vremec et
-al. (2024) and Allen and Otero (2025).
+al. (2024) and Allen and Otero (2024).
 
 **Claim.** The paper would be new only if REFIMPL-01 includes it and if it states a claim those papers do not:
 that this library reproduces named authoritative products and two Palmer lineages at stated tolerances, with
@@ -238,7 +239,7 @@ A paper that states only those adds nothing.
   claims for the unopened works are carried from `research-notes.md` and are marked as carried.
 - **Pagination absent from the record.** Carbone et al. (2018) has no page range in Crossref or OpenAlex.
 - **Second-hand content.** The annotations for Guttman (1999), Stagge et al. (2015), McKee et al. (1993) and
-  Beguería et al. (2014) rest on statements in Allen and Otero (2025) or in `research-notes.md`; the Hoffmann et
+  Beguería et al. (2014) rest on statements in Allen and Otero (2024) or in `research-notes.md`; the Hoffmann et
   al. (2020) annotation rests on its publisher abstract. Reading the originals would strengthen them and is worth
   doing before submission.
 - **A living source.** Vonk's comparison notebook is a web page with no archived snapshot and no version tag, so
