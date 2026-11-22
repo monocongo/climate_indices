@@ -12,7 +12,7 @@ A short written assessment can help establish which scientific claims the drough
 
 **Operational drought indices or hydrology · 60–90 minutes.** An open issue reports agreement with public `pdi.f` on full-year records under the tested setup and flags a legacy end-of-record behavior for review. Review one case where the final month's Palmer Modified Drought Index is assigned to several earlier months still awaiting resolution. Say whether the sources support that choice, describe it as a legacy convention, or leave it unresolved. [Issue #1661](https://github.com/monocongo/climate_indices/issues/1661) · [Reported behavior and proposed change](https://github.com/monocongo/climate_indices/issues/1666) · [Provenance, finding D9](https://github.com/monocongo/climate_indices/blob/380aa01f/docs/algorithm_refs/palmer-provenance.md#differences-found-while-tracing)
 
-## 3. Which calibration rule should self-calibrating PDSI use?
+## 3. Which calibration rule should self-calibrating Palmer Drought Severity Index (PDSI) use?
 
 **Drought climatology or statistical hydrology · 45–60 minutes.** The library follows a three-pass rule from the Sibada R port. The Wells paper and original C++ program describe or apply one rescaling pass. The convergence policy and a proposed external-product comparison remain open. Review the conventions and advise which comparison would justify retaining three passes, offering another mode, or narrowing the claim. [Issue #1635](https://github.com/monocongo/climate_indices/issues/1635) · [Provenance, finding D7](https://github.com/monocongo/climate_indices/blob/380aa01f/docs/algorithm_refs/palmer-provenance.md#differences-found-while-tracing) · [Wells et al.](https://journals.ametsoc.org/view/journals/clim/17/12/1520-0442_2004_017_2335_aspdsi_2.0.co_2.xml)
 
@@ -34,4 +34,4 @@ A short written assessment can help establish which scientific claims the drough
 
 ## How to participate
 
-Send the issue number, the question you want to review, and your preferred level of involvement. The maintainer can prepare the case and discuss credit before work begins. [Email the maintainers](mailto:hello@earthflux.org) · [GitHub Discussions](https://github.com/monocongo/climate_indices/discussions)
+Send the issue number, the question you want to review, and your preferred level of involvement. The maintainer can prepare the case and discuss credit before work begins. [Email the maintainer](mailto:hello@earthflux.org) · [GitHub Discussions](https://github.com/monocongo/climate_indices/discussions)

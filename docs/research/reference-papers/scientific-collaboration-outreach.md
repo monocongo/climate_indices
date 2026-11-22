@@ -46,7 +46,7 @@ James Adams · [Verified reply address]
 
 Dear [Name],
 
-Your work on [specific study or software for reference evapotranspiration] prompted a question about our FAO-56 Penman–Monteith checks in `climate_indices`. Our existing test uses the published daily example. We are considering the April Bangkok example as a monthly follow-up and want to make sure the averaging, soil heat flux and printed rounding are handled consistently. [FAO-56 Chapter 4](https://www.fao.org/4/x0490e/x0490e08.htm) · [PET comparison issue](https://github.com/monocongo/climate_indices/issues/1623) · [Existing checks](https://github.com/monocongo/climate_indices/blob/380aa01f/VALIDATION.md)
+Your work on [specific study or software for reference evapotranspiration] prompted a question about our FAO-56 Penman–Monteith checks in `climate_indices`. Our existing test uses the published daily example. We are considering FAO-56 Example 17, the April Bangkok monthly case, as a follow-up and want to make sure the averaging, soil heat flux and printed rounding are handled consistently. [FAO-56 Chapter 4](https://www.fao.org/4/x0490e/x0490e08.htm) · [PET comparison issue](https://github.com/monocongo/climate_indices/issues/1623) · [Existing checks](https://github.com/monocongo/climate_indices/blob/380aa01f/VALIDATION.md)
 
 Would you spend 30–60 minutes checking an annotated worksheet against the source? I’d value a judgment on which inputs are fully specified and which expected values can support a useful conformance check. I’ll assemble the worksheet and carry out any follow-up computation. The result could be a small reference example that others can reuse, subject to the data and source terms.
 
@@ -60,9 +60,9 @@ James Adams · [Verified reply address]
 
 When two drought calculations disagree on the same inputs, which differences can we explain from the published methods?
 
-I maintain `climate_indices`, an open-source library that began as drought-index work at NOAA NCEI. The library’s public validation project now includes a study comparing two Palmer spell-tracking rules and an equation-to-code provenance record. The study reports a failed hypothesis and records how we revised part of the analysis. Those details matter to anyone interpreting the resulting series. [Project and evidence](https://github.com/users/monocongo/projects/40) · [Palmer comparison](https://github.com/monocongo/climate_indices/pull/1658)
+I maintain `climate_indices`, an open-source library that is a fork of drought-index work originally developed by NIDIS/NCEI/NOAA. The library’s public validation project now includes a study comparing two Palmer spell-tracking rules and an equation-to-code provenance record. The study reports a failed hypothesis and records how we revised part of the analysis. Those details matter to anyone interpreting the resulting series. [Project and evidence](https://github.com/users/monocongo/projects/40) · [Palmer comparison](https://github.com/monocongo/climate_indices/pull/1658)
 
-I’d like to invite one Palmer or hydroclimate researcher to look at a five-active-month case and tell me which explanation the sources and outputs support, and what remains uncertain. I’ll prepare the evidence and handle follow-up computation. A written response or a short call works. If this is close to your work, please get in touch.
+I’d like to invite one Palmer or hydroclimate researcher to look at a five-active-month case and tell me which explanation the sources and outputs support, and what remains uncertain. I’ll prepare the evidence and handle follow-up computation. A written response or a short call works. If this is close to your work, please get in touch. The library is a scientific product and is not official communication of NOAA or the U.S. Department of Commerce.
 
 ## GitHub scientific review issue template
 
