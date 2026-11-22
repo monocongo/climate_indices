@@ -268,6 +268,44 @@ class TestBootstrap:
         assert (gof.bootstrap_failed_share == 1).all()
         assert np.isfinite(gof.ks_statistic).all()
 
+    def test_a_candidate_without_a_usable_fit_is_neither_simulated_nor_refitted(self, monkeypatch):
+        values = _gamma(13, 2, 2)
+        both = (Distribution.gamma, Distribution.pearson)
+        reference = _gof(values, n_bootstrap=10, seed=8, spatial_time_major=True, candidates=both)
+        score = suitability._score_fit
+        refitted: list[Distribution] = []
+        refit = suitability._refit_statistics
+
+        def pearson_fails(distribution, *args):
+            log_likelihood, failed = score(distribution, *args)
+            return (
+                (log_likelihood, np.ones_like(failed))
+                if distribution is Distribution.pearson
+                else (log_likelihood, failed)
+            )
+
+        def spy(distribution, *args):
+            refitted.append(distribution)
+            return refit(distribution, *args)
+
+        monkeypatch.setattr(suitability, "_score_fit", pearson_fails)
+        monkeypatch.setattr(suitability, "_refit_statistics", spy)
+        gof = _gof(values, n_bootstrap=10, seed=8, spatial_time_major=True, candidates=both)
+        assert set(refitted) == {Distribution.gamma}
+        order = suitability._resolve_candidates("spi", both)
+        failed, kept = order.index(Distribution.pearson), order.index(Distribution.gamma)
+        assert np.isnan(gof.ks_p_value_bootstrap[failed]).all() and np.isnan(gof.bootstrap_failed_share[failed]).all()
+        np.testing.assert_array_equal(gof.ks_p_value_bootstrap[kept], reference.ks_p_value_bootstrap[kept])
+
+        refitted.clear()
+        monkeypatch.setattr(
+            suitability,
+            "_score_fit",
+            lambda *args: (np.full(args[1].shape[1:], np.nan), np.ones(args[1].shape[1:], dtype=bool)),
+        )
+        none = _gof(values, n_bootstrap=10, seed=8, spatial_time_major=True, candidates=both)
+        assert refitted == [] and np.isnan(none.ks_p_value_bootstrap).all()
+
     def test_the_same_seed_gives_an_identical_result_and_another_seed_does_not(self):
         values = _gamma(8, 2, 2)
         first = _gof(values, n_bootstrap=20, seed=11, spatial_time_major=True)

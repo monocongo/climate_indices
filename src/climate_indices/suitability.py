@@ -747,16 +747,21 @@ def _bootstrap_p_values(
     """
     years, cell_shape = sample.shape[0], sample.shape[1:]
     batch = max(1, min(n_bootstrap, _BOOTSTRAP_BATCH_ELEMENTS // max(sample.size, 1)))
-    generators = _column_generators(seed, sample)
+    # a candidate with no usable fit in any column has NaN results already: it is neither simulated nor refitted. Every
+    # batch still draws the same uniforms for the others, so skipping one never changes another's p-values
+    runs = [
+        fits[distribution] is not None and bool(scored[position].any()) for position, distribution in enumerate(chosen)
+    ]
+    generators = _column_generators(seed, sample) if any(runs) else []
     exceeded = {name: np.zeros((len(chosen), *cell_shape), dtype=np.int64) for name in observed}
     succeeded = np.zeros((len(chosen), *cell_shape), dtype=np.int64)
     done = 0
-    while done < n_bootstrap:
+    while done < n_bootstrap and generators:
         size = min(batch, n_bootstrap - done)
         uniforms = _draw_uniforms(generators, years, cell_shape, size)
         for position, distribution in enumerate(chosen):
             parameters = fits[distribution]
-            if parameters is None:
+            if parameters is None or not runs[position]:
                 continue
             expanded = {key: value[..., np.newaxis] for key, value in parameters.items()}
             draws = _simulate(distribution, uniforms, expanded, resolution, origin)
