@@ -328,6 +328,10 @@ _WATER_BALANCE_COLUMNS = (
 # discrepancy ledger (#1626).
 _WATER_BALANCE_EXCEEDS = {(1933, 8): 0.012, (1934, 5): 0.0201, (1934, 7): 0.0124}
 
+# A difference in one month's Su moves Su, L and ET by the same amount, so only those columns may
+# exceed one print unit; an error of the same size in RO, R, PL or Ss has no exemption.
+_WATER_BALANCE_EXCEEDING_COLUMNS = frozenset({"su", "l", "et"})
+
 
 def _one_month(p: float, pe: float, ss: float, su: float) -> np.ndarray:
     et, loss, recharge, runoff, new_ss, new_su = palmer._calc_recharge(p, pe, ss, su, 10.0)
@@ -344,11 +348,17 @@ def test_h1_water_balance_one_month_from_the_printed_state(python_path: None) ->
         value = {key: float(text) for key, text in row.items()}
         library = _one_month(value["p_in"], value["pe_in"], ss, su)
         assert np.isfinite(library).all(), _ym(row)  # NaN would pass every ``deviation > tol`` test
-        printed = np.array([value[column] for _, column in _WATER_BALANCE_COLUMNS])
-        deviation = float(np.abs(library - printed).max())
         assert abs(10.0 - (ss + su) - value["pr_in"]) <= AUDIT_ATOL  # PR needs no kernel
-        if deviation > WATER_BALANCE_ATOL:
-            exceeded[_ym(row)] = round(deviation, 4)
+        deviations = {
+            column: abs(computed - value[source])
+            for (column, source), computed in zip(_WATER_BALANCE_COLUMNS, library, strict=True)
+        }
+        over = {column for column, deviation in deviations.items() if deviation > WATER_BALANCE_ATOL}
+        # Per column: an unrelated error in a column with no documented excess must not pass just
+        # because a documented excess in the same month is larger.
+        assert over <= _WATER_BALANCE_EXCEEDING_COLUMNS, (_ym(row), sorted(over))
+        if over:
+            exceeded[_ym(row)] = round(max(deviations[column] for column in over), 4)
         ss, su = value["ss_in"], value["su_in"]
     assert exceeded == pytest.approx(_WATER_BALANCE_EXCEEDS, abs=0.0006)
 
@@ -474,6 +484,7 @@ def test_h3_k_factors_normalize_to_table_3(region: str, monkeypatch: pytest.Monk
     sum_bound = float(((dbar + k_prime) * HALF_2DP).sum())
     printed = _col(_region(_rows("table3_coefficients.csv"), region), "k_weight")
     library = prepared.ak.reshape(12)
+    assert np.isfinite(library).all()  # an infinite K would make the bound infinite and pass
     bound = library * (HALF_2DP / k_prime.reshape(12) + sum_bound / float((dbar * k_prime).sum())) + HALF_2DP
     assert np.all(np.abs(library - printed) <= bound)
 
