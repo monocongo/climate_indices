@@ -39,11 +39,11 @@ Every study cites the protocol version it was pre-registered against.
 - **Inputs to a measure.** One series, or a pair, as 1-D float arrays along time, of equal length (a length mismatch raises). The harness loops over units. Integer and boolean input is cast to `float64`; object arrays are rejected. Outputs are unrounded `float64`; rounding is for display only. *Pooled* pairs (several units flattened into one pair) are allowed only to reproduce a published figure, such as the Earth Engine pilot's, and are labelled pooled.
 - **Series.** One location, one index, one scale, one configuration, one run. A *pair* is two series on the same time axis.
 - **Float width.** Differences are computed in `float64` after casting. Output rounding of a `float32` series is at most about 1.2e-7 for |z| below 4, which is *equivalent* (not *below reporting precision*); its computation error is usually larger. Category codes are assigned to each series at its own width, with the edges cast to that width as `suitability.drought_category` does, and the codes are then compared.
-- **Tolerance comparison.** Every comparison with a stated bound is `value <= bound * (1 + 1e-9)`, so that `abs(1.255 - 1.26)`, which is 0.005000000000000115 in `float64`, stays within 0.005.
+- **Tolerance comparison.** Compare a nonnegative error with its tolerance using `error <= tolerance * (1 + 1e-9)`. For example, `abs(1.255 - 1.26)` is 0.005000000000000115 in `float64` and stays within 0.005. This allowance applies to C1 and C5 error tolerances and the magnitude classes. It does not apply to category edges, null-band limits, or output-bound counts.
 - **Finite pairs.** A time step enters a comparison only when both values are finite. The share of steps finite in exactly one series is the *mask mismatch*; it is reported beside every pair class and is never counted as agreement or disagreement.
 - **Missing and infinite values.** NaN, masked, and non-finite outputs are *not finite*. An infinite output is reported under C5 and excluded from every other measure, except C1, where an infinite computed value is a failure.
 - **Undefined values.** A per-unit measure that is undefined (no finite pair, fewer than 2 pairs or zero variance for `r`, a share with a zero denominator, an empty band) is NaN. It is excluded from that measure's summary and bootstrap, and `n_units_defined` is reported beside `n_units`. With fewer than 2 defined units the interval is NaN.
-- **Random streams.** Every stochastic measure draws from `numpy.random.Generator(PCG64(SeedSequence([seed, stream, key])))`, with `seed` the pre-registered seed and `(stream, key)`: 1 null band, key `n` (restart the stream for each band); 2 unit bootstrap, key the measure's row number in the [Measure reference](#measure-reference); 3 block bootstrap, key the unit index; 4 synthetic data, key the replicate index. The NumPy version is recorded; streams are not guaranteed across NumPy versions.
+- **Random streams.** Every stochastic measure draws from `numpy.random.Generator(PCG64(SeedSequence([seed, stream, key])))`, with `seed` the pre-registered seed and `(stream, key)`: 1 null band, key `n` (restart the stream for each band); 2 unit bootstrap, key the row number of the statistic being summarized (for example, row 4 for RMSE, not row 17 for the interval) in the [Measure reference](#measure-reference); 3 block bootstrap, key the zero-based unit index in the pre-registered unit order; 4 synthetic data, key the replicate index. The NumPy version is recorded; streams are not guaranteed across NumPy versions.
 - **Percentiles.** Linear interpolation (`numpy.percentile` default, `method="linear"`).
 
 ## Criteria
@@ -89,15 +89,16 @@ Agreement with a product or a fixture under a matched configuration, for example
 
 Calibration-period mean near 0, standard deviation near 1, and shape near normal, per calendar period.
 
-- **Inputs from the adapter.** With each run the adapter returns `calibration_years` (the years the package actually used) and an integer `period_label` for every time step (month, ISO week, day of year, or the package's own grouping). Both are provenance fields (C6). A package that does not expose its effective window is run with the configured window, and its C4 is marked *unverified*.
+- **Inputs from the adapter.** The adapter reports `calibration_years` (the years the package actually used) and an integer `period_label` for every time step (month, ISO week, day of year, or the package's own grouping). It also reports, per period, the effective `p0` used by the package to mix the CDF, the `zero_handling` rule, and its zero score before output clipping. These are provenance fields (C6). A package that does not expose its effective window is run with the configured window, and its C4 is marked *unverified*.
+- **Zero-handling inputs.** Use `p0 = 0` when the verified method has no zero mass. For a method with a zero mass, use the probability from the run or reconstruct it using the estimator in the pinned source, on the accumulated calibration inputs that the estimator used. Do not substitute the raw zero fraction for a different estimator. Obtain the zero score from the run or evaluate the pinned rule at its actual inputs. Report no matching band if `p0` is unknown, or if `p0 > 0` and the rule does not provide a single finite zero score. The observed statistics are still reportable.
 - **Sample.** For each period label, the finite index values at the calibration years. A period with fewer than 10 finite values is *too short* and is not scored.
 - **Moments.** With `m_k = mean((x - mean(x))^k)`: the mean; the standard deviation with `ddof=1` (this line only); skewness `m3 / m2^1.5`; excess kurtosis `m4 / m2^2 - 3`. A constant period has `m2 = 0`, and its skewness and kurtosis are NaN (the period is not scored for them).
 - **Quantile residual.** Sort the `n` values as `s_(1) <= ... <= s_(n)`. The residual is `max_i |s_(i) - Phi^-1((i - 0.5) / n)|`. Tied values keep their sorted order; no tie adjustment is made.
-- **Null band.** Compute a separate band for each combination of `n`, the period's probability of zero `p0`, and the run's zero-handling rule. Include the rule's zero score in the match. Draw 10,000 samples of size `n` from stream 1. When there is no zero mass (`p0 = 0`), draw standard-normal values. Compute the same statistics for each sample.
+- **Null band.** Compute a separate band for each combination of `n`, the period's probability of zero `p0`, and the run's zero-handling rule. Include the rule's zero score in the match. Each row of the draw array is one sample. When `p0 = 0`, draw `standard_normal(size=(10000, n))` from stream 1. Compute the same statistics for each sample.
   - For each statistic separately, take the 2.5th and 97.5th percentiles of its finite values. Report the number of finite draws for each statistic. If none remain, report that no band is available for that statistic.
   - A moment is *outside* when it is below the lower or above the upper limit. The residual is *outside* only when it is above its 97.5th percentile. Do not report a p-value or a hypothesis test.
-- **Zero mass in the band.** The zero-handling rule can change the score distribution even when the fit is correct (ADR-0015). If `p0 > 0`, draw the zero count `k` from `Binomial(n, p0)` for each sample. Independent observations with probability `p0` of zero give this distribution and an expected zero count of `n * p0`. Assign the rule's zero score to `k` values. For the remaining `n - k` values, draw `Phi^-1(p0 + (1 - p0) * u)` with independent `u` uniform on (0, 1).
-  - Report `p0`, `zero_handling`, and the share at the zero score. Clipping and trace rules can still move values outside the band.
+- **Zero mass in the band.** The zero-handling rule can change the score distribution even when the fit is correct (ADR-0015). If `p0 > 0` and the rule supplies a single finite zero score, draw `k = binomial(n, p0, size=10000)` and then `u = 1 - random(size=(10000, n))` from stream 1. Independent observations with probability `p0` of zero give an expected zero count of `n * p0`. In each row, assign the zero score to its first `k` values. Transform the first `n - k` uniforms in that row to `Phi^-1(p0 + (1 - p0) * u)` for the remaining values. Replace a uniform of exactly 1 with `nextafter(1.0, 0.0)` and cap the transformed probability at that same value before taking `Phi^-1`.
+  - Report `p0`, `zero_handling`, and the zero score. If there is a finite zero score, report the share of finite calibration outputs equal to it at the output's precision. Clipping and trace rules can still move values outside the band.
 - **Report.** For each statistic, report its distribution across periods and the share of scored periods outside the band. Count a period in the denominator only when its statistic is finite and has a matching band. Report the denominator. If no periods qualify, report the share as undefined.
   - For defined null statistics, the nominal outside shares are 5% for moments and 2.5% for the residual. Ties at a limit can reduce the share. These references do not bound the outside shares for the data the package fitted to.
   - For a numeric `output_bound`, report the share of finite values with `abs(z) >= output_bound`. If `output_bound` is `None`, report that share as *not applicable*.
@@ -108,10 +109,10 @@ Calibration-period mean near 0, standard deviation near 1, and shape near normal
 
 Behaviour on zeros, ties, gaps, short or constant records, and unfittable periods.
 
-- **Case.** `{input, expected, affected_mask, tolerance}`. `expected` is written in the pre-registration before the run, with the reason (the specification, or the behaviour the package documents); it may be NaN. A package whose documented behaviour is NaN with a warning is scored against its own documentation as well as against the specification, and both are reported.
+- **Case.** `{input, expected, affected_mask, tolerance}`. Pre-register `expected` from the specification, with the reason. It may be NaN. Record whether the specification requires a warning. If the package documents another expectation, pre-register it separately with its tolerance and whether it requires a warning. If there is no specification, identify the documented expectation as the basis for the primary outcome.
 - **Warning.** A `warnings.warn` call or a logging record at level WARNING or above, captured in the calling process.
 - **Outcome vocabulary.** Judged on the values at `affected_mask`; exactly one of:
-  1. *correct*: finite values equal to `expected` within the tolerance, or NaN where NaN is expected, with no warning required;
+  1. *correct*: finite values equal to `expected` within the tolerance, or NaN where NaN is expected, whether or not a warning is emitted;
   2. *NaN with warning*: NaN where a finite value is expected, and a warning is emitted;
   3. *NaN silent*: NaN where a finite value is expected, and nothing is emitted;
   4. *error*: an exception, recorded as *clear* when the message names the cause and *unclear* when it does not;
@@ -119,7 +120,7 @@ Behaviour on zeros, ties, gaps, short or constant records, and unfittable period
   6. *silently wrong*: finite values that differ from `expected` (or an infinity), and nothing is emitted.
 - **Mixed cases.** The warning is a property of the case; the value outcome is a property of each value at `affected_mask`. A case whose values disagree takes the most severe outcome present, in this order: *error*, *silently wrong*, *wrong with warning*, *NaN silent*, *NaN with warning*, *correct*. A silent failure therefore outranks the warned form of the same failure. The case table lists the value outcome of each affected value for a mixed case.
 - **Cases.** REFIMPL-11 ([#1613](https://github.com/monocongo/climate_indices/issues/1613)) generates the stress inputs and REFIMPL-22 ([#1624](https://github.com/monocongo/climate_indices/issues/1624)) runs them: all-zero and constant periods, fewer values than the estimator needs, exact ties, missing values inside the accumulation window, a Calibration Period outside or shorter than the record, values beyond the calibration range, and `float32` input, among others.
-- **Report.** The count of each outcome per package, and the case-by-case table. Not a score, and each *silently wrong* case is listed individually.
+- **Report.** Count only the primary outcome for each case. In the case table, report a missing required warning separately, even if the primary outcome is *correct*. Also report whether the result meets any separate documented expectation, including its warning requirement. Neither check changes the primary outcome. List each *silently wrong* case individually. Do not compute a score.
 
 ### C6 Reproducibility and provenance
 
@@ -127,16 +128,16 @@ Same numbers across platforms, backends, and chunkings; recorded parameters and 
 
 - **Measure.** For each pair of runs (platform, backend, chunking, or thread count), the [difference class](#difference-classes), `max|a - b|`, and the mask mismatch.
 - **Platforms and backends.** Those the study names; the library's NumPy, xarray, and Rust paths are separate runs.
-- **Provenance.** Each result records the package version or commit, the dependency lock, the configuration (every argument), the input identifiers with checksums, the platform, the seed, `calibration_years`, `period_label`, and `output_bound`. A run missing any of these is not reportable.
+- **Provenance.** Each result records the protocol version, the pre-registration tag and its commit hash, and the tag and commit hash for the adapter configuration. It also records the package version or commit, the dependency lock, every configuration argument, the input identifiers with checksums, the platform, the seed, `calibration_years`, `period_label`, `output_bound`, and the C4 zero-handling inputs. A run missing any field is not reportable. For effective method fields the package does not expose and the adapter cannot reconstruct, record *unverified*, not a verified value or *not applicable*. Record the configured value separately where one exists.
 
 ### C7 Performance and scalability
 
 Wall time, peak resident memory, and throughput.
 
 - **Measure.** Wall-clock seconds for the computation only (input read and output write timed separately); peak resident set size in bytes (converting `ru_maxrss` for the platform); `series_per_s = n_series / wall_s` per run, and also cell-months per second where the input is a grid, as REFIMPL-23 ([#1625](https://github.com/monocongo/climate_indices/issues/1625)) reports.
-- **Process per memory measurement.** `ru_maxrss` is the highest value over a process's lifetime, so each timed run takes its peak in a fresh child process, from that process's own value. A peak measured in a shared process, or inherited from a warm-up or an earlier comparator, is not reportable.
-- **Repetition.** At least 3 timed runs after the warm-up call (a study may require more); report the median, minimum, and maximum. A cold start is timed separately when it is the object of study.
-- **Record.** Hardware (processor, core count, memory), operating system, thread settings, and whether the input was in memory or read lazily.
+- **Process per memory measurement.** `ru_maxrss` is the highest value over a process's lifetime. Use a fresh child process for each timed run and read that child's own peak. This peak includes setup and any warm-up in that child. Do not reuse a process across repetitions or comparators.
+- **Repetition.** Use at least 3 timed runs (a study may require more). Warm up in each child before starting the timer. Report the median, minimum, and maximum. If cold start is the object of study, time it separately without a warm-up.
+- **Record.** Record hardware (processor, core count, memory), operating system, thread settings, and whether the input was in memory or read lazily. For each repetition, record the child's raw `ru_maxrss` and its platform unit (for example, KiB on Linux or bytes on macOS).
 - **No threshold.** Performance is described, not judged against a limit.
 
 ### C8 Maintenance and usability signals
@@ -147,6 +148,7 @@ Reported descriptively and never scored: date of the latest release, the number 
 
 Two scales classify normal-scale index values for the category measures.
 
+- **Sign.** The category scales use lower values for drier conditions. For EDDI, negate each series before classifying it because higher EDDI means drier conditions. Keep the original sign for numerical error and agreement measures, including `d`.
 - **Primary, six classes.** The U.S. Drought Monitor classes of `climate_indices.suitability.drought_category`: none (above -0.5), D0, D1, D2, D3, D4, with class edges -0.5, -0.8, -1.3, -1.6, -2.0.
 - **Secondary, eleven classes.** The Earth Engine pilot's eleven drought-to-wet classes, with edges -2.0, -1.6, -1.3, -0.8, -0.5, 0.5, 0.8, 1.3, 1.6, 2.0. The five classes below -0.5 are its drought classes.
 - **Boundary rule, both scales.** Each class includes its upper edge and excludes its lower edge, so exactly -0.5 is D0. This is the rule of ADR-0028 and `suitability.py` for the drought-side edges. The rule for the wet-side edges of the eleven-class scale is this protocol's extension, which the library does not implement: exactly +0.5 is in the middle class (-0.5, +0.5].
@@ -180,7 +182,7 @@ When no class edges apply, the category measures are *not applicable* and a pair
 
 ## Comparison ladder
 
-The ladder attributes a difference to a cause. At each rung one set of method axes (the twelve of [`method-matrix.json`](method-matrix.json), named there by the ids in the last column) is set to the same position in both packages, using each package's documented option.
+The ladder helps attribute differences. At each rung, set the listed method axes to the same position in both packages with their documented options. The last column gives the axis IDs from [`method-matrix.json`](method-matrix.json). L1 also aligns the inputs, which are not a matrix axis.
 
 | Rung | Aligned at this rung (cumulative) | Method axes | Axis ids |
 | --- | --- | --- | --- |
@@ -203,9 +205,10 @@ Cell-months are not independent samples: they are autocorrelated in time (accumu
 
 - **Unit of replication.** One *location* (a grid cell, a climate division, a station) for real data; one *replicate series* for synthetic data. Every measure is first computed *per unit*, then summarized across units (C2 is the one exception, see there).
 - **What is reported.** `n_units` and `n_units_defined`, never the number of cell-months. The summary across units is the median, the 5th, and the 95th percentile.
-- **Interval.** A 95% percentile bootstrap interval of the across-unit median: draw `integers(0, n_units_defined, size=(10000, n_units_defined))` from stream 2, take the median of each resample, and report the 2.5th and 97.5th percentiles.
+- **Interval.** A 95% percentile bootstrap interval of the across-unit median: sort the defined values and restart stream 2 for each statistic. Draw `integers(0, n_units_defined, size=(10000, n_units_defined))`. Statistics with the same row key and sample size reuse the same index draws. Take the median of each resample and report the 2.5th and 97.5th percentiles.
 - **Spatial dependence.** Neighbouring locations are correlated, so the interval understates uncertainty for gridded data. Every report that gives such an interval says so in the sentence that gives the interval; the interval is a measure of unit-to-unit variation, not a confidence statement.
-- **Within a unit.** Where uncertainty of a single series' statistic is needed (for example a bias), use a moving-block bootstrap over time (stream 3): blocks of length `L` that overlap, do not wrap, number `ceil(n / L)`, and are cut to `n`; for a pair the same time indices are resampled in both series; 10,000 resamples. `L` is the number of steps in 12 months (12 monthly, 52 weekly, 365 daily), or the accumulation scale in steps if that is larger. When `n < L` no non-wrapping block fits, so the interval for that unit is not reported (it is NaN under the undefined-values convention above) and the study says how many units were dropped; `L` is never shortened to fit.
+- **Within a unit.** For a single series' statistic (for example, bias), use a moving-block bootstrap over its `n` time steps. `L` is the number of steps in 12 months (12 monthly, 52 weekly, 365 daily), or the accumulation scale in steps if larger. When `n <= L`, at most one non-wrapping block fits. Report the interval as NaN and count the skipped unit. Do not shorten `L`.
+  Restart stream 3 for each statistic so that statistics for the same unit reuse the block starts. Draw block starts with `integers(0, n - L + 1, size=(10000, ceil(n / L)))`. Concatenate each row's blocks in draw order and truncate to `n` steps. Apply the same time indices to both series in a pair before excluding nonfinite pairs.
 - **No p-values on cell-months.** Hypotheses are tested by comparing a per-unit statistic (and its interval) with a threshold fixed in the pre-registration, not with a significance test over cell-months.
 - **Sample.** The study fixes, before running: the unit population, the selection rule, the seed, and `n_units`, with the reason for that size. A selection rule may not use any value that depends on the outcome (for example, a difference observed in an earlier look). A study that looks at the data to choose units records that look as an amendment.
 
@@ -230,7 +233,7 @@ Procedure:
 3. Run the study. The results cite the tag and its commit hash.
 4. Anything changed after the tag is an *amendment*: dated, listed in the result file with the reason, and marked *post hoc* wherever it affects a number. A threshold that is changed after any result has been seen is always an amendment.
 
-The check is `git merge-base --is-ancestor <tag commit> <commit that adds the results>`; a result file without an ancestor pre-registration is not a result under this protocol.
+Check that `git rev-parse 'refs/tags/prereg/<ticket>-<n>^{commit}'` equals the commit hash cited in the result. Then run `git merge-base --is-ancestor <cited commit> <commit that adds the results>`. Both checks must pass for the result to qualify under this protocol. Also check that each adapter tag points to the adapter configuration commit named in the pre-registration. Ancestry does not prove when the study ran.
 Pushing a tag is a push to a shared resource and needs the maintainer's approval each time.
 
 ## Safeguards
@@ -238,7 +241,7 @@ Pushing a tag is a push to a shared resource and needs the maintainer's approval
 - **Adapters.** Every adapter configuration (every argument passed to each package) is committed and tagged before the run. Every comparator's maintainers are contacted once (REFIMPL-06, [#1608](https://github.com/monocongo/climate_indices/issues/1608), sent by the maintainer), and that issue decides how and when. A study does not wait for a reply: it reports "no review received" or the review, and any later correction is an amendment.
 - **The library is a comparator like the others.** `climate_indices` is run through the same adapter interface, with options set by the same ladder rule. No private argument, no unreleased branch, no code path that a user cannot reach.
 - **Interest.** Every report says that the maintainer of `climate_indices` wrote the protocol and ran the studies (REFIMPL-07, [#1609](https://github.com/monocongo/climate_indices/issues/1609), decides the wording).
-- **Disagreements.** Every disagreement between two packages that survives L4, every failed pre-registered hypothesis, and every C5 outcome other than *correct* gets an entry in the REFIMPL-24 ledger ([#1626](https://github.com/monocongo/climate_indices/issues/1626)) with a cause class and an owner, before the result is called final. Results that disfavour `climate_indices` are reported with the same prominence and in the same tables as those that favour it.
+- **Disagreements.** Before a result is final, record each disagreement that survives L4 and each failed pre-registered hypothesis in the REFIMPL-24 ledger ([#1626](https://github.com/monocongo/climate_indices/issues/1626)). Also record each non-correct C5 outcome and each missing required warning. Give each entry a cause class and an owner. Results that disfavour `climate_indices` are reported with the same prominence and in the same tables as those that favour it.
 - **No silent re-runs.** A study is not re-run with changed thresholds, samples, or configurations without an amendment.
 - **Passed and failed together.** Failed hypotheses appear in the same table as passed ones.
 - **Unverified positions.** A package's behaviour is reported from a run, or from source read at the pin, and the report says which. A claim from documentation alone is marked unverified.
@@ -297,7 +300,7 @@ Row numbers are the stream-2 keys.
 | 17 | bootstrap interval of a median | per-unit values, seed | two limits | as the measure | Units and sample size |
 | 18 | block bootstrap interval | a series (or pair), a statistic, block length, seed | two limits | as the statistic | Units and sample size |
 | 19 | rung effect | per-unit measures at two rungs | per-unit difference, then summary | as the measure | Comparison ladder |
-| 20 | performance | repeated timings, peak memory, `n_series`, cell-months | median, minimum, maximum of seconds, bytes, `series_per_s` | s, bytes, series per s | C7 |
+| 20 | performance | repeated timings, peak memory, `n_series`, cell-months | median, minimum, maximum of seconds, bytes, `series_per_s`, and cell-months per second for grids | s, bytes, series per s, cell-months per s | C7 |
 
 ## Changelog
 

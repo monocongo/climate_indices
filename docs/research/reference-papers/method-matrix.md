@@ -265,7 +265,7 @@ Residual differences after alignment:
 
 ### Mapping to the REFIMPL-02 ladder
 
-[`protocol.md`](protocol.md) (REFIMPL-02, version 1.0.0, proposed until the maintainer approves its text) adopts the ladder L0 as shipped, L1 aligned inputs, calibration period and accumulation window, L2 aligned distribution family, L3 aligned estimator, L4 aligned zero handling, plotting position, clipping and missing-data rules, and puts the inverse-normal transform in L4. The mapping of this matrix's axes is:
+[`protocol.md`](protocol.md) (REFIMPL-02, version 1.0.0, proposed until the maintainer approves its text) defines the ladder. L0 uses the defaults and aligns no axes. The table maps this matrix's axes to the other rungs.
 
 | Rung | Axes in this matrix |
 | --- | --- |
