@@ -1598,8 +1598,8 @@ class EventConcordance:
     denominator is empty; with reference events but no index events, ``pod`` and ``csi`` are zero and
     only ``far`` is NaN.
 
-    A censored run touches the record edge or an unknown step, so its physical onset or end lies
-    outside the record. Censored runs are counted here and take part in the counts like any other run.
+    A censored run touches the record edge or an unknown step, so its physical onset or end is unknown.
+    Censored runs are counted here and take part in the counts like any other run.
     """
 
     #: Reference events overlapped by at least one index event.
