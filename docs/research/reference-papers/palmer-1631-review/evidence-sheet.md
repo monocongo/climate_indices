@@ -25,4 +25,4 @@ At index 8 the dry candidate is about −0.6323. It becomes an established droug
 
 **Reply in plain text (60–90 minutes).** Which interpretation do the passages support? What remains ambiguous? Which single check would change your judgment?
 
-[Optional numerical replay](optional-replay.md) · [Review outcome template](outcome-note-template.md)
+[Optional coverage supplement](coverage-assessment.md) · [Numerical replay](optional-replay.md) · [Review outcome template](outcome-note-template.md)
