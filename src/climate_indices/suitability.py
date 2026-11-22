@@ -947,6 +947,14 @@ def _across_cells(
     return result if reduce else result.transpose(*array.dims)
 
 
+def _rejection_share(p: xr.DataArray, alpha: float, cell_dims: list[str]) -> xr.DataArray:
+    """:func:`_rejection_share_cells` as reductions over ``cell_dims``, which Dask runs chunk by chunk."""
+    finite: xr.DataArray = xr.apply_ufunc(np.isfinite, p, dask="allowed")
+    count = finite.sum(cell_dims)
+    share: xr.DataArray = ((p <= alpha) & finite).sum(cell_dims) / count.where(count > 0)  # NaN where none is finite
+    return share
+
+
 def _add_across_cell_variables(
     data_vars: dict[str, xr.DataArray],
     cell_dims: list[str],
@@ -963,11 +971,8 @@ def _add_across_cell_variables(
     }
     n_cell_dims = len(cell_dims)
     added: dict[str, xr.DataArray] = {}
-    shares = {
-        name: _across_cells(lambda a: _rejection_share_cells(a, alpha, n_cell_dims), p, cell_dims, reduce=True)
-        for name, p in decided.items()
-        if p is not None
-    }
+    # two counts per calendar step, so each chunk reduces on its own; only Benjamini-Hochberg needs every cell at once
+    shares = {name: _rejection_share(p, alpha, cell_dims) for name, p in decided.items() if p is not None}
     empty = xr.full_like(shares["ks"], np.nan)
     statistic_axis = xr.DataArray(np.array(_GOF_STATISTICS), dims="statistic", name="statistic")
     added["rejection_share"] = xr.concat(
