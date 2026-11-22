@@ -79,14 +79,16 @@ def render_family(doc: dict[str, Any], key: str) -> str:
     out: list[str] = ["#### Defaults at a glance", "", *render_summary(doc, key), "#### Per-package evidence", ""]
     for entry in family["entries"]:
         impl = doc["implementations"][entry["implementation"]]
-        out.append(f"##### {impl['name']}: {entry['entry_point']}")
-        out.append("")
-        out.append(f"Read at: {impl['ref']}." + ("" if impl["source_read"] else " **Source not read.**"))
+        out.extend(
+            [
+                f"##### {impl['name']}: {entry['entry_point']}",
+                "",
+                f"Read at: {impl['ref']}." + ("" if impl["source_read"] else " **Source not read.**"),
+            ]
+        )
         if impl.get("note"):
             out.append(f"{impl['note']}")
-        out.append("")
-        out.append("| Axis | Position (default; options follow) | Evidence |")
-        out.append("| --- | --- | --- |")
+        out.extend(["", "| Axis | Position (default; options follow) | Evidence |", "| --- | --- | --- |"])
         out.extend(_row(axis, entry["cells"][axis]) for axis in doc["axes"])
         out.append("")
     return "\n".join(out).rstrip() + "\n"
@@ -95,14 +97,9 @@ def render_family(doc: dict[str, Any], key: str) -> str:
 def render_aligned(doc: dict[str, Any]) -> str:
     out: list[str] = []
     for cfg in doc["aligned_configurations"]:
-        out.append(f"### `{cfg['id']}`: {cfg['title']}")
-        out.append("")
-        out.append("| Axis | Position |")
-        out.append("| --- | --- |")
+        out.extend([f"### `{cfg['id']}`: {cfg['title']}", "", "| Axis | Position |", "| --- | --- |"])
         out.extend(f"| {a.replace('_', ' ')} | {_esc(v)} |" for a, v in cfg["positions"].items())
-        out.append("")
-        out.append("Reachable in:")
-        out.append("")
+        out.extend(["", "Reachable in:", ""])
         out.extend(f"- `{i['implementation']}`: {_esc(i['how'])}" for i in cfg["implementations"])
         out.append("")
         if cfg["independent_triples"]:
@@ -110,9 +107,7 @@ def render_aligned(doc: dict[str, Any]) -> str:
             out.append(f"Mutually independent triples (lineage.json classes): {triples}.")
         else:
             out.append(f"**No independent triple.** {cfg['absent']}")
-        out.append("")
-        out.append("Residual differences after alignment:")
-        out.append("")
+        out.extend(["", "Residual differences after alignment:", ""])
         out.extend(f"- {_esc(r)}" for r in cfg["residual_axes"])
         out.append("")
     return "\n".join(out).rstrip() + "\n"
@@ -177,15 +172,19 @@ def check_references(doc: dict[str, Any]) -> None:
             if name not in impls:
                 raise SystemExit(f"{key}: unknown implementation {name!r}")
     for cfg in doc["aligned_configurations"]:
-        if cfg["family"] not in doc["families"]:
-            raise SystemExit(f"{cfg['id']}: unknown family {cfg['family']!r}")
-        members = {i["implementation"] for i in cfg["implementations"]}
-        family = {e["implementation"] for e in doc["families"][cfg["family"]]["entries"]}
-        if not members <= family:
-            raise SystemExit(f"{cfg['id']}: {sorted(members - family)} not an entry of family {cfg['family']!r}")
-        for triple in cfg["independent_triples"]:
-            if len(set(triple)) != 3 or not set(triple) <= members:
-                raise SystemExit(f"{cfg['id']}: triple {triple} is not three distinct members of its implementations")
+        _check_alignment(doc, cfg)
+
+
+def _check_alignment(doc: dict[str, Any], cfg: dict[str, Any]) -> None:
+    if cfg["family"] not in doc["families"]:
+        raise SystemExit(f"{cfg['id']}: unknown family {cfg['family']!r}")
+    members = {i["implementation"] for i in cfg["implementations"]}
+    family = {e["implementation"] for e in doc["families"][cfg["family"]]["entries"]}
+    if not members <= family:
+        raise SystemExit(f"{cfg['id']}: {sorted(members - family)} not an entry of family {cfg['family']!r}")
+    for triple in cfg["independent_triples"]:
+        if len(set(triple)) != 3 or not set(triple) <= members:
+            raise SystemExit(f"{cfg['id']}: triple {triple} is not three distinct members of its implementations")
 
 
 def _read(path: Path) -> str:

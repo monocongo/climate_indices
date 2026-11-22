@@ -29,7 +29,8 @@ def matrix() -> dict[str, Any]:
 @pytest.fixture(scope="module")
 def renderer() -> ModuleType:
     spec = importlib.util.spec_from_file_location("render_method_matrix", RENDERER)
-    assert spec is not None and spec.loader is not None
+    assert spec is not None
+    assert spec.loader is not None
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
@@ -264,7 +265,8 @@ def test_escaping_keeps_data_visible(renderer: ModuleType) -> None:
 def test_generated_sections_cover_data_families(renderer: ModuleType, matrix: dict[str, Any]) -> None:
     text = (RESEARCH / "method-matrix.md").read_text(encoding="utf-8")
     assert set(re.findall(r"<!-- BEGIN GENERATED: (\w+) -->", text)) == set(renderer.sections(matrix))
-    assert "`dim_spi_n`" in text and "`dim_spi_n(p,`" not in text
+    assert "`dim_spi_n`" in text
+    assert "`dim_spi_n(p,`" not in text
 
 
 def test_marker_check_rejects_overlapping_or_orphaned_sections(renderer: ModuleType) -> None:
