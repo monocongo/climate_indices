@@ -65,7 +65,10 @@ def parse_bib(text: str) -> dict[str, dict[str, str]]:
         field = FIELD.match(line)
         if not field:
             raise ValueError(f"{key}: unparsed line {line!r}; write one field per line with its value on that line")
-        entries[key][field.group(1).lower()] = field.group(2).strip()
+        value = field.group(2).strip()
+        if value.count("{") != value.count("}"):
+            raise ValueError(f"{key}: {field.group(1)} value has unbalanced braces")
+        entries[key][field.group(1).lower()] = value
     if key is not None:
         raise ValueError(f"{key}: entry is not closed at the end of the file")
     return entries
@@ -101,8 +104,10 @@ def fetch(doi: str) -> dict[str, Any]:
     try:
         with urllib.request.urlopen(request, timeout=60) as response:  # noqa: S310  # nosec B310 # fixed https endpoint
             message = json.load(response)["message"]
-    except (OSError, ValueError, KeyError) as error:
+    except (OSError, ValueError, KeyError, TypeError) as error:
         raise RuntimeError(f"Crossref lookup for {doi} failed") from error
+    if not isinstance(message, dict) or not message.get("DOI"):
+        raise RuntimeError(f"Crossref lookup for {doi} returned no work record")
     return cast(dict[str, Any], message)
 
 

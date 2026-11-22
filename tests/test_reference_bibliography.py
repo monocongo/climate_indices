@@ -1,6 +1,7 @@
 """The reference-paper bibliography matches its recorded publisher verification (REFIMPL-05)."""
 
 import importlib.util
+import io
 import json
 from pathlib import Path
 from types import ModuleType
@@ -155,3 +156,21 @@ def test_an_unclosed_entry_is_rejected(verifier: ModuleType, text: str) -> None:
     parse_bib = cast(Any, verifier).parse_bib
     with pytest.raises(ValueError, match="not closed"):
         parse_bib(text)
+
+
+def test_an_unbalanced_field_value_is_rejected(verifier: ModuleType) -> None:
+    """A field value with unbalanced braces is not valid BibTeX, and _plain would hide it."""
+    title = "Major over- and underestimation of drought found in {NOAA's climate divisional {SPI} dataset"
+    parse_bib = cast(Any, verifier).parse_bib
+    with pytest.raises(ValueError, match="unbalanced braces"):
+        parse_bib(f"@article{{spade2020,\n  title   = {{{title}}},\n}}\n")
+
+
+@pytest.mark.parametrize("payload", [b"[]", b'{"message": null}', b'{"message": {}}'], ids=["list", "null", "no-doi"])
+def test_a_malformed_crossref_response_is_a_lookup_failure(
+    verifier: ModuleType, monkeypatch: pytest.MonkeyPatch, payload: bytes
+) -> None:
+    """A response that is not a work record raises the error the retry path handles."""
+    monkeypatch.setattr(verifier.urllib.request, "urlopen", lambda *args, **kwargs: io.BytesIO(payload))
+    with pytest.raises(RuntimeError, match="Crossref lookup"):
+        cast(Any, verifier).fetch("10.1175/JAMC-D-19-0272.1")
