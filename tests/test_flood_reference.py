@@ -169,4 +169,5 @@ def test_antecedent_precipitation_matches_ahrapi() -> None:
 
     actual = _require_flood_function("antecedent_precipitation_index", 1109)(precipitation, 0.95)
 
-    np.testing.assert_allclose(actual, expected, rtol=0.0, atol=1e-14)
+    tolerance = provenance["validation_tolerance"]
+    np.testing.assert_allclose(actual, expected, rtol=tolerance["rtol"], atol=tolerance["atol_mm"])

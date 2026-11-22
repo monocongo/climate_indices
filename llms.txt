@@ -215,7 +215,7 @@ Their scope limits are in the sections below.
 | Scope | Command | Expected result |
 | --- | --- | --- |
 | Core suite | `uv run pytest -m "not benchmark and not validation"` | Unit, property, xarray, release guardrail, and regression tests pass. |
-| Validation marker suite | `uv run pytest -m validation` | External validation tests, including committed NOAA EDDI fixtures, the SPEIbase v2.11 SPEI plausibility floors and input-matched log-logistic comparison, the R `SPEI` log-logistic cross-implementation fixtures, the standard-Palmer nClimDiv comparison, the Palmer (1965) printed worked-example stage checks, the Srock et al. (2018) HDW event-discrimination fixture, the NOAA CPC degree-day worked example and the xclim/windpowerlib wind-profile fixtures (independent implementations on synthetic inputs), the R `SEI` empirical-standardization and energy-wrapper comparison, and the flood-family source-identity and API cross-implementation checks (see "Flood Evidence Classification"), pass; the nine committed compound summer cases reproduce the same-author counts and LMF without independent-validation or significance claims; scPDSI oracle cross-validation passes. |
+| Validation marker suite | `uv run pytest -m validation` | External comparisons and specification checks, including committed NOAA EDDI fixtures, the SPEIbase v2.11 SPEI plausibility floors and input-matched log-logistic comparison, the R `SPEI` log-logistic cross-implementation fixtures, the standard-Palmer nClimDiv comparison, the Palmer (1965) printed worked-example stage checks, the Srock et al. (2018) HDW event-discrimination fixture, the NOAA CPC degree-day worked example and the xclim/windpowerlib wind-profile fixtures (independent implementations on synthetic inputs), the R `SEI` empirical-standardization and energy-wrapper comparison, and the flood-family source-identity and API cross-implementation checks (see "Flood Evidence Classification"), pass; the nine committed compound summer cases reproduce the same-author counts and LMF without independent-validation or significance claims; scPDSI oracle cross-validation passes. |
 | Lint | `uv run ruff check src/ tests/` | No lint findings. |
 | Format | `uv run ruff format --check src/ tests/` | No formatting changes needed. |
 | Notebooks | `uv run jupyter nbconvert --execute --to notebook --inplace notebooks/xarray_getting_started.ipynb notebooks/palmer_indices_xarray.ipynb notebooks/eddi_xarray.ipynb notebooks/icechunk_spi_spei.ipynb` | Requires Python 3.12 or later. All four notebooks execute from a clean checkout; the Icechunk notebook uses the optional extra that the `dev` group installs on Python 3.12 or later. |
@@ -741,8 +741,8 @@ an independent-implementation comparison on synthetic inputs.
 - **Digitized figure**: the Byun & Wilhite Figure 2 index panels are
   supplementary lower-tier evidence the survey recommends only behind the
   tabulated values; no figure has been digitized.
-- **Regression only**: what is committed. `tests/test_flood_reference.py`
-  (marked `validation`) pins the Byun & Wilhite (1999) Eq. (2) two-day
+- **Specification and regression checks**: In addition to the API comparison,
+  `tests/test_flood_reference.py` (marked `validation`) pins the Byun & Wilhite (1999) Eq. (2) two-day
   identity, the harmonic endpoint weights `w₁ = H_D` and `w_D = 1 / D`, and the
   `P / (1 − k)` constant-input limit, and freezes the public signatures. The
   per-index contract suites, run outside the `validation` marker, cover the
