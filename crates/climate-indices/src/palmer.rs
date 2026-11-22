@@ -87,7 +87,7 @@ fn recharge(p: f64, pet: f64, ss: f64, su: f64, awc: f64) -> Recharge {
 
     // evaporation exceeds precipitation
     let deficit = pet - p;
-    let ul_both = py_min(su, (deficit - ss) * su / awc);
+    let ul_both = py_min(su, (deficit - ss) * su / (awc_bot + AWCTOP));
     let surface_only = ss >= deficit;
     let sl = if surface_only { deficit } else { ss };
     let ul = if surface_only { 0.0 } else { ul_both };

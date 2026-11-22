@@ -199,7 +199,7 @@ def _calc_recharge(
     # --- evaporation exceeds precipitation ---
     deficit = pet - p
     sl_both = ss
-    ul_both = _py_min(su, (deficit - sl_both) * su / awc)
+    ul_both = _py_min(su, (deficit - sl_both) * su / (awc_bot + AWCTOP))
     surface_only = ss >= deficit
     sl = np.where(surface_only, deficit, sl_both)
     ul = np.where(surface_only, 0.0, ul_both)
