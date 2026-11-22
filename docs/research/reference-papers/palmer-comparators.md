@@ -268,8 +268,11 @@ here.
   entry, not on a search of the whole package.
 - **H2 and H3 untested.** The Jacobi core was not obtained, and the Ficklin repository
   holds only amended files.
-- **H7 partly wrong.** `JonKing93/pdsi` and `libperl-cpc-palmer` are neither derived from
-  `climate_indices` nor from a comparator in the ticket's table.
+- **H7 not tested.** The search found no Julia Palmer repository. `ktripa/scpdsi-tools` is
+  Python, but source reading established its method, not its derivation, so it neither
+  confirms nor refutes H7. `JonKing93/pdsi` (MATLAB) and `libperl-cpc-palmer` (Perl) are
+  neither derived from `climate_indices` nor from a comparator in the ticket's table, but
+  neither is a Python or Julia port, so neither tests H7.
 - **Numeric thresholds.** The "NCEI-like" signal was applied to `JonKing93/pdsi` only. The
   pre-registered "Wells-like" signal was written for standard-mode PDSI and does not apply
   to `scpdsi-tools`, which computes scPDSI; it was compared with the Wells-oracle fixtures
