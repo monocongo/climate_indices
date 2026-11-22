@@ -70,6 +70,7 @@ def _draw(
     if distribution is Distribution.pearson:
         return scipy.stats.pearson3.rvs(1.0, loc=100.0, scale=30.0, size=shape, random_state=rng), "spi", {}
     if distribution is Distribution.loglogistic:
+        # Fisk(c=1/0.3, scale=60) is Hosking's GLO with loc=60, scale=18, k=-0.3 (CDFs agree to 2e-16)
         draw = scipy.stats.fisk.rvs(c=1 / 0.3, scale=60.0, size=shape, random_state=rng)
     else:
         draw = scipy.stats.genextreme.rvs(-0.1, loc=100.0, scale=30.0, size=shape, random_state=rng)
