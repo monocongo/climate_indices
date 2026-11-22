@@ -435,9 +435,7 @@ def test_pdi_recursion_takes_the_same_branches_on_boundary_series(monkeypatch) -
         assert _live_triples(output.reshape(_MONTHS, -1)) >= 6
 
 
-def _wells_corpus_outcomes(
-    monkeypatch, corpus: np.ndarray, factors: DurationFactors
-) -> tuple[np.ndarray, np.ndarray]:
+def _wells_corpus_outcomes(monkeypatch, corpus: np.ndarray, factors: DurationFactors) -> tuple[np.ndarray, np.ndarray]:
     """Run each corpus column through both paths; return the Python PDSI and the completed columns."""
     results = np.zeros(corpus.shape)
     completed = np.zeros(corpus.shape[1], dtype=bool)
