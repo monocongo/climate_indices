@@ -1,0 +1,199 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "climate_indices_method_spec_v1",
+  "title": "Method specification of standardized-index implementations",
+  "description": "One document records, for each implementation of an index family, where it sits on every method axis, by default and by option, with the source line that shows it. Implementation ids are those of lineage.json (REFIMPL-04, issue 1606). Pins are those of comparators.lock.yaml (REFIMPL-03, issue 1605). See method-matrix.md for the axes in prose.",
+  "type": "object",
+  "required": ["schema_version", "ticket", "axes", "implementations", "families", "aligned_configurations"],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {"const": 1},
+    "ticket": {"type": "string", "pattern": "^https?://"},
+    "axes": {
+      "description": "The axes, in table order. Every entry cell carries every axis.",
+      "type": "array",
+      "minItems": 12,
+      "maxItems": 12,
+      "uniqueItems": true,
+      "items": {"$ref": "#/$defs/axis_id"}
+    },
+    "implementations": {
+      "type": "object",
+      "minProperties": 1,
+      "propertyNames": {"pattern": "^[a-z][a-z0-9_]*$"},
+      "additionalProperties": {"$ref": "#/$defs/implementation"}
+    },
+    "families": {
+      "description": "Index families. Each lists the entries compared on its axes.",
+      "type": "object",
+      "minProperties": 1,
+      "propertyNames": {"pattern": "^[a-z][a-z0-9_]*$"},
+      "additionalProperties": {
+        "type": "object",
+        "required": ["title", "entries"],
+        "additionalProperties": false,
+        "properties": {
+          "title": {"type": "string"},
+          "entries": {
+            "type": "array",
+            "minItems": 1,
+            "items": {"$ref": "#/$defs/entry"}
+          }
+        }
+      }
+    },
+    "aligned_configurations": {
+      "description": "Configurations that can be made identical across implementations, per family. A family with no configuration reachable in three mutually independent implementations says so in `absent`.",
+      "type": "array",
+      "items": {"$ref": "#/$defs/aligned"}
+    }
+  },
+  "$defs": {
+    "axis_id": {
+      "enum": [
+        "accumulation",
+        "calendar_grouping",
+        "calibration_period",
+        "distribution",
+        "estimator",
+        "location_offset",
+        "zero_handling",
+        "plotting_position",
+        "inverse_normal",
+        "output_bound",
+        "missing_data_minimum_sample",
+        "fit_failure"
+      ]
+    },
+    "implementation": {
+      "type": "object",
+      "required": ["name", "ref", "source_read"],
+      "additionalProperties": false,
+      "properties": {
+        "name": {"type": "string"},
+        "ref": {"type": "string", "description": "Pin the citations are read at."},
+        "source_read": {"type": "boolean", "description": "False when only documentation or an observed output backs the entry."},
+        "note": {"type": "string"}
+      }
+    },
+    "citation": {
+      "type": "object",
+      "required": ["file", "lines"],
+      "additionalProperties": false,
+      "properties": {
+        "file": {"type": "string", "description": "Path inside the implementation's source tree, or a repository path for documentation."},
+        "lines": {"type": "string", "pattern": "^[0-9]+(-[0-9]+)?(, ?[0-9]+(-[0-9]+)?)*$"}
+      }
+    },
+    "option": {
+      "type": "object",
+      "required": ["value", "how"],
+      "additionalProperties": false,
+      "properties": {
+        "value": {"type": "string"},
+        "how": {"type": "string", "description": "The argument or call that selects it."},
+        "citations": {"type": "array", "items": {"$ref": "#/$defs/citation"}}
+      }
+    },
+    "cell": {
+      "type": "object",
+      "required": ["value", "status"],
+      "additionalProperties": false,
+      "properties": {
+        "value": {"type": "string", "description": "The default position; for not_applicable, why."},
+        "status": {"enum": ["verified", "unverified", "not_applicable"]},
+        "citations": {"type": "array", "items": {"$ref": "#/$defs/citation"}},
+        "options": {"type": "array", "items": {"$ref": "#/$defs/option"}},
+        "basis": {"type": "string", "minLength": 1, "description": "Required when unverified: the documentation or observation the value rests on."},
+        "note": {"type": "string"}
+      },
+      "allOf": [
+        {
+          "if": {"properties": {"status": {"const": "verified"}}},
+          "then": {"required": ["citations"], "properties": {"citations": {"minItems": 1}}}
+        },
+        {
+          "if": {"properties": {"status": {"const": "unverified"}}},
+          "then": {"required": ["basis"]}
+        }
+      ]
+    },
+    "entry": {
+      "type": "object",
+      "required": ["implementation", "entry_point", "cells"],
+      "additionalProperties": false,
+      "properties": {
+        "implementation": {"type": "string", "description": "Key of `implementations`."},
+        "entry_point": {"type": "string", "description": "The function, program, or product the cells describe."},
+        "cells": {
+          "type": "object",
+          "required": [
+            "accumulation",
+            "calendar_grouping",
+            "calibration_period",
+            "distribution",
+            "estimator",
+            "location_offset",
+            "zero_handling",
+            "plotting_position",
+            "inverse_normal",
+            "output_bound",
+            "missing_data_minimum_sample",
+            "fit_failure"
+          ],
+          "propertyNames": {"$ref": "#/$defs/axis_id"},
+          "additionalProperties": {"$ref": "#/$defs/cell"}
+        }
+      }
+    },
+    "aligned": {
+      "type": "object",
+      "required": ["family", "id", "title", "positions", "implementations", "independent_triples", "residual_axes"],
+      "additionalProperties": false,
+      "properties": {
+        "family": {"type": "string"},
+        "id": {"type": "string"},
+        "title": {"type": "string"},
+        "positions": {
+          "type": "object",
+          "description": "The axis positions every listed implementation is set to.",
+          "minProperties": 1,
+          "propertyNames": {"$ref": "#/$defs/axis_id"},
+          "additionalProperties": {"type": "string"}
+        },
+        "implementations": {
+          "type": "array",
+          "description": "Implementations that can be set to the positions, each with the call that does it.",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "required": ["implementation", "how"],
+            "additionalProperties": false,
+            "properties": {
+              "implementation": {"type": "string"},
+              "how": {"type": "string"}
+            }
+          }
+        },
+        "independent_triples": {
+          "type": "array",
+          "description": "Sets of three implementations from `implementations`, every pair classed independent by lineage.json. Empty when none exists.",
+          "items": {"type": "array", "minItems": 3, "maxItems": 3, "items": {"type": "string"}}
+        },
+        "residual_axes": {
+          "type": "array",
+          "description": "Differences that remain after alignment: an axis name with the size or reason, and any other difference such as inputs or optimizer start values.",
+          "items": {"type": "string"}
+        },
+        "absent": {"type": "string", "description": "Why no independent triple exists, when `independent_triples` is empty."}
+      },
+      "allOf": [
+        {
+          "if": {"properties": {"independent_triples": {"maxItems": 0}}},
+          "then": {"required": ["absent"]},
+          "else": {"not": {"required": ["absent"]}}
+        }
+      ]
+    }
+  }
+}
