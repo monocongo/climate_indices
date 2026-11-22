@@ -148,9 +148,9 @@ def test_counts_match_a_brute_force_intersection_over_random_run_sets() -> None:
             steps=steps,
         )
 
-        assert (result.hits, result.misses, result.false_alarms, result.matched_index_events) == _naive_counts(
-            index, reference
-        ), (index, reference)
+        counts = (result.hits, result.misses, result.false_alarms, result.matched_index_events)
+
+        assert counts == _naive_counts(index, reference), (index, reference)
 
 
 def test_an_overlap_of_one_step_only_still_counts() -> None:
@@ -239,9 +239,10 @@ def test_an_unmatched_run_before_an_unknown_step_is_right_censored() -> None:
 def test_a_run_crossing_an_unknown_step_is_rejected() -> None:
     valid = np.ones(10, dtype=bool)
     valid[4] = False
+    crossing = manual([2], [6])
 
     with pytest.raises(InvalidArgumentError, match="unknown observation"):
-        concordance(manual([2], [6]), EMPTY, valid=valid)
+        concordance(crossing, EMPTY, valid=valid)
 
 
 # ---- event_concordance: contract -----------------------------------------------------------------
@@ -257,17 +258,18 @@ def test_metadata_records_the_counting_rule_and_the_event_counts() -> None:
 
 
 def test_beta_warning_is_raised() -> None:
+    time, valid = months(10), np.ones(10, dtype=bool)
+
     with pytest.warns(BetaFeatureWarning):
-        suitability.event_concordance(EMPTY, EMPTY, time=months(10), valid=np.ones(10, dtype=bool), cadence="monthly")
+        suitability.event_concordance(EMPTY, EMPTY, time=time, valid=valid, cadence="monthly")
 
 
 def test_a_non_run_set_source_is_rejected() -> None:
     not_a_run_set: Any = [(0, 1)]
+    time, valid = months(10), np.ones(10, dtype=bool)
 
     with pytest.raises(InputTypeError, match="RunSet"):
-        suitability.event_concordance(
-            not_a_run_set, EMPTY, time=months(10), valid=np.ones(10, dtype=bool), cadence="monthly"
-        )
+        suitability.event_concordance(not_a_run_set, EMPTY, time=time, valid=valid, cadence="monthly")
 
 
 # ---- category_agreement: pilot parity -----------------------------------------------------------
