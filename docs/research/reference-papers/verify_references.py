@@ -55,13 +55,7 @@ def parse_bib(text: str) -> dict[str, dict[str, str]]:
             continue
         match = ENTRY.match(stripped)
         if match:
-            if key is not None:
-                raise ValueError(f"{key}: entry is not closed before the next entry starts")
-            new_key = match.group(2).strip()
-            if new_key in entries:
-                raise ValueError(f"duplicate bibliography key: {new_key}")
-            key = new_key
-            entries[new_key] = {}
+            key = _start_entry(match.group(2).strip(), key, entries)
             continue
         if key is None:
             continue
@@ -75,6 +69,16 @@ def parse_bib(text: str) -> dict[str, dict[str, str]]:
     if key is not None:
         raise ValueError(f"{key}: entry is not closed at the end of the file")
     return entries
+
+
+def _start_entry(new_key: str, key: str | None, entries: dict[str, dict[str, str]]) -> str:
+    """Open a new entry, rejecting an unclosed previous entry or a duplicate key."""
+    if key is not None:
+        raise ValueError(f"{key}: entry is not closed before the next entry starts")
+    if new_key in entries:
+        raise ValueError(f"duplicate bibliography key: {new_key}")
+    entries[new_key] = {}
+    return new_key
 
 
 def _plain(value: object) -> str:
@@ -131,26 +135,30 @@ def summarise(record: dict[str, Any], checked: str) -> dict[str, Any]:
     }
 
 
-def mismatches(key: str, entry: dict[str, str], record: dict[str, Any]) -> list[str]:
-    """Report every disagreement between a bibliography entry and its verification record."""
-    found: list[str] = []
-    if not entry.get("author") or not entry.get("title") or not entry.get("year"):
-        found.append(f"{key}: an entry needs author, title and year")
-    if record.get("check") == "record":
-        if entry.get("doi"):
-            found.append(f"{key}: has a doi but its record is not a Crossref check")
-        if not str(record.get("record_url", "")).startswith("https://"):
-            found.append(f"{key}: record_url is missing or not https")
-        if len(str(record.get("record_states", ""))) <= 40:
-            found.append(f"{key}: the record does not say what it states")
-        if not record.get("checked") or not record.get("year"):
-            found.append(f"{key}: the record needs a check date and a year")
-        elif str(record["year"]) != entry.get("year"):
-            found.append(f"{key}: year {entry.get('year')!r} != record {record['year']!r}")
-        return found
-    if record.get("check") != "crossref":
-        return [f"{key}: unknown check {record.get('check')!r}"]
+def _field_problem(key: str, label: str, value: str, recorded: object) -> str | None:
+    """Return the disagreement between one bibliography field and the record, or None."""
+    if recorded is None:
+        if value:
+            return f"{key}: {label} {value!r} is not in the record"
+        return None
+    if value.replace("--", "-") == str(recorded).replace("--", "-"):
+        return None
+    return f"{key}: {label} {value!r} != record {recorded!r}"
 
+
+def _numeric_problems(key: str, entry: dict[str, str], record: dict[str, Any]) -> list[str]:
+    """Report volume, number and pages that disagree with the record."""
+    found: list[str] = []
+    for bib_field, record_field in (("volume", "volume"), ("number", "issue"), ("pages", "pages")):
+        problem = _field_problem(key, bib_field, entry.get(bib_field, ""), record.get(record_field))
+        if problem:
+            found.append(problem)
+    return found
+
+
+def _identity_problems(key: str, entry: dict[str, str], record: dict[str, Any]) -> list[str]:
+    """Report a DOI, cited_year note or year that disagrees with the record."""
+    found: list[str] = []
     doi = entry.get("doi", "")
     if not doi:
         found.append(f"{key}: no doi field for a Crossref record")
@@ -162,18 +170,14 @@ def mismatches(key: str, entry: dict[str, str], record: dict[str, Any]) -> list[
         found.append(f"{key}: cited_year overrides the Crossref date without a note saying why")
     printed = record.get("cited_year") or record.get("published_print") or record.get("issued") or ""
     year = entry.get("year", "")
-    if str(printed)[:4] != year:
+    if len(year) != 4 or not str(printed).startswith(year):
         found.append(f"{key}: year {year!r} != record {printed!r}")
+    return found
 
-    for bib_field, record_field in (("volume", "volume"), ("number", "issue"), ("pages", "pages")):
-        value = entry.get(bib_field, "")
-        recorded = record.get(record_field)
-        if recorded is None:
-            if value:
-                found.append(f"{key}: {bib_field} {value!r} is not in the record")
-        elif value.replace("--", "-") != str(recorded).replace("--", "-"):
-            found.append(f"{key}: {bib_field} {value!r} != record {recorded!r}")
 
+def _text_problems(key: str, entry: dict[str, str], record: dict[str, Any]) -> list[str]:
+    """Report a title, container or first author that disagrees with the record."""
+    found: list[str] = []
     if _plain(entry.get("title", "")) != _plain(record.get("title") or ""):
         found.append(f"{key}: title {entry.get('title')!r} != record {record.get('title')!r}")
 
@@ -191,44 +195,98 @@ def mismatches(key: str, entry: dict[str, str], record: dict[str, Any]) -> list[
     return found
 
 
+def _record_problems(key: str, entry: dict[str, str], record: dict[str, Any]) -> list[str]:
+    """Report a DOI-less entry whose named page does not certify it."""
+    found: list[str] = []
+    if entry.get("doi"):
+        found.append(f"{key}: has a doi but its record is not a Crossref check")
+    if not str(record.get("record_url", "")).startswith("https://"):
+        found.append(f"{key}: record_url is missing or not https")
+    if len(str(record.get("record_states", ""))) <= 40:
+        found.append(f"{key}: the record does not say what it states")
+    if not record.get("checked") or not record.get("year"):
+        found.append(f"{key}: the record needs a check date and a year")
+    elif str(record["year"]) != entry.get("year"):
+        found.append(f"{key}: year {entry.get('year')!r} != record {record['year']!r}")
+    return found
+
+
+def mismatches(key: str, entry: dict[str, str], record: dict[str, Any]) -> list[str]:
+    """Report every disagreement between a bibliography entry and its verification record."""
+    found: list[str] = []
+    if not entry.get("author") or not entry.get("title") or not entry.get("year"):
+        found.append(f"{key}: an entry needs author, title and year")
+    if record.get("check") == "record":
+        return found + _record_problems(key, entry, record)
+    if record.get("check") != "crossref":
+        return [f"{key}: unknown check {record.get('check')!r}"]
+    found.extend(_identity_problems(key, entry, record))
+    found.extend(_numeric_problems(key, entry, record))
+    found.extend(_text_problems(key, entry, record))
+    return found
+
+
+def _known_entries(problems: list[str]) -> dict[str, Any]:
+    """Return the committed verification records, or none when the file is unreadable."""
+    if not VERIFICATION.exists():
+        return {}
+    try:
+        document = cast(dict[str, Any], json.loads(VERIFICATION.read_text(encoding="utf-8")))
+    except ValueError as error:
+        problems.append(f"{VERIFICATION.name}: unreadable ({error})")
+        return {}
+    return cast(dict[str, Any], document.get("entries", {}))
+
+
+def _record_checked(key: str, known: dict[str, Any], problems: list[str]) -> dict[str, Any] | None:
+    """Return the committed page-verified record for a DOI-less entry, or none."""
+    record = known.get(key)
+    if not record or record.get("check") != "record":
+        problems.append(f"{key}: no DOI and no recorded publisher or agency record")
+        return None
+    return cast(dict[str, Any], record)
+
+
+def _crossref_record(
+    key: str, doi: str, known: dict[str, Any], checked: str, problems: list[str]
+) -> dict[str, Any] | None:
+    """Return the Crossref record for a DOI, retrying, or none when every attempt fails."""
+    record: dict[str, Any] | None = None
+    for attempt in range(3):
+        try:
+            record = summarise(fetch(doi), checked)
+            break
+        except RuntimeError as error:
+            if attempt == 2:
+                problems.append(f"{key}: {error}")
+            time.sleep(3)
+    if record is None:
+        return None
+    for field in PRESERVED:
+        if field in known.get(key, {}):
+            record[field] = known[key][field]
+    time.sleep(1.5)
+    return record
+
+
 def main() -> int:
     entries = parse_bib(BIB.read_text(encoding="utf-8"))
-    known: dict[str, Any] = {}
     problems: list[str] = []
-    if VERIFICATION.exists():
-        try:
-            known = cast(dict[str, Any], json.loads(VERIFICATION.read_text(encoding="utf-8"))).get("entries", {})
-        except ValueError as error:
-            problems.append(f"{VERIFICATION.name}: unreadable ({error})")
+    known = _known_entries(problems)
     checked = datetime.now(UTC).strftime("%Y-%m-%d")
 
     records: dict[str, Any] = {}
     for key in sorted(entries):
         entry = entries[key]
         doi = entry.get("doi")
-        if not doi:
-            record = known.get(key)
-            if not record or record.get("check") != "record":
-                problems.append(f"{key}: no DOI and no recorded publisher or agency record")
-                continue
-            records[key] = record
-            problems.extend(mismatches(key, entry, records[key]))
-            continue
-        for attempt in range(3):
-            try:
-                records[key] = summarise(fetch(doi), checked)
-                break
-            except RuntimeError as error:
-                if attempt == 2:
-                    problems.append(f"{key}: {error}")
-                time.sleep(3)
+        if doi:
+            record = _crossref_record(key, doi, known, checked, problems)
         else:
+            record = _record_checked(key, known, problems)
+        if record is None:
             continue
-        for field in PRESERVED:
-            if field in known.get(key, {}):
-                records[key][field] = known[key][field]
-        problems.extend(mismatches(key, entry, records[key]))
-        time.sleep(1.5)
+        records[key] = record
+        problems.extend(mismatches(key, entry, record))
 
     for key in sorted(set(known) - set(entries)):
         problems.append(f"{key}: verification record with no bibliography entry")

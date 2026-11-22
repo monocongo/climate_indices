@@ -152,5 +152,6 @@ def test_a_cited_year_override_needs_a_note(
 )
 def test_an_unclosed_entry_is_rejected(verifier: ModuleType, text: str) -> None:
     """An entry with no closing brace is a malformed bibliography."""
+    parse_bib = cast(Any, verifier).parse_bib
     with pytest.raises(ValueError, match="not closed"):
-        cast(Any, verifier).parse_bib(text)
+        parse_bib(text)
