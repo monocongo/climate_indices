@@ -136,6 +136,15 @@ def test_renderer_rejects_inconsistent_references(renderer: ModuleType, matrix: 
             renderer.check_references(broken)
 
 
+def test_renderer_rejects_reserved_or_unmarkerable_family_keys(renderer: ModuleType, matrix: dict[str, Any]) -> None:
+    """A family key must not shadow the counts or aligned section, nor fall outside the marker syntax."""
+    for key in ("counts", "aligned", "spi-daily"):
+        broken = _copy(matrix)
+        broken["families"][key] = broken["families"].pop("spi")
+        with pytest.raises(SystemExit):
+            renderer.sections(broken)
+
+
 def test_renderer_checks_references_and_tables_are_current() -> None:
     """The renderer validates cross-references and exits non-zero when method-matrix.md is stale."""
     result = subprocess.run(
@@ -162,6 +171,70 @@ def test_renderer_reports_stale_tables_without_writing(tmp_path: Path) -> None:
     assert path.read_text(encoding="utf-8") == stale
 
 
+def test_renderer_rewrites_stale_tables(tmp_path: Path) -> None:
+    """The write path replaces stale tables with the rendered ones."""
+    _copy_renderer_set(tmp_path)
+    path = tmp_path / "method-matrix.md"
+    original = path.read_text(encoding="utf-8")
+    stale = original.replace("| SPI | 13 |", "| SPI | 99 |", 1)
+    assert stale != original
+    path.write_text(stale, encoding="utf-8")
+    result = subprocess.run(
+        [sys.executable, str(tmp_path / RENDERER.name)], capture_output=True, text=True, check=False, timeout=300
+    )
+    assert result.returncode == 0, result.stderr
+    assert path.read_text(encoding="utf-8") == original
+
+
+def test_renderer_cli_rejects_unknown_arguments(tmp_path: Path) -> None:
+    _copy_renderer_set(tmp_path)
+    path = tmp_path / "method-matrix.md"
+    original = path.read_text(encoding="utf-8")
+    result = subprocess.run(
+        [sys.executable, str(tmp_path / RENDERER.name), "--chek"],
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=300,
+    )
+    assert result.returncode != 0
+    assert "unknown argument" in result.stderr
+    assert path.read_text(encoding="utf-8") == original
+
+
+def test_renderer_cli_rejects_an_invalid_document_without_writing(tmp_path: Path) -> None:
+    _copy_renderer_set(tmp_path)
+    data = tmp_path / "method-matrix.json"
+    doc = json.loads(data.read_text(encoding="utf-8"))
+    doc["families"]["spi"]["entries"][0]["implementation"] = "not_a_real_key"
+    data.write_text(json.dumps(doc), encoding="utf-8")
+    path = tmp_path / "method-matrix.md"
+    original = path.read_text(encoding="utf-8")
+    result = subprocess.run(
+        [sys.executable, str(tmp_path / RENDERER.name)], capture_output=True, text=True, check=False, timeout=300
+    )
+    assert result.returncode != 0
+    assert "unknown implementation" in result.stderr
+    assert path.read_text(encoding="utf-8") == original
+
+
+def test_renderer_cli_rejects_markers_in_generated_content(tmp_path: Path) -> None:
+    """A metadata value carrying a marker cannot be rendered again, so the renderer refuses to write it."""
+    _copy_renderer_set(tmp_path)
+    data = tmp_path / "method-matrix.json"
+    doc = json.loads(data.read_text(encoding="utf-8"))
+    doc["implementations"]["climate_indices"]["note"] = "<!-- END GENERATED: spi -->"
+    data.write_text(json.dumps(doc), encoding="utf-8")
+    path = tmp_path / "method-matrix.md"
+    original = path.read_text(encoding="utf-8")
+    result = subprocess.run(
+        [sys.executable, str(tmp_path / RENDERER.name)], capture_output=True, text=True, check=False, timeout=300
+    )
+    assert result.returncode != 0
+    assert "markers for 'spi'" in result.stderr
+    assert path.read_text(encoding="utf-8") == original
+
+
 def test_renderer_rejects_symlinked_inputs(tmp_path: Path) -> None:
     _copy_renderer_set(tmp_path)
     path = tmp_path / "method-matrix.json"
@@ -185,6 +258,7 @@ def test_renderer_rejects_symlinked_inputs(tmp_path: Path) -> None:
 
 def test_escaping_keeps_data_visible(renderer: ModuleType) -> None:
     assert renderer._esc("a | b & <c>") == "a \\| b & &lt;c>"
+    assert renderer._cites([{"file": "a|b\nc.py", "lines": "1"}]) == "`a\\|b c.py:1`"
 
 
 def test_generated_sections_cover_data_families(renderer: ModuleType, matrix: dict[str, Any]) -> None:

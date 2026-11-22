@@ -105,7 +105,7 @@ Summary against the ticket's done condition, "at least one fully aligned configu
 
 <!-- BEGIN GENERATED: aligned -->
 
-#### `spi-gamma-thom`: Gamma, Thom closed form, zeros as a mass of n0/n
+### `spi-gamma-thom`: Gamma, Thom closed form, zeros as a mass of n0/n
 
 | Axis | Position |
 | --- | --- |
@@ -133,7 +133,7 @@ Residual differences after alignment:
 - NDMC prints two decimals, so a 1e-6 difference class cannot be resolved against it
 - climatekit takes daily input, treats a missing day as 0, and needs 3 accumulations per month; the library wants 30 calibration years
 
-#### `spi-gamma-ml`: Gamma, numerical maximum likelihood with location fixed at 0, zeros stripped
+### `spi-gamma-ml`: Gamma, numerical maximum likelihood with location fixed at 0, zeros stripped
 
 | Axis | Position |
 | --- | --- |
@@ -154,7 +154,7 @@ Residual differences after alignment:
 - R SCI adds a 0.01 x min(positive) pseudo-observation when zeros are present
 - optimizer start values and tolerances differ (scipy versus fitdistrplus)
 
-#### `spi-pearson-lmoments`: Pearson Type III by L-moments on the non-zero values
+### `spi-pearson-lmoments`: Pearson Type III by L-moments on the non-zero values
 
 | Axis | Position |
 | --- | --- |
@@ -176,7 +176,7 @@ Residual differences after alignment:
 - NCL's Pearson path thins the fit sample for nrun above 12, requires a series length that is a multiple of 12, clamps the probability to [0.001, 0.999], and inverts with AS241 (not the A&S approximation its gamma path uses)
 - R SPEI never applies p0
 
-#### `spi-gamma-lmoments`: Gamma by L-moments (Hosking PELGAM)
+### `spi-gamma-lmoments`: Gamma by L-moments (Hosking PELGAM)
 
 | Axis | Position |
 | --- | --- |
@@ -195,7 +195,7 @@ Residual differences after alignment:
 
 - R SPEI's zero adjustment has no effect; R SEI stops on zeros
 
-#### `spei-glo-pwm`: Three-parameter log-logistic (generalized logistic) by unbiased-PWM L-moments
+### `spei-glo-pwm`: Three-parameter log-logistic (generalized logistic) by unbiased-PWM L-moments
 
 | Axis | Position |
 | --- | --- |
@@ -222,7 +222,7 @@ Residual differences after alignment:
 - the library adds 1000 per step before accumulating (also harmless)
 - inputs: the water balance and the PET behind it must be supplied identically
 
-#### `spei-fisk-ml`: Three-parameter log-logistic (scipy fisk) by maximum likelihood
+### `spei-fisk-ml`: Three-parameter log-logistic (scipy fisk) by maximum likelihood
 
 | Axis | Position |
 | --- | --- |
@@ -241,7 +241,7 @@ Residual differences after alignment:
 
 - start values: xclim uses its own _fit_start, spei scale=std(data)
 
-#### `np-sei-position`: Empirical ranking with the SEI plotting position (1 + k) / (n + 2)
+### `np-sei-position`: Empirical ranking with the SEI plotting position (1 + k) / (n + 2)
 
 | Axis | Position |
 | --- | --- |
@@ -290,7 +290,7 @@ Generated from `method-matrix.json`. A citation is a path inside the implementat
 
 <!-- BEGIN GENERATED: spi -->
 
-##### Defaults at a glance
+#### Defaults at a glance
 
 | Axis | climate_indices<br>`drought.indices.spi` | xclim<br>`standardized_precipitation_index` | spei (Vonk)<br>`spei.spi` | standard_precip<br>`standard_precip.spi.SPI.calculate` | R SPEI<br>`SPEI::spi` | R SCI<br>`SCI::fitSCI` | R SEI<br>`SEI::std_index` | R climatekit<br>`climatekit::ck_spi` | NDMC SPI Generator<br>`SPIGenerator.exe` | NCL dim_spi_n<br>`dim_spi_n` | Climate Engine API<br>`Climate` | Earth Engine GRIDMET/DROUGHT<br>`Earth` | NCEI nClimDiv SPI<br>`NCEI` |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
@@ -307,9 +307,9 @@ Generated from `method-matrix.json`. A citation is a path inside the implementat
 | missing data minimum sample | NaN in a window gives NaN; fit uses the non-missing calibration values; Pearson L-moments need at least 4 n... | NaN propagates through the window; NaN dropped from the fit; ML and APP: fewer than 2 values gives NaN para... | NaN dropped before the fit; no minimum sample | Rows with NaN dropped per group before the fit; L-moment fits need max(4, numargs + 3) values, MLE 4, count... | na.rm=FALSE: any NA in the input is an error; na.rm=TRUE: NA dropped from the fit and the window sum stays... | Non-finite values dropped from the fit; an empty or constant month has NA parameters with a warning; a wind... | NA removed; fewer than n_thres (10) values gives NA with a warning | At least 3 accumulations per calendar month, and 2 positive values for gamma | Missing codes -99 and -9999 are excluded from the fit and propagate through the window sum; no minimum sample | A calendar month whose accumulations are all equal is not fit and stays missing; any missing value in a win... | Not documented (unverified) | Not documented (unverified) | Not established (unverified) |
 | fit failure | Pearson falls back to gamma with a warning. Gamma: a step with no fittable sample has NaN parameters and it... | Any NaN parameter makes all parameters NaN, so the step is NaN, silently for ML and APP; the PWM branch war... | Not handled: no try/except around the scipy fit, so its errors propagate and its result is used as returned | Params None, index NaN for that group, one UserWarning per column; TypeError from bad fit arguments propagates | Invalid L-moments or a constant series leave that period NA, silently | Month parameters NA, with a warning, unless start.fun.fix=TRUE, which keeps the start values | try() failure gives a warning and NA | Gamma: A &lt;= 0 returns NA without a warning. Pearson III: invalid sd or shape returns NA without a warning,... | One positive value: degenerate parameters (alpha 0, gamma 1, beta the mean), no error. All zeros: pzero = 1... | Gamma: exactly one positive value gives degenerate parameters (alpha 0, gamma 1, beta the mean), no error;... | Not documented (unverified) | Not documented (unverified) | Not established (unverified) |
 
-##### Per-package evidence
+#### Per-package evidence
 
-#### climate_indices: drought.indices.spi (distribution= gamma | pearson, required)
+##### climate_indices: drought.indices.spi (distribution= gamma | pearson, required)
 
 Read at: monocongo/climate_indices@98578c87.
 
@@ -328,7 +328,7 @@ Read at: monocongo/climate_indices@98578c87.
 | missing data minimum sample | NaN in a window gives NaN; fit uses the non-missing calibration values; Pearson L-moments need at least 4 non-zero values; no explicit minimum for gamma | `src/climate_indices/lmoments.py:19`; `src/climate_indices/_calibration_period.py:23` |
 | fit failure | Pearson falls back to gamma with a warning. Gamma: a step with no fittable sample has NaN parameters and its non-zero values score NaN with no fit warning (the goodness-of-fit check skips invalid parameters); an all-zero calibration step scores its zeros -inf, clipped to -3.09; a step with no calibration data has undefined zero mass and its zeros are NaN | `src/climate_indices/drought/indices.py:534`; `src/climate_indices/compute.py:2511`; `src/climate_indices/compute.py:1420`; `src/climate_indices/compute.py:2524` |
 
-#### xclim: standardized_precipitation_index (xclim.compute._agro)
+##### xclim: standardized_precipitation_index (xclim.compute._agro)
 
 Read at: xclim 1.0.0 sdist (sha256 e06477de).
 
@@ -347,7 +347,7 @@ Read at: xclim 1.0.0 sdist (sha256 e06477de).
 | missing data minimum sample | NaN propagates through the window; NaN dropped from the fit; ML and APP: fewer than 2 values gives NaN parameters; PWM: numargs + 3 values needed (4 for gamma), else NaN | `src/xclim/compute/stats.py:50`; `src/xclim/compute/stats.py:69` |
 | fit failure | Any NaN parameter makes all parameters NaN, so the step is NaN, silently for ML and APP; the PWM branch warns when there are too few unique values | `src/xclim/compute/stats.py:109-110`; `src/xclim/compute/stats.py:94-95` |
 
-#### spei (Vonk): spei.spi (src/spei/si.py)
+##### spei (Vonk): spei.spi (src/spei/si.py)
 
 Read at: spei 0.8.3 sdist (sha256 50221408).
 
@@ -366,7 +366,7 @@ Read at: spei 0.8.3 sdist (sha256 50221408).
 | missing data minimum sample | NaN dropped before the fit; no minimum sample | `src/spei/utils.py:143` |
 | fit failure | Not handled: no try/except around the scipy fit, so its errors propagate and its result is used as returned | `src/spei/dist.py:95-99` |
 
-#### standard_precip: standard_precip.spi.SPI.calculate (base_sp.BaseStandardIndex)
+##### standard_precip: standard_precip.spi.SPI.calculate (base_sp.BaseStandardIndex)
 
 Read at: standard-precip 2.0.0 sdist (sha256 6a1f65c0); L-moment fits read in lmoments3 1.0.8 sdist (sha256 bb58bfc2, not pinned in comparators.lock.yaml).
 
@@ -385,7 +385,7 @@ Read at: standard-precip 2.0.0 sdist (sha256 6a1f65c0); L-moment fits read in lm
 | missing data minimum sample | Rows with NaN dropped per group before the fit; L-moment fits need max(4, numargs + 3) values, MLE 4, counted after zeros are stripped for gam and pe3; a group of all zeros is not fit | `standard_precip/_distributions.py:103-109`; `standard_precip/base_sp.py:345` |
 | fit failure | Params None, index NaN for that group, one UserWarning per column; TypeError from bad fit arguments propagates | `standard_precip/base_sp.py:382-386` |
 
-#### R SPEI: SPEI::spi (calls spei())
+##### R SPEI: SPEI::spi (calls spei())
 
 Read at: SPEI 1.8.1 CRAN tarball (sha256 56cfcf6c).
 
@@ -404,7 +404,7 @@ Read at: SPEI 1.8.1 CRAN tarball (sha256 56cfcf6c).
 | missing data minimum sample | na.rm=FALSE: any NA in the input is an error; na.rm=TRUE: NA dropped from the fit and the window sum stays NA. A fit needs at least 4 values (after zero removal for Gamma and PearsonIII) and a non-zero standard deviation | `R/spei.R:467`; `R/spei.R:657` |
 | fit failure | Invalid L-moments or a constant series leave that period NA, silently | `R/spei.R:672-674`; `R/spei.R:653` |
 
-#### R SCI: SCI::fitSCI + transformSCI
+##### R SCI: SCI::fitSCI + transformSCI
 
 Read at: SCI 1.0-3 CRAN tarball (sha256 1ec42a6c).
 
@@ -423,7 +423,7 @@ Read at: SCI 1.0-3 CRAN tarball (sha256 1ec42a6c).
 | missing data minimum sample | Non-finite values dropped from the fit; an empty or constant month has NA parameters with a warning; a window containing NA is NA | `R/sci.r:69`; `R/sci.r:80` |
 | fit failure | Month parameters NA, with a warning, unless start.fun.fix=TRUE, which keeps the start values<br>Option: Start values used on failure (`start.fun.fix=TRUE`) | `R/sci.r:103-105` |
 
-#### R SEI: SEI::std_index (dist='gamma' or other parametric)
+##### R SEI: SEI::std_index (dist='gamma' or other parametric)
 
 Read at: SEI 0.2.0 CRAN tarball (sha256 55ac099c).
 
@@ -442,7 +442,7 @@ Read at: SEI 0.2.0 CRAN tarball (sha256 55ac099c).
 | missing data minimum sample | NA removed; fewer than n_thres (10) values gives NA with a warning | `R/fit_dist.R:232-235` |
 | fit failure | try() failure gives a warning and NA | `R/fit_dist.R:263` |
 
-#### R climatekit: climatekit::ck_spi (daily precipitation and dates)
+##### R climatekit: climatekit::ck_spi (daily precipitation and dates)
 
 Read at: climatekit 0.2.3 CRAN tarball (sha256 f3bdc9f8); provisional include.
 Absent from the lineage SPEI table, so its SPEI pairs have no independence class yet.
@@ -462,7 +462,7 @@ Absent from the lineage SPEI table, so its SPEI pairs have no independence class
 | missing data minimum sample | At least 3 accumulations per calendar month, and 2 positive values for gamma | `R/drought.R:63`; `R/drought.R:459` |
 | fit failure | Gamma: A &lt;= 0 returns NA without a warning. Pearson III: invalid sd or shape returns NA without a warning, and an out-of-support point (NA CDF) scores z = 0 | `R/drought.R:464`; `R/drought.R:502`; `R/drought.R:526` |
 
-#### NDMC SPI Generator: SPIGenerator.exe (VB.NET) calling StandardPrecipitationIndex.dll (C#)
+##### NDMC SPI Generator: SPIGenerator.exe (VB.NET) calling StandardPrecipitationIndex.dll (C#)
 
 Read at: SPIgenerator.zip sha256 ce8f37bc (1.7.6.0); source under code/ (VB.NET front end, C# DLL).
 spimonthlyonly.cs ships but is not in the DLL project (spi_dll.csproj compiles two files).
@@ -482,7 +482,7 @@ spimonthlyonly.cs ships but is not in the DLL project (spi_dll.csproj compiles t
 | missing data minimum sample | Missing codes -99 and -9999 are excluded from the fit and propagate through the window sum; no minimum sample | `code/spi_dll/standardprecipitationindex.cs:15` |
 | fit failure | One positive value: degenerate parameters (alpha 0, gamma 1, beta the mean), no error. All zeros: pzero = 1, a CDF of 1, and an output of +9999 | `code/spi_dll/gammadistributionestimatedprobabilities.cs:124-138`; `code/spi_dll/gammadistributionestimatedprobabilities.cs:132-138` |
 
-#### NCL dim_spi_n: dim_spi_n(p, nrun, opt, dim): spi_type 0 gamma (spid.f), 3 Pearson III (spi3.f)
+##### NCL dim_spi_n: dim_spi_n(p, nrun, opt, dim): spi_type 0 gamma (spid.f), 3 Pearson III (spi3.f)
 
 Read at: NCAR/ncl tag 6.6.2 (06f54867); the conda-forge 6.6.2 binary was run in REFIMPL-03, its build is not compared with this source.
 
@@ -501,7 +501,7 @@ Read at: NCAR/ncl tag 6.6.2 (06f54867); the conda-forge 6.6.2 binary was run in 
 | missing data minimum sample | A calendar month whose accumulations are all equal is not fit and stays missing; any missing value in a window makes it missing. Pearson III requires the series length to be a multiple of 12 | `ni/src/lib/nfpfort/spid.f:90`; `ni/src/lib/nfpfort/spi3.f:27` |
 | fit failure | Gamma: exactly one positive value gives degenerate parameters (alpha 0, gamma 1, beta the mean), no error; an all-equal month, all-zero included, is skipped before the fit. Pearson III: fewer than 3 non-zero values or l2 = 0 leaves the value missing | `ni/src/lib/nfpfort/spid.f:205`; `ni/src/lib/nfpfort/spid.f:198` |
 
-#### Climate Engine API: Climate Engine API standard_index, distribution=nonparametric
+##### Climate Engine API: Climate Engine API standard_index, distribution=nonparametric
 
 Read at: live service, accessed 2026-11-18 (comparators.md). **Source not read.**
 No source; rows rest on the pilot's documentation and observations.
@@ -521,7 +521,7 @@ No source; rows rest on the pilot's documentation and observations.
 | missing data minimum sample | **unverified.** Not documented | Basis: docs/research/earthengine-climate-engine-pilot.md method-alignment table; the product source is not available and the pilot records its exact methods as unconfirmed |
 | fit failure | **unverified.** Not documented | Basis: docs/research/earthengine-climate-engine-pilot.md method-alignment table; the product source is not available and the pilot records its exact methods as unconfirmed |
 
-#### Earth Engine GRIDMET/DROUGHT: Earth Engine GRIDMET/DROUGHT spi30d..spi1y bands
+##### Earth Engine GRIDMET/DROUGHT: Earth Engine GRIDMET/DROUGHT spi30d..spi1y bands
 
 Read at: live collection, accessed 2026-11-18 (comparators.md). **Source not read.**
 No source; rows rest on the pilot's documentation and observations.
@@ -541,7 +541,7 @@ No source; rows rest on the pilot's documentation and observations.
 | missing data minimum sample | **unverified.** Not documented | Basis: docs/research/earthengine-climate-engine-pilot.md method-alignment table; the product source is not available and the pilot records its exact methods as unconfirmed |
 | fit failure | **unverified.** Not documented | Basis: docs/research/earthengine-climate-engine-pilot.md method-alignment table; the product source is not available and the pilot records its exact methods as unconfirmed |
 
-#### NCEI nClimDiv SPI: NCEI nClimDiv climdiv-sp*dv product (344 divisions)
+##### NCEI nClimDiv SPI: NCEI nClimDiv climdiv-sp*dv product (344 divisions)
 
 Read at: fixture downloaded 2026-09-12 (tests/fixture/ncei_spi/provenance.json). **Source not read.**
 Operational code is not public.
@@ -567,7 +567,7 @@ Operational code is not public.
 
 <!-- BEGIN GENERATED: spei -->
 
-##### Defaults at a glance
+#### Defaults at a glance
 
 | Axis | climate_indices<br>`drought.indices.spei` | xclim<br>`standardized_precipitation_evapotranspiration_index` | spei (Vonk)<br>`spei.spei` | standard_precip<br>`standard_precip.spei.SPEI.calculate` | R SPEI<br>`SPEI::spei` | R SEI<br>`SEI::std_index` | R climatekit<br>`climatekit::ck_spei` | Climate Engine API<br>`Climate` | Earth Engine GRIDMET/DROUGHT<br>`Earth` | SPEIbase v2.11<br>`SPEIbase` |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
@@ -584,9 +584,9 @@ Operational code is not public.
 | missing data minimum sample | NaN in a window gives NaN; log-logistic and GEV need at least 4 non-NaN calibration values per step, fewer... | NaN propagates through the window; NaN dropped from the fit; ML and APP: fewer than 2 values gives NaN para... | NaN dropped before the fit; no minimum sample | Rows with NaN dropped per group before the fit; L-moment fits need max(4, numargs + 3) values, MLE 4, count... | na.rm=FALSE: any NA in the input is an error; na.rm=TRUE: NA dropped from the fit and the window sum stays... | NA removed; fewer than n_thres (10) values gives NA with a warning | At least 3 accumulations per calendar month for log-logistic (4 for GEV) | Not documented (unverified) | Not documented (unverified) | Not established (unverified) |
 | fit failure | A step that cannot be fit has its scale zeroed and transforms to NaN, with a warning; no fallback to anothe... | Any NaN parameter makes all parameters NaN, so the step is NaN, silently for ML and APP; the PWM branch war... | Not handled: no try/except around the scipy fit, so its errors propagate and its result is used as returned | Params None, index NaN for that group, one UserWarning per column; TypeError from bad fit arguments propagates | Invalid L-moments or a constant series leave that period NA, silently | try() failure gives a warning and NA | L-moment l2 &lt;= 0 or \|tau3\| >= 1: NA with a cli warning | Not documented (unverified) | Not documented (unverified) | Not established (unverified) |
 
-##### Per-package evidence
+#### Per-package evidence
 
-#### climate_indices: drought.indices.spei (distribution required)
+##### climate_indices: drought.indices.spei (distribution required)
 
 Read at: monocongo/climate_indices@98578c87.
 
@@ -605,7 +605,7 @@ Read at: monocongo/climate_indices@98578c87.
 | missing data minimum sample | NaN in a window gives NaN; log-logistic and GEV need at least 4 non-NaN calibration values per step, fewer gives a failed step (NaN); gamma and Pearson as for SPI | `src/climate_indices/lmoments.py:19`; `src/climate_indices/lmoments.py:297` |
 | fit failure | A step that cannot be fit has its scale zeroed and transforms to NaN, with a warning; no fallback to another family | `src/climate_indices/compute.py:2840`; `src/climate_indices/drought/indices.py:1192` |
 
-#### xclim: standardized_precipitation_evapotranspiration_index (xclim.compute._agro)
+##### xclim: standardized_precipitation_evapotranspiration_index (xclim.compute._agro)
 
 Read at: xclim 1.0.0 sdist (sha256 e06477de).
 
@@ -624,7 +624,7 @@ Read at: xclim 1.0.0 sdist (sha256 e06477de).
 | missing data minimum sample | NaN propagates through the window; NaN dropped from the fit; ML and APP: fewer than 2 values gives NaN parameters; PWM: numargs + 3 values needed (4 for gamma), else NaN | `src/xclim/compute/stats.py:50`; `src/xclim/compute/stats.py:69` |
 | fit failure | Any NaN parameter makes all parameters NaN, so the step is NaN, silently for ML and APP; the PWM branch warns when there are too few unique values | `src/xclim/compute/stats.py:109-110`; `src/xclim/compute/stats.py:94-95` |
 
-#### spei (Vonk): spei.spei (src/spei/si.py); the input series is P - PET
+##### spei (Vonk): spei.spei (src/spei/si.py); the input series is P - PET
 
 Read at: spei 0.8.3 sdist (sha256 50221408).
 
@@ -643,7 +643,7 @@ Read at: spei 0.8.3 sdist (sha256 50221408).
 | missing data minimum sample | NaN dropped before the fit; no minimum sample | `src/spei/utils.py:143` |
 | fit failure | Not handled: no try/except around the scipy fit, so its errors propagate and its result is used as returned | `src/spei/dist.py:95-99` |
 
-#### standard_precip: standard_precip.spei.SPEI.calculate
+##### standard_precip: standard_precip.spei.SPEI.calculate
 
 Read at: standard-precip 2.0.0 sdist (sha256 6a1f65c0); L-moment fits read in lmoments3 1.0.8 sdist (sha256 bb58bfc2, not pinned in comparators.lock.yaml).
 
@@ -662,7 +662,7 @@ Read at: standard-precip 2.0.0 sdist (sha256 6a1f65c0); L-moment fits read in lm
 | missing data minimum sample | Rows with NaN dropped per group before the fit; L-moment fits need max(4, numargs + 3) values, MLE 4, counted after zeros are stripped for gam and pe3; a group of all zeros is not fit | `standard_precip/_distributions.py:103-109`; `standard_precip/base_sp.py:345` |
 | fit failure | Params None, index NaN for that group, one UserWarning per column; TypeError from bad fit arguments propagates | `standard_precip/base_sp.py:382-386` |
 
-#### R SPEI: SPEI::spei (input is P - PET)
+##### R SPEI: SPEI::spei (input is P - PET)
 
 Read at: SPEI 1.8.1 CRAN tarball (sha256 56cfcf6c).
 
@@ -681,7 +681,7 @@ Read at: SPEI 1.8.1 CRAN tarball (sha256 56cfcf6c).
 | missing data minimum sample | na.rm=FALSE: any NA in the input is an error; na.rm=TRUE: NA dropped from the fit and the window sum stays NA. A fit needs at least 4 values (after zero removal for Gamma and PearsonIII) and a non-zero standard deviation | `R/spei.R:467`; `R/spei.R:657` |
 | fit failure | Invalid L-moments or a constant series leave that period NA, silently | `R/spei.R:672-674`; `R/spei.R:653` |
 
-#### R SEI: SEI::std_index (input is P - PET)
+##### R SEI: SEI::std_index (input is P - PET)
 
 Read at: SEI 0.2.0 CRAN tarball (sha256 55ac099c).
 
@@ -700,7 +700,7 @@ Read at: SEI 0.2.0 CRAN tarball (sha256 55ac099c).
 | missing data minimum sample | NA removed; fewer than n_thres (10) values gives NA with a warning | `R/fit_dist.R:232-235` |
 | fit failure | try() failure gives a warning and NA | `R/fit_dist.R:263` |
 
-#### R climatekit: climatekit::ck_spei (daily precipitation and PET; provisional, not in the lineage SPEI table)
+##### R climatekit: climatekit::ck_spei (daily precipitation and PET; provisional, not in the lineage SPEI table)
 
 Read at: climatekit 0.2.3 CRAN tarball (sha256 f3bdc9f8); provisional include.
 Absent from the lineage SPEI table, so its SPEI pairs have no independence class yet.
@@ -720,7 +720,7 @@ Absent from the lineage SPEI table, so its SPEI pairs have no independence class
 | missing data minimum sample | At least 3 accumulations per calendar month for log-logistic (4 for GEV) | `R/drought.R:150`; `R/drought.R:546` |
 | fit failure | L-moment l2 &lt;= 0 or \|tau3\| >= 1: NA with a cli warning | `R/drought.R:629`; `R/drought.R:641` |
 
-#### Climate Engine API: Climate Engine API standard_index, distribution=nonparametric (SPEI)
+##### Climate Engine API: Climate Engine API standard_index, distribution=nonparametric (SPEI)
 
 Read at: live service, accessed 2026-11-18 (comparators.md). **Source not read.**
 No source; rows rest on the pilot's documentation and observations.
@@ -740,7 +740,7 @@ No source; rows rest on the pilot's documentation and observations.
 | missing data minimum sample | **unverified.** Not documented | Basis: docs/research/earthengine-climate-engine-pilot.md method-alignment table; the product source is not available and the pilot records its exact methods as unconfirmed |
 | fit failure | **unverified.** Not documented | Basis: docs/research/earthengine-climate-engine-pilot.md method-alignment table; the product source is not available and the pilot records its exact methods as unconfirmed |
 
-#### Earth Engine GRIDMET/DROUGHT: Earth Engine GRIDMET/DROUGHT spei30d..spei1y bands (SPEI)
+##### Earth Engine GRIDMET/DROUGHT: Earth Engine GRIDMET/DROUGHT spei30d..spei1y bands (SPEI)
 
 Read at: live collection, accessed 2026-11-18 (comparators.md). **Source not read.**
 No source; rows rest on the pilot's documentation and observations.
@@ -760,7 +760,7 @@ No source; rows rest on the pilot's documentation and observations.
 | missing data minimum sample | **unverified.** Not documented | Basis: docs/research/earthengine-climate-engine-pilot.md method-alignment table; the product source is not available and the pilot records its exact methods as unconfirmed |
 | fit failure | **unverified.** Not documented | Basis: docs/research/earthengine-climate-engine-pilot.md method-alignment table; the product source is not available and the pilot records its exact methods as unconfirmed |
 
-#### SPEIbase v2.11: SPEIbase v2.11 (CRU TS 4.09 inputs, Penman-Monteith PET)
+##### SPEIbase v2.11: SPEIbase v2.11 (CRU TS 4.09 inputs, Penman-Monteith PET)
 
 Read at: fixture downloaded 2026-09-17 (tests/fixture/speibase/provenance.json). **Source not read.**
 Described as built with R SPEI 1.8.1; not read here (lineage.json marks source_read true for it; here no source of the product was read).
@@ -786,7 +786,7 @@ Described as built with R SPEI 1.8.1; not read here (lineage.json marks source_r
 
 <!-- BEGIN GENERATED: non_parametric -->
 
-##### Defaults at a glance
+#### Defaults at a glance
 
 | Axis | climate_indices<br>`drought.indices.standardized_index` | climate_indices<br>`drought.indices.eddi` | R SEI<br>`SEI::std_index` | spei (Vonk)<br>`spei.si.SI` | NOAA PSL EDDI<br>`NOAA` | Climate Engine API<br>`Climate` | Earth Engine GRIDMET/DROUGHT<br>`Earth` |
 | --- | --- | --- | --- | --- | --- | --- | --- |
@@ -803,9 +803,9 @@ Described as built with R SPEI 1.8.1; not read here (lineage.json marks source_r
 | missing data minimum sample | Fewer than 10 valid calibration values at a step gives NaN | Fewer than 2 valid climatology values gives NaN; a missing value stays missing | Fewer than n_thres (10) values gives NA with a warning; fewer than 100 warns that the empirical distributio... | NaN dropped; no minimum sample | Not established from source (unverified) | Not documented (unverified) | Not documented (unverified) |
 | fit failure | Nothing is fit | Nothing is fit | Nothing is fit | Nothing is fit | Nothing is fit | Not documented (unverified) | Not documented (unverified) |
 
-##### Per-package evidence
+#### Per-package evidence
 
-#### climate_indices: drought.indices.standardized_index(distribution=empirical)
+##### climate_indices: drought.indices.standardized_index(distribution=empirical)
 
 Read at: monocongo/climate_indices@98578c87.
 
@@ -814,7 +814,7 @@ Read at: monocongo/climate_indices@98578c87.
 | accumulation | Sum over `scale` steps; a window holding a NaN is NaN; first scale-1 steps NaN<br>Option: Mean of the window (`standardized_index(aggregation='mean')`) [`src/climate_indices/CONTEXT.md:50`] | `src/climate_indices/compute.py:243-245`; `src/climate_indices/compute.py:309` |
 | calendar grouping | Calendar month (12) or day of year on a 366-column calendar, every year a leap year; Feb 29 interpolated in non-leap years | `src/climate_indices/CONTEXT.md:27-28`; `src/climate_indices/compute.py:724-725` |
 | calibration period | Required calibration_year_initial/final; parameters fit on that window, every year standardized against it; a window the record does not cover is clamped to the record (a window ending one year past it keeps its start) with CalibrationPeriodClampedWarning. The 30-year minimum raises InsufficientDataError only in the xarray adapter, for an in-memory single series containing NaN; the NumPy functions only warn (ShortCalibrationWarning) | `src/climate_indices/compute.py:699`; `src/climate_indices/_calibration_period.py:24`; `src/climate_indices/xarray_adapter.py:2056`; `src/climate_indices/compute.py:1249` |
-| distribution | Empirical (rank based); no distribution is fit | `src/climate_indices/CONTEXT.md:36` |
+| distribution | Empirical (rank based); no distribution is fit | `src/climate_indices/compute.py:3248`; `src/climate_indices/compute.py:3399` |
 | estimator | n/a: Non-parametric |  |
 | location offset | n/a: Non-parametric; accepts a signed series with clip_negatives=False |  |
 | zero handling | Zeros are ordinary ranks; no separate zero mass | `src/climate_indices/compute.py:3275-3277` |
@@ -824,7 +824,7 @@ Read at: monocongo/climate_indices@98578c87.
 | missing data minimum sample | Fewer than 10 valid calibration values at a step gives NaN | `src/climate_indices/compute.py:99` |
 | fit failure | n/a: Nothing is fit |  |
 
-#### climate_indices: drought.indices.eddi
+##### climate_indices: drought.indices.eddi
 
 Read at: monocongo/climate_indices@98578c87.
 
@@ -843,7 +843,7 @@ Read at: monocongo/climate_indices@98578c87.
 | missing data minimum sample | Fewer than 2 valid climatology values gives NaN; a missing value stays missing | `src/climate_indices/drought/indices.py:461` |
 | fit failure | n/a: Nothing is fit |  |
 
-#### R SEI: SEI::std_index(dist='empirical')
+##### R SEI: SEI::std_index(dist='empirical')
 
 Read at: SEI 0.2.0 CRAN tarball (sha256 55ac099c).
 
@@ -862,7 +862,7 @@ Read at: SEI 0.2.0 CRAN tarball (sha256 55ac099c).
 | missing data minimum sample | Fewer than n_thres (10) values gives NA with a warning; fewer than 100 warns that the empirical distribution is not recommended | `R/fit_dist.R:232-235`; `R/fit_dist.R:379` |
 | fit failure | n/a: Nothing is fit |  |
 
-#### spei (Vonk): spei.si.SI(normal_scores_transform=True)
+##### spei (Vonk): spei.si.SI(normal_scores_transform=True)
 
 Read at: spei 0.8.3 sdist (sha256 50221408).
 
@@ -881,7 +881,7 @@ Read at: spei 0.8.3 sdist (sha256 50221408).
 | missing data minimum sample | NaN dropped; no minimum sample | `src/spei/utils.py:143` |
 | fit failure | n/a: Nothing is fit |  |
 
-#### NOAA PSL EDDI: NOAA PSL EDDI product and Fortran
+##### NOAA PSL EDDI: NOAA PSL EDDI product and Fortran
 
 Read at: fixtures under tests/fixture (tests/test_noaa_eddi_reference.py). **Source not read.**
 The NOAA Fortran is not read here.
@@ -891,17 +891,17 @@ The NOAA Fortran is not read here.
 | accumulation | **unverified.** Not established from source | Basis: src/climate_indices/drought/indices.py docstrings say the library follows the NOAA PSL Fortran; the Fortran is not read here (tests/test_noaa_eddi_reference.py compares to the fixtures) |
 | calendar grouping | **unverified.** Not established from source | Basis: src/climate_indices/drought/indices.py docstrings say the library follows the NOAA PSL Fortran; the Fortran is not read here (tests/test_noaa_eddi_reference.py compares to the fixtures) |
 | calibration period | **unverified.** Not established from source | Basis: src/climate_indices/drought/indices.py docstrings say the library follows the NOAA PSL Fortran; the Fortran is not read here (tests/test_noaa_eddi_reference.py compares to the fixtures) |
-| distribution | **unverified.** Empirical ranking | `src/climate_indices/drought/indices.py:277`<br>Basis: src/climate_indices/drought/indices.py docstrings say the library follows the NOAA PSL Fortran; the Fortran is not read here (tests/test_noaa_eddi_reference.py compares to the fixtures) |
+| distribution | **unverified.** Empirical ranking | `src/climate_indices/drought/indices.py:319-321`<br>Basis: src/climate_indices/drought/indices.py docstrings say the library follows the NOAA PSL Fortran; the Fortran is not read here (tests/test_noaa_eddi_reference.py compares to the fixtures) |
 | estimator | n/a: Non-parametric |  |
 | location offset | n/a: Non-parametric |  |
 | zero handling | **unverified.** Not established from source | Basis: src/climate_indices/drought/indices.py docstrings say the library follows the NOAA PSL Fortran; the Fortran is not read here (tests/test_noaa_eddi_reference.py compares to the fixtures) |
-| plotting position | **unverified.** Tukey with rounded constants 0.66 and 0.33, per the library's account of it | `src/climate_indices/drought/indices.py:277`<br>Basis: src/climate_indices/drought/indices.py docstrings say the library follows the NOAA PSL Fortran; the Fortran is not read here (tests/test_noaa_eddi_reference.py compares to the fixtures) |
+| plotting position | **unverified.** Tukey with rounded constants 0.66 and 0.33, per the library's account of it | `src/climate_indices/drought/indices.py:323`; `src/climate_indices/drought/indices.py:455-456`<br>Basis: src/climate_indices/drought/indices.py docstrings say the library follows the NOAA PSL Fortran; the Fortran is not read here (tests/test_noaa_eddi_reference.py compares to the fixtures) |
 | inverse normal | **unverified.** Hastings approximation, per the library's account of it | `src/climate_indices/drought/indices.py:277`<br>Basis: src/climate_indices/drought/indices.py docstrings say the library follows the NOAA PSL Fortran; the Fortran is not read here (tests/test_noaa_eddi_reference.py compares to the fixtures) |
 | output bound | **unverified.** Not established from source | Basis: src/climate_indices/drought/indices.py docstrings say the library follows the NOAA PSL Fortran; the Fortran is not read here (tests/test_noaa_eddi_reference.py compares to the fixtures) |
 | missing data minimum sample | **unverified.** Not established from source | Basis: src/climate_indices/drought/indices.py docstrings say the library follows the NOAA PSL Fortran; the Fortran is not read here (tests/test_noaa_eddi_reference.py compares to the fixtures) |
 | fit failure | n/a: Nothing is fit |  |
 
-#### Climate Engine API: Climate Engine API standard_index, distribution=nonparametric
+##### Climate Engine API: Climate Engine API standard_index, distribution=nonparametric
 
 Read at: live service, accessed 2026-11-18 (comparators.md). **Source not read.**
 No source; rows rest on the pilot's documentation and observations.
@@ -921,7 +921,7 @@ No source; rows rest on the pilot's documentation and observations.
 | missing data minimum sample | **unverified.** Not documented | Basis: docs/research/earthengine-climate-engine-pilot.md method-alignment table; the product source is not available and the pilot records its exact methods as unconfirmed |
 | fit failure | **unverified.** Not documented | Basis: docs/research/earthengine-climate-engine-pilot.md method-alignment table; the product source is not available and the pilot records its exact methods as unconfirmed |
 
-#### Earth Engine GRIDMET/DROUGHT: Earth Engine GRIDMET/DROUGHT SPI, SPEI and EDDI bands
+##### Earth Engine GRIDMET/DROUGHT: Earth Engine GRIDMET/DROUGHT SPI, SPEI and EDDI bands
 
 Read at: live collection, accessed 2026-11-18 (comparators.md). **Source not read.**
 No source; rows rest on the pilot's documentation and observations.

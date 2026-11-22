@@ -3778,8 +3778,12 @@
               "status": "verified",
               "citations": [
                 {
-                  "file": "src/climate_indices/CONTEXT.md",
-                  "lines": "36"
+                  "file": "src/climate_indices/compute.py",
+                  "lines": "3248"
+                },
+                {
+                  "file": "src/climate_indices/compute.py",
+                  "lines": "3399"
                 }
               ]
             },
@@ -4296,7 +4300,7 @@
               "citations": [
                 {
                   "file": "src/climate_indices/drought/indices.py",
-                  "lines": "277"
+                  "lines": "319-321"
                 }
               ]
             },
@@ -4315,7 +4319,11 @@
               "citations": [
                 {
                   "file": "src/climate_indices/drought/indices.py",
-                  "lines": "277"
+                  "lines": "323"
+                },
+                {
+                  "file": "src/climate_indices/drought/indices.py",
+                  "lines": "455-456"
                 }
               ]
             },

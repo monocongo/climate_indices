@@ -21,6 +21,7 @@ BEGIN = "<!-- BEGIN GENERATED: {key} -->"
 END = "<!-- END GENERATED: {key} -->"
 SUMMARY_WIDTH = 110
 STATUS = {"verified": "", "unverified": "**unverified.** ", "not_applicable": ""}
+RESERVED = {"counts", "aligned"}
 
 
 def _esc(text: str) -> str:
@@ -28,7 +29,7 @@ def _esc(text: str) -> str:
 
 
 def _cites(cites: list[dict[str, Any]]) -> str:
-    return "; ".join(f"`{c['file']}:{c['lines']}`" for c in cites)
+    return "; ".join(f"`{_esc(c['file'])}:{_esc(c['lines'])}`" for c in cites)
 
 
 def _row(axis: str, cell: dict[str, Any]) -> str:
@@ -75,10 +76,10 @@ def render_summary(doc: dict[str, Any], key: str) -> list[str]:
 
 def render_family(doc: dict[str, Any], key: str) -> str:
     family = doc["families"][key]
-    out: list[str] = ["##### Defaults at a glance", "", *render_summary(doc, key), "##### Per-package evidence", ""]
+    out: list[str] = ["#### Defaults at a glance", "", *render_summary(doc, key), "#### Per-package evidence", ""]
     for entry in family["entries"]:
         impl = doc["implementations"][entry["implementation"]]
-        out.append(f"#### {impl['name']}: {entry['entry_point']}")
+        out.append(f"##### {impl['name']}: {entry['entry_point']}")
         out.append("")
         out.append(f"Read at: {impl['ref']}." + ("" if impl["source_read"] else " **Source not read.**"))
         if impl.get("note"):
@@ -94,7 +95,7 @@ def render_family(doc: dict[str, Any], key: str) -> str:
 def render_aligned(doc: dict[str, Any]) -> str:
     out: list[str] = []
     for cfg in doc["aligned_configurations"]:
-        out.append(f"#### `{cfg['id']}`: {cfg['title']}")
+        out.append(f"### `{cfg['id']}`: {cfg['title']}")
         out.append("")
         out.append("| Axis | Position |")
         out.append("| --- | --- |")
@@ -131,8 +132,13 @@ def render_counts(doc: dict[str, Any]) -> str:
 
 
 def sections(doc: dict[str, Any]) -> dict[str, str]:
-    out = {"counts": render_counts(doc)}
-    out.update({key: render_family(doc, key) for key in doc["families"]})
+    """Generated sections by marker key. A family key must be usable as a marker and must not shadow a fixed section."""
+    out: dict[str, str] = {}
+    for key in doc["families"]:
+        if key in RESERVED or not re.fullmatch(r"[a-z][a-z0-9_]*", key):
+            raise SystemExit(f"family key {key!r} is reserved or cannot be a generated marker key")
+        out[key] = render_family(doc, key)
+    out["counts"] = render_counts(doc)
     out["aligned"] = render_aligned(doc)
     return out
 
@@ -189,6 +195,9 @@ def _read(path: Path) -> str:
 
 
 def main(argv: list[str]) -> int:
+    unknown = sorted(set(argv) - {"--check"})
+    if unknown:
+        raise SystemExit(f"unknown argument(s): {', '.join(unknown)}; usage: render_method_matrix.py [--check]")
     try:
         schema = json.loads(_read(HERE / "method_spec.schema.json"))
         doc = json.loads(_read(HERE / "method-matrix.json"))
@@ -204,6 +213,7 @@ def main(argv: list[str]) -> int:
     text = original
     for key, body in bodies.items():
         text = splice(text, key, body)
+    check_markers(text, list(bodies))
     if "--check" in argv:
         if text != original:
             print("method-matrix.md is stale; run render_method_matrix.py", file=sys.stderr)

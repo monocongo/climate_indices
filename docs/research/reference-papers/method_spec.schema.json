@@ -27,6 +27,7 @@
       "description": "Index families. Each lists the entries compared on its axes.",
       "type": "object",
       "minProperties": 1,
+      "propertyNames": {"pattern": "^[a-z][a-z0-9_]*$"},
       "additionalProperties": {
         "type": "object",
         "required": ["title", "entries"],
@@ -181,7 +182,7 @@
         },
         "residual_axes": {
           "type": "array",
-          "description": "Axes on which the implementations still differ after alignment, with the size or reason.",
+          "description": "Differences that remain after alignment: an axis name with the size or reason, and any other difference such as inputs or optimizer start values.",
           "items": {"type": "string"}
         },
         "absent": {"type": "string", "description": "Why no independent triple exists, when `independent_triples` is empty."}
