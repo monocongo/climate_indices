@@ -33,6 +33,10 @@ for r in csv.reader(open("/work/linux.tsv"), delimiter="\t"):
         structural += 1
         print(f"DIFF unreadable row {r!r}")
         continue
+    if r[0] in got:
+        structural += 1
+        print(f"DIFF duplicate label {r[0]}")
+        continue
     got[r[0]] = r[1]
 missing = 0
 for k in sorted(exp.keys() - got.keys()):
