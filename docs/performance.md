@@ -265,8 +265,8 @@ cell dimensions; it re-fits per Dask spatial chunk, so the same block cost appli
 
 `suitability.compare_distributions()` adds the Kolmogorov-Smirnov and Anderson-Darling
 statistics and a naive K-S p-value to every comparison. That costs little: the exact
-K-S p-value is tabulated once per sample size and interpolated, so it adds no SciPy
-call per series. The bootstrap (`n_bootstrap`) is the cost. For every candidate,
+K-S p-value is evaluated once per sample size (tabulated and interpolated from seven
+values on, SciPy's exact value below that), so it adds no SciPy call per series. The bootstrap (`n_bootstrap`) is the cost. For every candidate,
 calendar step and cell it simulates `n_bootstrap` samples, refits each with the
 library's own estimator and scores it, so it costs roughly `n_bootstrap` times the
 comparison's fits for each candidate: `n_bootstrap x candidates x steps x cells` refits.
