@@ -18,7 +18,7 @@ Two companions carry the evidence:
 
 ## Method
 
-- **Coverage.** All 31 entries are the ticket's seed list plus the two prior cross-package comparisons found
+- **Coverage.** The 31 entries are the ticket's 30 seed-list works plus one prior cross-package comparison found
   while searching for it. Nothing was added from memory.
 - **Journal articles.** Each DOI was read from the Crossref record (`api.crossref.org/works/{doi}`); 26 entries
   have a DOI. The DOI, year, volume, issue, pages and first author in `references.bib` agree with that record.
@@ -40,15 +40,15 @@ Each correction was read from the publisher record. The last column names the ti
 
 | Item | Seed list or repository says | The record says | Owner |
 | --- | --- | --- | --- |
-| NCEI divisional SPI critique | "Baldwin and Chen (2020), *J. Appl. Meteor. Climatol.*" (`sources.yaml`, `tests/fixture/ncei_spi/provenance.json`, `method-matrix.json`, `VALIDATION.md`, `tests/test_ncei_spi_reference.py`) | Spade, de Beurs and Shafer (2020), *J. Appl. Meteor. Climatol.* 59(9), 1469-1480, doi:[10.1175/JAMC-D-19-0272.1](https://doi.org/10.1175/JAMC-D-19-0272.1). No Crossref work with this title has Baldwin or Chen as an author | REFIMPL-44 (VALIDATION.md and README claims); REFIMPL-09 for the matrix basis strings; the fixture note is corrected here |
-| R `SEI` article year | "Allen and Otero (2024)" | *The R Journal* 16(4), 102-122, doi:[10.32614/RJ-2024-038](https://doi.org/10.32614/RJ-2024-038); the article is dated 2024-12-31 and Crossref registers the issue on 2025-07-14. BibTeX key `allen2025` uses the registered year | REFIMPL-06 (bibliography hygiene) |
+| NCEI divisional SPI critique | "Baldwin and Chen (2020), *J. Appl. Meteor. Climatol.*" (`sources.yaml`, `tests/fixture/ncei_spi/provenance.json`, `method-matrix.json`, `VALIDATION.md`, `tests/test_ncei_spi_reference.py`) | Spade, de Beurs and Shafer (2020), *J. Appl. Meteor. Climatol.* 59(9), 1469-1480, doi:[10.1175/JAMC-D-19-0272.1](https://doi.org/10.1175/JAMC-D-19-0272.1). A Crossref bibliographic search run on 2026-11-22 for this title returned only this record, and a Crossref author search for Baldwin with the same bibliographic words returned no drought paper | `sources.yaml` and its status row: this ticket. REFIMPL-44: `VALIDATION.md` and the `llms.txt` and `llms-full.txt` bundles it feeds. REFIMPL-09: the `method-matrix.json` basis strings and its rendered `method-matrix.md`. The fixture note, its generator `scripts/prepare_ncei_spi_fixtures.py` and the docstring of `tests/test_ncei_spi_reference.py`: reported on the ticket for the maintainer to place |
+| R `SEI` article year | "Allen and Otero (2024)" | *The R Journal* 16(4), 102-122, doi:[10.32614/RJ-2024-038](https://doi.org/10.32614/RJ-2024-038). The article page dates it 2024-12-31 and Crossref registers the issue on 2025-07-14. The entry cites 2024, the article's own year, which is also what the repository's existing citations use; the record keeps the registered date | none needed; the key stays `allen2025` for stability |
 | Rhee and Carbone (2007) title | Cited by author and year only | "A comparison of weekly monitoring methods of the Palmer drought index", *J. Climate* 20(24), 6033-6044, doi:[10.1175/2007JCLI1693.1](https://doi.org/10.1175/2007JCLI1693.1) | none needed; the repository carries no title |
 | Ficklin et al. (2015) | "the Penman-Monteith extension of the Jacobi tool" | Two Ficklin 2015 papers exist. The relevant one is *Computers & Geosciences* 85, 136-141, doi:[10.1016/j.cageo.2015.09.013](https://doi.org/10.1016/j.cageo.2015.09.013); the other is an *ERL* drought-trends paper | REFIMPL-06 |
 | Carbone et al. (2018) pagination | seed list gives a DOI only | *Int. J. Climatol.* 38(S1); Crossref and OpenAlex carry no page range and no article number, so the entry cites volume and issue only | REFIMPL-06 |
 
-Only the `sources.yaml` entry and its status row in `sources/README.md` are corrected in this ticket; they are
-the bibliography's own ledger. The fixture note, `VALIDATION.md`, and the method matrix are left to their owners,
-because each is a scientific claim under a different ticket and a review, not a bibliographic field.
+The `sources.yaml` entry and its status row in `sources/README.md` are corrected in this ticket, because they are
+the bibliography's own ledger. Every other location is left to the ticket named in the table, because each is a
+scientific or validation claim under a different owner and a review, not a bibliographic field.
 
 ## Prior work: what has already compared implementations
 
@@ -61,8 +61,11 @@ of indices, or of a product against its own documentation. Six kinds of prior wo
 | Vonk's `spei` package comparison notebook (2023, read) | SPI 3-month from `spei`, `standard_precip`, `climate_indices`, R `SPEI`; SGI from `spei` and `pastas` | One station (DEBILT), monthly precipitation, one scale | "Difference is very small between SPEI and the standard_precip package"; the difference from R `SPEI` is attributed to gamma fitting as a hypothesis, and "more research is needed". The `climate_indices` cell is commented out because it could not be installed, and the R call fails in the published build | One station, one index, no reported number for `climate_indices`, no method-axis alignment, not peer reviewed |
 | Vremec et al. (2024), *GMD* (read) | Each PET method in `PyEt` against the R `Evapotranspiration` package (Guo et al.) and against published values | Method-by-method benchmarks, daily PET | Agreement is the benchmarking criterion, and each new method must ship benchmark data and tests | PET equations only: no drought index, no distribution or estimator axis, and no effect of PET choice on SPEI or PDSI output |
 | Allen and Otero (2025), *The R Journal* (read) | `SEI` positioned against `SCI`, `SPEI`, `standard-precip`, `spei`, `climate-indices`, `standaRdized` and `SPIGA` | Functional description of each package | Existing packages are limited in flexibility and assumptions; `SEI` is more general | Functional comparison, no numeric cross-package comparison and no per-axis attribution |
-| Spade et al. (2020), *J. Appl. Meteor. Climatol.* | NCEI's operational divisional SPI against its documented calibration window | One provider product | The product over- and underestimates drought relative to its documentation | A product against its own documentation, not implementation against implementation |
-| Guttman (1999), Stagge et al. (2015), Pieper et al. (2020), Laimighofer and Laaha (2022) | Candidate distributions, estimators and uncertainty components inside one standardized-index procedure | Precipitation and water-balance series | The distribution choice and the observation window dominate; the estimator matters less (as [`research-notes.md`](research-notes.md) records for Laimighofer and Laaha) | Distribution and method studies, not implementations: no package is compared |
+| Spade et al. (2020), *J. Appl. Meteor. Climatol.* | Title and repository role only; the paper was not read | One provider product, as `tests/fixture/ncei_spi/provenance.json` records it | The title states over- and underestimation of drought in NOAA's climate divisional SPI dataset; the calibration-window finding is carried from the fixture note | A product against its own documentation, not implementation against implementation |
+| Laimighofer and Laaha (2022), *J. Hydrol.* | Uncertainty components inside one standardized-index procedure | Precipitation and water-balance series | Distribution choice and observation window dominate; the estimator matters less (abstract as recorded in [`research-notes.md`](research-notes.md)) | A method study, not an implementation study |
+| Guttman (1999), *JAWRA* | Candidate distributions for the SPI | As summarised by Allen and Otero (2025) | Pearson III is preferred for its third parameter | A distribution argument, not a package comparison |
+| Stagge et al. (2015), *Int. J. Climatol.* | Candidate distributions for SPI and SPEI | As summarised by Allen and Otero (2025) | Weibull fits their monthly accumulations better than the alternatives | A distribution study, contested by a published comment and response; not a package comparison |
+| Pieper et al. (2020), *HESS* | A universal SPI candidate distribution for observations and simulations | Not read | Not stated here; the title only | A distribution study, not a package comparison |
 
 The Palmer literature adds no implementation comparison beyond Jacobi et al. (2013). Dai (2011) and van der
 Schrier et al. (2013) compare index *forms* and produce datasets; Karl (1986) and Alley (1984) analyse the index's
@@ -75,9 +78,9 @@ metadata was verified and the content was not opened, so no content claim is mad
 
 ### Standardized indices
 
-- **McKee et al. (1993).** The paper that introduced the SPI and the classification thresholds. Allen and Otero
-  (2025) state that McKee et al. introduced the index and that the thresholds 1, 1.5 and 2 are the common
-  moderate, severe and extreme levels. Not read beyond its title page.
+- **McKee et al. (1993).** The paper that introduced the SPI and the classification thresholds. Not read beyond
+  its title page; Allen and Otero (2025) state that McKee et al. introduced the index and that the thresholds 1,
+  1.5 and 2 are the common moderate, severe and extreme levels.
 - **Guttman (1999).** The SPI calculation algorithm, and the argument for Pearson III. Allen and Otero (2025)
   summarise the argument as the extra flexibility of a third parameter. Not read.
 - **Vicente-Serrano et al. (2010).** The SPEI definition: a multiscalar index on the water balance, built to be
@@ -87,13 +90,15 @@ metadata was verified and the content was not opened, so no content claim is mad
   unbiased PWM. Not read in full.
 - **Stagge et al. (2015).** Candidate distributions for SPI and SPEI. Allen and Otero (2025) summarise its
   result as the Weibull distribution fitting their monthly accumulations better than the alternatives. There is
-  a published comment by Vicente-Serrano and Beguería (2016) and a response (Stagge et al. 2016), so any claim
+  a published comment by Vicente-Serrano and Beguería (2016, doi:[10.1002/joc.4474](https://doi.org/10.1002/joc.4474))
+  and a response by Stagge et al. (2016, doi:[10.1002/joc.4564](https://doi.org/10.1002/joc.4564)), so any claim
   drawn from it must say which side it rests on. Not read.
 - **Laimighofer and Laaha (2022).** Uncertainty components for SPI and SPEI. The abstract, as recorded in
   [`research-notes.md`](research-notes.md), reports that the distribution choice and the observation window
   dominate while the estimator and the goodness-of-fit test matter little. This is the basis for the protocol's
   [rung order](protocol.md), which is stated there as a lead rather than a verified finding.
-- **Carbone et al. (2018).** Uncertainty in SPI estimates: a statistical account, not a package comparison. Not read.
+- **Carbone et al. (2018).** Uncertainty in SPI estimates. Not read; the title and the journal record support a
+  statistical account, not a package comparison.
 - **Pieper et al. (2020).** A universal candidate distribution function for the SPI, for observations and
   simulations. Not read.
 - **Hobbins et al. (2016).** The Evaporative Demand Drought Index, Part I: the definition that EDDI rests on.
@@ -125,37 +130,41 @@ metadata was verified and the content was not opened, so no content claim is mad
 
 ### Palmer family
 
-- **Palmer (1965).** The primary source. The repository already traces 26 steps of it in
+- **Palmer (1965).** The primary source. Not read in this session. The repository traces 26 steps of it in
   `docs/algorithm_refs/palmer-provenance.md` (REFIMPL-26, #1628), and that trace, not this entry, is where every
   Palmer claim in the papers must rest.
-- **Alley (1984).** The limitations and assumptions of the index: the source for the index's known weaknesses.
+- **Alley (1984).** The limitations and assumptions of the index. Not read here; REFIMPL-26 opened a local copy
+  for `palmer-provenance.md`, which is the source for the index's known weaknesses.
 - **Karl (1986).** The sensitivity of the PDSI and the Z-Index to the calibration coefficients, including
-  potential evapotranspiration. The source for the PET-choice question in manuscript 2.
-- **Heddinghaus and Sabol (1991).** The review that the PHDI and PMDI definitions trace to. A conference
-  preprint with no DOI and no publisher record; the citation is verified against independent citing works.
-- **Wells et al. (2004).** The scPDSI definition. Earlier tickets could not retrieve the full text (HTTP 403) and
-  this session did not retry, so every statement about Wells' recursion rests on the port and on published
-  descriptions.
+  potential evapotranspiration. Not read here; opened for `palmer-provenance.md`. It is the source for the
+  PET-choice question in manuscript 2.
+- **Heddinghaus and Sabol (1991).** The review that the PHDI and PMDI definitions trace to. Not read; the paper
+  itself was not opened by REFIMPL-26 either. A conference preprint with no DOI and no publisher record; the
+  citation is verified against two independent citing works.
+- **Wells et al. (2004).** The scPDSI definition. This session did not open it: earlier tickets could not
+  retrieve the full text (HTTP 403) and this session did not retry. `docs/algorithm_refs/palmer-provenance.md`
+  records that REFIMPL-26 read a local copy, so the paper's content is cited there, not here.
 - **Jacobi et al. (2013).** The MATLAB tool, checked against the NCDC Fortran. The closest precedent for
   manuscript 2. The publisher page returned 403, so the content claim is carried from `research-notes.md`.
-- **Ficklin et al. (2015).** The Penman-Monteith PET method inside a Palmer tool: a precedent for the PET axis
-  of manuscript 2, not for its provenance axis.
-- **Rhee and Carbone (2007).** Weekly monitoring methods of the Palmer index: the precedent the `GRIDMET/DROUGHT`
-  PDSI formulation follows, as `research-notes.md` records from the provider documentation.
-- **Dai (2011).** Trends in the various forms of the PDSI: a comparison of index *forms* on one analysis.
-- **van der Schrier et al. (2013).** The scPDSI-based global dataset: a product, and the example of a
+- **Ficklin et al. (2015).** The Penman-Monteith PET method inside a Palmer tool. Not read. A precedent for the
+  PET axis of manuscript 2, not for its provenance axis.
+- **Rhee and Carbone (2007).** Weekly monitoring methods of the Palmer index. Not read. The precedent the
+  `GRIDMET/DROUGHT` PDSI formulation follows, as `research-notes.md` records from the provider documentation.
+- **Dai (2011).** Trends in the various forms of the PDSI. Not read. A comparison of index *forms* on one
+  analysis, not of implementations.
+- **van der Schrier et al. (2013).** The scPDSI-based global dataset. Not read. A product, and the example of a
   well-documented scPDSI product this library does not reproduce.
-- **Vose et al. (2014).** nClimDiv: the dataset behind the 344-division PDSI and SPI references. The source for
-  the input side of every nClimDiv comparison.
+- **Vose et al. (2014).** nClimDiv: the dataset behind the 344-division PDSI and SPI references. Not read. It is
+  the source for the input side of every nClimDiv comparison.
 - **Spade et al. (2020).** The NCEI divisional SPI critique, misattributed in this repository (see the
-  corrections table). The source for the calibration-window finding in
-  `tests/fixture/ncei_spi/provenance.json`.
+  corrections table). Not read: its title states the over- and underestimation finding, and the calibration-window
+  result is carried from `tests/fixture/ncei_spi/provenance.json`, which cites it and no other paper for it.
 
 ### Input and index uncertainty
 
-- **Hoffmann et al. (2020).** Uncertainty in drought from index and data selection: PDSI, SPEI and SPI compared
-  against soil moisture from two GLDAS generations. This is the closest precedent for a multi-index uncertainty
-  statement, and it compares indices, not implementations.
+- **Hoffmann et al. (2020).** Uncertainty in drought from index and data selection. Not read; the publisher
+  abstract describes PDSI, SPEI and SPI assessed against soil-moisture estimates. It compares indices and data
+  choices, not implementations, and it is the closest precedent for a multi-index uncertainty statement.
 
 ## Novelty statements
 
@@ -174,7 +183,8 @@ implementation comparison in the Palmer family.
 pre-registered rungs, instead of comparing shipped defaults. Second, it reports each criterion separately, with
 no composite score, so a package can be better on one criterion and worse on another. Third, it attributes the
 residual difference per axis and logs every disagreement in a public ledger. Fourth, it reports provenance for
-every run, including the calibration years and zero-handling inputs that each package actually used. The
+every run, including the calibration years and zero-handling inputs that each package used, marked *unverified*
+where a package does not expose them, as [the protocol](protocol.md) requires. The
 comparison covers many locations rather than one station, and it treats PET in the role it plays inside SPEI and
 Palmer rather than as an isolated equation.
 
@@ -192,8 +202,9 @@ falsifier.
 Fortran. Spade et al. (2020) documents one product's departure from its own documentation. Dai (2011), van der
 Schrier et al. (2013) and Vose et al. (2014) compare index forms or supply products.
 
-**Claim.** The planned paper differs in three ways. First, it traces every equation and coefficient of two
-established Palmer lineages to the source statements and to the code lines, as a table a reader can re-walk.
+**Claim.** The planned paper differs in three ways. First, it traces the 26 steps of two established Palmer
+lineages to the source statements and to the code lines, as a table a reader can re-walk; two of the steps, PHDI
+and PMDI, rest on secondary descriptions because no source gives their formula, and the table says so.
 Second, it quantifies the divergence between the `pdi.f` and Wells recursions on the operational 344-division
 product, with six code-level causes and the share of disagreeing months each explains. Third, it reports the
 Rust kernels' parity and performance as part of the same provenance record. No prior work found here combines a
@@ -201,8 +212,9 @@ statement-level provenance trace with a measured divergence between the two line
 
 **Falsified if.** A published work already (a) traces these implementations to source statements at
 equation-and-coefficient resolution, and (b) reports the month share and per-cause decomposition of the `pdi.f`
-versus Wells disagreement on a comparable domain. A work that does (a) alone, or that compares a single tool
-against a single lineage without a cause decomposition, narrows the claim without falsifying it.
+versus Wells disagreement on the 344 climate divisions or on another national product of at least 100 locations.
+A work that does (a) alone, or that compares a single tool against a single lineage without a cause
+decomposition, narrows the claim without falsifying it.
 
 ### JOSS software paper (conditional)
 
@@ -214,8 +226,10 @@ that this library reproduces named authoritative products and two Palmer lineage
 the provenance and the divergence record cited. A JOSS paper that only announces the library would add nothing
 those papers already provide.
 
-**Falsified if.** REFIMPL-01 decides the portfolio excludes a JOSS paper, or the paper's claims reduce to a
-restatement of the four software papers above.
+**Falsified if.** REFIMPL-01 decides the portfolio excludes a JOSS paper, or the paper claims nothing beyond
+four things those papers already state: that a package computes the indices (Bourgault et al., Vonk), that its
+methods are benchmarked (Vremec et al.), and that it is more flexible than its predecessors (Allen and Otero).
+A paper that states only those adds nothing.
 
 ## Not verified, and for the maintainer
 
@@ -224,8 +238,12 @@ restatement of the four software papers above.
   claims for the unopened works are carried from `research-notes.md` and are marked as carried.
 - **Pagination absent from the record.** Carbone et al. (2018) has no page range in Crossref or OpenAlex.
 - **Second-hand content.** The annotations for Guttman (1999), Stagge et al. (2015), McKee et al. (1993) and
-  Beguería et al. (2014) rest on statements in Allen and Otero (2025) or in `research-notes.md`. Reading the
-  originals would strengthen them and is worth doing before submission.
+  Beguería et al. (2014) rest on statements in Allen and Otero (2025) or in `research-notes.md`; the Hoffmann et
+  al. (2020) annotation rests on its publisher abstract. Reading the originals would strengthen them and is worth
+  doing before submission.
+- **A living source.** Vonk's comparison notebook is a web page with no archived snapshot and no version tag, so
+  a later reader may see different content. Take a dated copy for `sources/external/` before any manuscript cites
+  its numbers (REFIMPL-41).
 - **Search limits.** The searches ran on Crossref and general web search. They did not cover subscription
   indexes (Web of Science, Scopus), nor non-English literature, nor the grey literature of package repositories
   beyond the ones named. A pre-submission check should repeat the novelty search there.
@@ -235,9 +253,10 @@ restatement of the four software papers above.
 ## What this ticket resolves in `research-notes.md`
 
 `research-notes.md` lists twelve works whose bibliographic details were unverified and the authorship of the R
-`SEI` article. This ticket verifies all thirteen: see `references.bib` and the corrections table above. The two
-`research-notes.md` items that remain open are not bibliographic: which Palmer (1965) tables suffice for
-stage-by-stage fixtures (REFIMPL-28, #1630) and the unretrievable Wells et al. (2004) text.
+`SEI` article. This ticket verifies all thirteen: see `references.bib` and the corrections table above. The other
+items under its `## Not verified` heading are not bibliographic and stay open: the Wells C++ rescaling passes,
+source licences, Octave and Linux runs, fixture provenance, provider terms, the AI-disclosure policy and the wider
+cross-package search.
 
 ## What this means for the other tickets
 
@@ -248,5 +267,6 @@ stage-by-stage fixtures (REFIMPL-28, #1630) and the unretrievable Wells et al. (
   not an implementation difference.
 - REFIMPL-41 and REFIMPL-42 must draw citations from `references.bib` and state the falsifier of each novelty
   claim in their introductions.
-- REFIMPL-44 ([#1646](https://github.com/monocongo/climate_indices/issues/1646)) owns the `VALIDATION.md` and
-  README wording that still carries the "Baldwin and Chen (2020)" attribution.
+- REFIMPL-44 ([#1646](https://github.com/monocongo/climate_indices/issues/1646)) owns the `VALIDATION.md`
+  wording that still carries the "Baldwin and Chen (2020)" attribution, and the `llms.txt` and `llms-full.txt`
+  bundles regenerated from it. REFIMPL-09 regenerates `method-matrix.md` after its basis strings change.

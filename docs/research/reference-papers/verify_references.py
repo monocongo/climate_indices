@@ -3,16 +3,20 @@
 Reads ``references.bib`` next to this file and refreshes ``references-verification.json``.
 
 * An entry with a ``doi`` field is checked against the Crossref record for that DOI.
-  The script records the fields read from Crossref and reports a mismatch when the
-  entry's year, volume, number, pages or first author disagree with the record.
+  The script records the fields read from Crossref and reports every disagreement about
+  the DOI, year, volume, number, pages, container or first author.
 * An entry without a ``doi`` keeps the record already in the JSON: a human reads the
   publisher, agency or library page and writes ``record_url`` with ``record_states``.
   The script fails on a DOI-less entry that has no such record.
+* ``note`` and ``cited_year`` in a committed record are preserved as written. Use
+  ``cited_year`` when the citation year differs from the Crossref issue year, and say
+  why in ``note``.
 
 Run it by hand after editing the bibliography, then commit both files:
 
     uv run python docs/research/reference-papers/verify_references.py
 
+The script writes nothing when any check fails, so a failed run cannot delete a record.
 ``tests/test_reference_bibliography.py`` compares the two committed files offline, so
 the test suite never touches the network.
 """
@@ -23,6 +27,7 @@ import json
 import re
 import sys
 import time
+import unicodedata
 import urllib.parse
 import urllib.request
 from datetime import UTC, datetime
@@ -34,7 +39,7 @@ BIB = HERE / "references.bib"
 VERIFICATION = HERE / "references-verification.json"
 CROSSREF = "https://api.crossref.org/works/"
 USER_AGENT = "climate_indices-refimpl-bibliography/1.0 (https://github.com/monocongo/climate_indices)"
-
+PRESERVED = ("note", "cited_year")
 ENTRY = re.compile(r"@(\w+)\{([^,]+),")
 FIELD = re.compile(r"^\s+(\w+)\s*=\s*\{(.*)\},?\s*$")
 
@@ -50,19 +55,27 @@ def parse_bib(text: str) -> dict[str, dict[str, str]]:
         match = ENTRY.match(stripped)
         if match:
             new_key = match.group(2).strip()
+            if new_key in entries:
+                raise ValueError(f"duplicate bibliography key: {new_key}")
             key = new_key
             entries[new_key] = {}
             continue
-        # Any other line before the closing brace is a field of the current entry.
         if key is None:
             continue
         if stripped == "}":
             key = None
             continue
         field = FIELD.match(line)
-        if field:
-            entries[key][field.group(1).lower()] = field.group(2).strip()
+        if not field:
+            raise ValueError(f"{key}: unparsed line {line!r}; write one field per line with its value on that line")
+        entries[key][field.group(1).lower()] = field.group(2).strip()
     return entries
+
+
+def _letters(value: object) -> str:
+    """ASCII letters of a name, with LaTeX accent commands and combining marks removed."""
+    plain = unicodedata.normalize("NFKD", str(value))
+    return re.sub(r"[^A-Za-z]", "", plain).lower()
 
 
 def fetch(doi: str) -> dict[str, Any]:
@@ -107,27 +120,53 @@ def summarise(record: dict[str, Any], checked: str) -> dict[str, Any]:
 
 
 def mismatches(key: str, entry: dict[str, str], record: dict[str, Any]) -> list[str]:
-    """Report where a bibliography entry disagrees with its Crossref record."""
+    """Report every disagreement between a bibliography entry and its verification record."""
     found: list[str] = []
+    if not entry.get("author") or not entry.get("title") or not entry.get("year"):
+        found.append(f"{key}: an entry needs author, title and year")
+    if record.get("check") == "record":
+        if entry.get("doi"):
+            found.append(f"{key}: has a doi but its record is not a Crossref check")
+        if not str(record.get("record_url", "")).startswith("https://"):
+            found.append(f"{key}: record_url is missing or not https")
+        if len(str(record.get("record_states", ""))) <= 40:
+            found.append(f"{key}: the record does not say what it states")
+        if not record.get("checked") or not record.get("year"):
+            found.append(f"{key}: the record needs a check date and a year")
+        elif str(record["year"]) != entry.get("year"):
+            found.append(f"{key}: year {entry.get('year')!r} != record {record['year']!r}")
+        return found
+    if record.get("check") != "crossref":
+        return [f"{key}: unknown check {record.get('check')!r}"]
+
     doi = entry.get("doi", "")
     if not doi:
-        return found
-    if doi.lower() != str(record.get("doi", "")).lower():
+        found.append(f"{key}: no doi field for a Crossref record")
+    elif doi.lower() != str(record.get("doi", "")).lower():
         found.append(f"{key}: doi {doi!r} != record {record.get('doi')!r}")
-    year = entry.get("year", "")
+
     # A journal issue prints in its volume year, which can follow the online-first date.
-    printed = record.get("published_print") or record.get("issued") or ""
-    if year and not str(printed).startswith(year):
+    printed = record.get("cited_year") or record.get("published_print") or record.get("issued") or ""
+    year = entry.get("year", "")
+    if str(printed)[:4] != year:
         found.append(f"{key}: year {year!r} != record {printed!r}")
-    for bib_field, record_field in (("volume", "volume"), ("number", "issue")):
+
+    for bib_field, record_field in (("volume", "volume"), ("number", "issue"), ("pages", "pages")):
         value = entry.get(bib_field, "")
         recorded = record.get(record_field)
-        if value and recorded and value != str(recorded):
+        if recorded is None:
+            if value:
+                found.append(f"{key}: {bib_field} {value!r} is not in the record")
+        elif value.replace("--", "-") != str(recorded).replace("--", "-"):
             found.append(f"{key}: {bib_field} {value!r} != record {recorded!r}")
-    pages = entry.get("pages", "")
-    if pages and record.get("pages"):
-        if pages.replace("--", "-").replace(" ", "") != str(record["pages"]).replace(" ", ""):
-            found.append(f"{key}: pages {pages!r} != record {record['pages']!r}")
+
+    if record.get("container") and not (entry.get("journal") or entry.get("booktitle")):
+        found.append(f"{key}: no journal or booktitle for a record with a container")
+    family = _letters(record.get("first_author_family") or "")
+    if not family:
+        found.append(f"{key}: the record carries no first author")
+    elif not _letters(entry.get("author", "")).startswith(family[:5]):
+        found.append(f"{key}: first author differs from the record ({record.get('first_author_family')!r})")
     return found
 
 
@@ -148,23 +187,37 @@ def main() -> int:
         doi = entry.get("doi")
         if not doi:
             record = known.get(key)
-            if not record or record.get("check") != "record" or not record.get("record_url"):
+            if not record or record.get("check") != "record":
                 problems.append(f"{key}: no DOI and no recorded publisher or agency record")
                 continue
             records[key] = record
+            problems.extend(mismatches(key, entry, records[key]))
             continue
         for attempt in range(3):
             try:
                 records[key] = summarise(fetch(doi), checked)
                 break
-            except Exception as error:  # noqa: BLE001 - a network failure is reported, not raised
+            except RuntimeError as error:
                 if attempt == 2:
-                    problems.append(f"{key}: Crossref lookup failed: {error}")
+                    problems.append(f"{key}: {error}")
                 time.sleep(3)
         else:
             continue
+        for field in PRESERVED:
+            if field in known.get(key, {}):
+                records[key][field] = known[key][field]
         problems.extend(mismatches(key, entry, records[key]))
         time.sleep(1.5)
+
+    for key in sorted(set(known) - set(entries)):
+        problems.append(f"{key}: verification record with no bibliography entry")
+
+    print(f"checked {len(records)} entries in {BIB.name}")
+    if problems:
+        for problem in problems:
+            print(f"  {problem}", file=sys.stderr)
+        print(f"{VERIFICATION.name} left unchanged", file=sys.stderr)
+        return 1
 
     document = {
         "issued": checked,
@@ -174,12 +227,10 @@ def main() -> int:
         ),
         "entries": records,
     }
-    VERIFICATION.write_text(json.dumps(document, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
-
-    print(f"checked {len(records)} entries in {BIB.name}")
-    for problem in problems:
-        print(f"  {problem}", file=sys.stderr)
-    return 1 if problems else 0
+    temporary = VERIFICATION.with_suffix(".json.tmp")
+    temporary.write_text(json.dumps(document, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    temporary.replace(VERIFICATION)
+    return 0
 
 
 if __name__ == "__main__":

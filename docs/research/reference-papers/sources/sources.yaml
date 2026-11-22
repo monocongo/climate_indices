@@ -366,8 +366,9 @@ sources:
   tickets:
   - REFIMPL-05
   - REFIMPL-06
-  notes: 'Not opened; metadata verified in references.bib. Cited in tests/fixture/ncei_spi/provenance.json, method-matrix.json
-    and #1608''s NCEI row as "Baldwin and Chen (2020)", which the record contradicts; see literature.md.''
+  notes: 'Not opened; metadata verified in references.bib. Cited in tests/fixture/ncei_spi/provenance.json,
+    method-matrix.json and #1608''s NCEI row as Baldwin and Chen (2020), an attribution the record contradicts;
+    see ../literature.md.'
 - id: dficklin-cageo-paper
   kind: code
   family: palmer

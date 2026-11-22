@@ -26,7 +26,9 @@
       "volume": "16",
       "issue": "4",
       "pages": "102-122",
-      "checked": "2026-11-22"
+      "checked": "2026-11-22",
+      "note": "The R Journal article page read 2026-11-22 dates the article 2024-12-31 and Crossref registers the issue on 2025-07-14, so the entry cites the article year 2024 and this record keeps the registered date.",
+      "cited_year": "2024"
     },
     "alley1984": {
       "check": "crossref",
@@ -78,7 +80,8 @@
       "volume": "38",
       "issue": "S1",
       "pages": null,
-      "checked": "2026-11-22"
+      "checked": "2026-11-22",
+      "note": "Neither the Crossref record nor the OpenAlex record (api.openalex.org/works/https://doi.org/10.1002/joc.5393, read 2026-11-22) carries a page range or an article number for this article."
     },
     "dai2011": {
       "check": "crossref",
@@ -134,8 +137,9 @@
     },
     "heddinghaus1991": {
       "check": "record",
-      "record_url": "https://doi.org/10.1175/1520-0477-83.8.1149",
-      "record_states": "Conference preprint: 7th Conference on Applied Climatology, Salt Lake City, Utah, 10-13 September 1991, American Meteorological Society, pp. 242-246; authors Heddinghaus and Sabol. Page range and venue read from independent citing works (Munson et al. 2013, Ecology, doi:10.1890/12-1586.1; Ma et al. 2013, Hydrological Processes, doi:10.1002/hyp.10063); the preprint itself has no DOI and no publisher record.",
+      "record_url": "https://doi.org/10.1890/12-1586.1",
+      "record_states": "Conference preprint with no DOI and no publisher record: Preprints of the 7th Conference on Applied Climatology, Salt Lake City, Utah, 10-13 September 1991, American Meteorological Society, pp. 242-246; authors Heddinghaus and Sabol. Venue, date and page range read from two independent citing works, Munson et al. (2013), Ecology 94(9), 2030-2041, doi:10.1890/12-1586.1, and Ma et al. (2014), Hydrological Processes 28(23), 5645-5661, doi:10.1002/hyp.10063; both Crossref records were read.",
+      "year": "1991",
       "checked": "2026-11-22"
     },
     "hobbins2016": {
@@ -220,12 +224,14 @@
       "check": "record",
       "record_url": "https://www.droughtmanagement.info/literature/AMS_Relationship_Drought_Frequency_Duration_Time_Scales_1993.pdf",
       "record_states": "Preprint scan hosted by the Integrated Drought Management Programme: Eighth Conference on Applied Climatology, 17-22 January 1993, Anaheim, California, American Meteorological Society; authors McKee, Doesken and Kleist; cited page range 179-184. No DOI exists for this conference preprint.",
+      "year": "1993",
       "checked": "2026-11-22"
     },
     "palmer1965": {
       "check": "record",
       "record_url": "https://library.oarcloud.noaa.gov/noaa_documents.lib/NOAA_historic_documents/WB/Research_papers/WB_Research_Paper_45.pdf",
       "record_states": "NOAA-hosted copy of the title page and foreword: U.S. Department of Commerce, Weather Bureau, Research Paper No. 45, Meteorological Drought, Wayne C. Palmer, Office of Climatology, Washington, D.C., February 1965. Library catalogue records give vi + 58 pages. No DOI exists for this report.",
+      "year": "1965",
       "checked": "2026-11-22"
     },
     "pieper2020": {
@@ -309,7 +315,8 @@
     "vonk2023comparison": {
       "check": "record",
       "record_url": "https://martinvonk.github.io/SPEI/examples/example04_package_comparison.html",
-      "record_states": "SPEI package documentation, example 04 'Package Comparison', page dated 2023 and read 2026-11-22: compares SPI computed with spei, standard_precip, climate_indices and R SPEI for one station (DEBILT) at a 3-month scale; software documentation, not peer reviewed.",
+      "record_states": "SPEI package documentation, example 04 'Package Comparison', page dated 2023 and read 2026-11-22: it compares SPI computed with spei, standard_precip, climate_indices and R SPEI, and SGI from spei and pastas, for one station (DEBILT) at a 3-month scale. The climate_indices cell is commented out because the package could not be installed, and the R call fails in the published build, so the one numeric comparison shown is spei against standard_precip. Software documentation, not peer reviewed.",
+      "year": "2023",
       "checked": "2026-11-22"
     },
     "vonk2025": {
@@ -368,6 +375,7 @@
       "check": "record",
       "record_url": "https://library.wmo.int/records/item/39629-standardizedprecipitation-index-user-guide",
       "record_states": "WMO e-Library record 39629: Standardized Precipitation Index User Guide, WMO-No. 1090, World Meteorological Organization, Geneva, 2012, by M. Svoboda, M. Hayes and D. Wood. No DOI exists for this report.",
+      "year": "2012",
       "checked": "2026-11-22"
     }
   }
