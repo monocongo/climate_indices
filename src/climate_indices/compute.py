@@ -61,12 +61,30 @@ _FIT_WARNINGS_ENABLED: contextvars.ContextVar[bool] = contextvars.ContextVar(
 
 @contextlib.contextmanager
 def _fit_warnings_suppressed() -> Iterator[None]:
-    """Fit inside this block without the fit-quality warnings (and without the checks that raise them)."""
+    """Fit inside this block without the fit-quality warnings or the fit log events.
+
+    The checks that raise the warnings are skipped as well, so a refit of simulated data also saves their cost.
+    """
     token = _FIT_WARNINGS_ENABLED.set(False)
     try:
         yield
     finally:
         _FIT_WARNINGS_ENABLED.reset(token)
+
+
+class _SilentLogger:
+    """Takes the place of a bound logger for a fit of simulated data, whose events describe no real series."""
+
+    def bind(self, **_fields: Any) -> "_SilentLogger":
+        return self
+
+    def __getattr__(self, _event_method: str) -> Callable[..., None]:
+        return lambda *_args, **_kwargs: None
+
+
+def _fit_logger(**fields: Any) -> Any:
+    """The module logger bound to ``fields``, or a silent one inside :func:`_fit_warnings_suppressed`."""
+    return (_logger if _FIT_WARNINGS_ENABLED.get() else _SilentLogger()).bind(**fields)
 
 
 # declare the function names that should be included in the public API for this module
@@ -147,6 +165,8 @@ class DistributionFallbackStrategy:
 
     def log_fallback_warning(self, reason: str, context: str = "") -> None:
         """Emit the ``distribution_fallback`` event recording the distribution swap."""
+        if not _FIT_WARNINGS_ENABLED.get():
+            return
         self._logger.bind(
             from_distribution="pearson",
             to_distribution="gamma",
@@ -170,6 +190,8 @@ class DistributionFallbackStrategy:
 
     def log_high_failure_rate(self, failure_count: int, total_count: int, context: str = "") -> None:
         """Log high failure rate warning."""
+        if not _FIT_WARNINGS_ENABLED.get():
+            return
         failure_rate = failure_count / total_count if total_count > 0 else 0
         message = (
             f"High failure rate for Pearson Type III distribution fitting: {failure_count}/{total_count} "
@@ -763,7 +785,7 @@ def pearson_parameters(
         returned array 3 :second Pearson Type III distribution parameter (scale)
         returned array 4: third Pearson Type III distribution parameter (skew)
     """
-    log = _logger.bind(
+    log = _fit_logger(
         operation="pearson_parameters",
         distribution="pearson3",
         periodicity=str(periodicity),
@@ -2014,6 +2036,17 @@ def _native_hastings_inverse_normal(probabilities: np.ndarray) -> np.ndarray | N
     return normal
 
 
+def _nanmean_axis0(values: np.ndarray) -> np.ndarray:
+    """``np.nanmean(values, axis=0)`` that gives NaN, not a RuntimeWarning, for a column with no value.
+
+    ``warnings.catch_warnings()`` is the only way to silence ``np.nanmean``'s empty-slice warning, and it
+    mutates process-global filter state, so a concurrent spatial block could lose or leak a filter (see the
+    percentage-of-normal note in ``drought/indices.py``). The explicit count and sum give the same values.
+    """
+    counts = np.count_nonzero(~np.isnan(values), axis=0)
+    return np.where(counts > 0, np.nansum(values, axis=0) / np.maximum(counts, 1), np.nan)
+
+
 def gamma_parameters(
     values: np.ndarray,
     data_start_year: int,
@@ -2047,7 +2080,7 @@ def gamma_parameters(
         and shape of the input array
     :rtype: tuple of two 2-D numpy.ndarrays of floats, alphas and betas
     """
-    log = _logger.bind(
+    log = _fit_logger(
         operation="gamma_parameters",
         distribution="gamma",
         periodicity=str(periodicity),
@@ -2102,10 +2135,10 @@ def gamma_parameters(
     if native_fit is not None:
         alphas, betas = native_fit
     else:
-        means = np.nanmean(calibration_values, axis=0)
+        means = _nanmean_axis0(calibration_values)
         log_means = np.log(means)
         logs = np.log(calibration_values)
-        mean_logs = np.nanmean(logs, axis=0)
+        mean_logs = _nanmean_axis0(logs)
         a = log_means - mean_logs
         alphas = (1 + np.sqrt(1 + 4 * a / 3)) / (4 * a)
         betas = means / alphas
@@ -2830,7 +2863,7 @@ def loglogistic_parameters(
         spatial input: location, scale, and shape
     :rtype: tuple of three numpy.ndarrays of floats (loc, scale, shape)
     """
-    log = _logger.bind(
+    log = _fit_logger(
         operation="loglogistic_parameters",
         distribution="loglogistic",
         periodicity=str(periodicity),
@@ -3029,7 +3062,7 @@ def gev_parameters(
         spatial input: location, scale, and shape
     :rtype: tuple of three numpy.ndarrays of floats (loc, scale, shape)
     """
-    log = _logger.bind(
+    log = _fit_logger(
         operation="gev_parameters",
         distribution="gev",
         periodicity=str(periodicity),
