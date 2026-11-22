@@ -7,7 +7,14 @@ Approved for implementation. The maintainer made these decisions in
 [reference-implementation map (#1602)](https://github.com/monocongo/climate_indices/issues/1602).
 This record covers how the protocol binds later work, not its content: the protocol is
 [`protocol.md`](https://github.com/monocongo/climate_indices/blob/main/docs/research/reference-papers/protocol.md),
-and it takes effect when the maintainer approves its text.
+and it takes effect when the maintainer approves its text. The decisions below are approved;
+the work they govern is not yet done:
+
+- the metrics library that implements every measure, in
+  [REFIMPL-16 (#1618)](https://github.com/monocongo/climate_indices/issues/1618), whose issue text predates the protocol;
+- the harness and adapters, in [REFIMPL-08 (#1610)](https://github.com/monocongo/climate_indices/issues/1610);
+- the studies that pre-register against it, from [REFIMPL-17 (#1619)](https://github.com/monocongo/climate_indices/issues/1619)
+  to [REFIMPL-23 (#1625)](https://github.com/monocongo/climate_indices/issues/1625).
 
 ## Context
 

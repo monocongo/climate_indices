@@ -15,7 +15,7 @@ Use [`VALIDATION.md`](../../../VALIDATION.md)'s evidence vocabulary: a method ma
 
 ## Axes
 
-The ticket named eleven axes. A twelfth, the inverse-normal transform, is added because two comparators and the library's EDDI use an approximation whose size (A&S give 4.5e-4) is above the "equivalent" class (at most 1e-6) of [REFIMPL-02](https://github.com/monocongo/climate_indices/issues/1604)'s proposed difference classes, and because no other axis accounts for it.
+The ticket named eleven axes. A twelfth, the inverse-normal transform, is added because two comparators and the library's EDDI use an approximation whose size (A&S give 4.5e-4) is above the "equivalent" class (at most 1e-6) of [REFIMPL-02](https://github.com/monocongo/climate_indices/issues/1604)'s difference classes (see [`protocol.md`](protocol.md)), and because no other axis accounts for it.
 
 | Axis | What it fixes | Positions seen |
 | --- | --- | --- |
