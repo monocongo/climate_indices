@@ -126,3 +126,9 @@ target/
 
 # written by hatch_build.py for the maturin wheels; never committed
 src/climate_indices/_build_info.json
+
+# Reference sources not cleared for commit (docs/research/reference-papers/sources/README.md)
+docs/research/reference-papers/sources/local/*
+!docs/research/reference-papers/sources/local/.gitkeep
+docs/research/reference-papers/sources/external/*
+!docs/research/reference-papers/sources/external/.gitkeep

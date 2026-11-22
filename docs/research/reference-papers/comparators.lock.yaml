@@ -68,7 +68,7 @@ python:
     commit_date: 2022-08-31
     archive_sha256: 92b971c1f0b82027a5ac5291ca3034fc9e19008d763bdb262a6b74ed44c2f83d   # unstable; pin by commit
     license: BSD-3-Clause
-    lineage_note: climate_indices.eto is said to derive from PyETo; unverified (issue 1606)
+    lineage_note: climate_indices.eto (Thornthwaite, Hargreaves) derives from PyETo; confirmed in lineage.md (issue 1606)
     resolved: {numpy: 2.5.5, pandas: 3.1.1}   # numpy and pandas only for the smoke script; PyETo has no dependencies
   - name: precip-index
     version: null
@@ -161,6 +161,9 @@ products:
   - name: NCEI climdiv SPI
     decision: include
     fixture: tests/fixture/ncei_spi/provenance.json
+  - name: NOAA PSL EDDI
+    decision: include
+    fixture: tests/fixture/noaa-eddi-1month/provenance.json
   - name: SPEIbase v2.11
     decision: include
     fixture: tests/fixture/speibase/provenance.json
