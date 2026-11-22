@@ -15,7 +15,7 @@ Use [`VALIDATION.md`](../../../VALIDATION.md)'s evidence vocabulary: a method ma
 
 ## Axes
 
-The ticket named eleven axes. A twelfth, the inverse-normal transform, is added because two comparators and the library's EDDI use an approximation whose size (A&S give 4.5e-4) is above the "equivalent" class (at most 1e-6) of [REFIMPL-02](https://github.com/monocongo/climate_indices/issues/1604)'s proposed difference classes, and because no other axis accounts for it.
+The ticket named eleven axes. A twelfth, the inverse-normal transform, is added because two comparators and the library's EDDI use an approximation whose size (A&S give 4.5e-4) is above the "equivalent" class (at most 1e-6) of [REFIMPL-02](https://github.com/monocongo/climate_indices/issues/1604)'s difference classes (see [`protocol.md`](protocol.md)), and because no other axis accounts for it.
 
 | Axis | What it fixes | Positions seen |
 | --- | --- | --- |
@@ -263,16 +263,16 @@ Residual differences after alignment:
 
 <!-- END GENERATED: aligned -->
 
-### Provisional mapping to the REFIMPL-02 ladder
+### Mapping to the REFIMPL-02 ladder
 
-[REFIMPL-02](https://github.com/monocongo/climate_indices/issues/1604) proposes the ladder L0 as shipped, L1 aligned inputs, calibration period and accumulation window, L2 aligned distribution family, L3 aligned estimator, L4 aligned zero handling, plotting position, clipping and missing-data rules. It is unapproved, so this mapping can change:
+[`protocol.md`](protocol.md) (REFIMPL-02, version 1.0.0, proposed until the maintainer approves its text) defines the ladder. L0 uses the defaults and aligns no axes. The table maps this matrix's axes to the other rungs.
 
 | Rung | Axes in this matrix |
 | --- | --- |
 | L1 | accumulation, calendar grouping, calibration period (and the inputs, which this matrix does not cover) |
 | L2 | distribution |
 | L3 | estimator, location or offset |
-| L4 | zero handling, plotting position, output bound, missing data and minimum sample, fit failure, and, as a proposed addition, inverse normal |
+| L4 | zero handling, plotting position, output bound, missing data and minimum sample, fit failure, and inverse normal |
 
 ## Not done
 
