@@ -108,12 +108,17 @@ def _run(
             spatial_time_major=True,
             **extra,
         ).goodness_of_fit
-        assert gof is not None
+        if gof is None:
+            raise RuntimeError("compare_distributions returned no goodness of fit")
         if naive:
             p_values = (gof.ks_p_value_naive,)
         else:
-            assert gof.ks_p_value_bootstrap is not None and gof.ad_p_value_bootstrap is not None
-            assert gof.bootstrap_failed_share is not None
+            if (
+                gof.ks_p_value_bootstrap is None
+                or gof.ad_p_value_bootstrap is None
+                or gof.bootstrap_failed_share is None
+            ):
+                raise RuntimeError("the bootstrap p-values are missing from the goodness of fit")
             p_values = (gof.ks_p_value_bootstrap, gof.ad_p_value_bootstrap)
             shares = gof.bootstrap_failed_share[np.isfinite(gof.bootstrap_failed_share)]
             failed_shares += [float(share) for share in shares]
