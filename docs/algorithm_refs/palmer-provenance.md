@@ -161,19 +161,23 @@ recorded in REFIMPL-46 ([#1661](https://github.com/monocongo/climate_indices/iss
   double-precision `pdi.f` build to within 1.2e-14 in every water-balance term,
   coefficient and index. The published single-precision build differs from that
   build by at most 2.8e-5.
-- **Faithful to `pdi.f` but unsupported by any source.** The code reproduces three
+- **Faithful to `pdi.f` but unsupported by any source.** The code reproduces two
   `pdi.f` behaviours that no opened source supports:
-  - every month flushed at the end of the record gets the final month's PMDI;
   - the stale `k8max` (row 19) rewrites months that were already resolved;
   - X2 is not updated in the month X1 establishes a spell (row 14).
 
   The Wells manual calls a related form of the X2 behaviour "the bug found in the
   FORTRAN program" (its `-b` flag).
+- **Differs from `pdi.f` by decision.** Each month flushed at the end of the record
+  gets the PMDI of its own state, where `pdi.f` label 240 gives every one the final
+  month's ([#1666](https://github.com/monocongo/climate_indices/issues/1666),
+  [ADR-0030](../adr/0030-palmer-end-of-record-flush-follows-the-literature.md)).
 - **Differs from `pdi.f`.** The code differs on an exact PMDI tie (D2), on records
   that end before December (the NaN padding runs through the recursion), and on the
   UL denominator at `awc == 0` (D1). Fixes: [#1662](https://github.com/monocongo/climate_indices/issues/1662), [#1663](https://github.com/monocongo/climate_indices/issues/1663), [#1664](https://github.com/monocongo/climate_indices/issues/1664).
 - **Maintainer decisions (2026-11-19).** The `k8max` re-flush ([#1665](https://github.com/monocongo/climate_indices/issues/1665)) and the
-  final-month PMDI of the flushed months ([#1666](https://github.com/monocongo/climate_indices/issues/1666)) are to change, which needs an ADR.
+  final-month PMDI of the flushed months ([#1666](https://github.com/monocongo/climate_indices/issues/1666)) are to change, which needs an ADR
+  ([ADR-0030](../adr/0030-palmer-end-of-record-flush-follows-the-literature.md)). #1666 is done; #1665 is not yet.
   The X2 behaviour stays: nClimDiv agrees with it better than with updating X2.
 
 ## History

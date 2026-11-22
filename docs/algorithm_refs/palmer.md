@@ -48,10 +48,11 @@ retroactively.
   their own Z-Index values, which of course follow the later data). They can
   change the PDSI and PHDI of the months in that one open spell, which form a
   single block ending at the boundary. They are not guaranteed to change nothing
-  else: the end-of-record flush rewrites PDSI, PHDI, and PMDI for months retained
-  from earlier, already closed spells using the final record month, so a much
-  drier post-calibration stretch can move a calibration-window month that is
-  outside the open spell.
+  else: the end-of-record flush rewrites PDSI and PHDI for months retained from
+  earlier, already closed spells (#1665), so a much drier post-calibration stretch can
+  move a calibration-window month that is outside the open spell. Each flushed
+  month's PMDI is the PMDI of its own state, not the final month's
+  ([ADR-0030](../adr/0030-palmer-end-of-record-flush-follows-the-literature.md)).
 - `scpdsi()`: the fitted parameters are likewise unaffected. Its three rescaling
   passes take percentiles of the calibration-window PDSI, which includes that open
   spell, so later data can in rare cases move the rescaling anchors and with them
