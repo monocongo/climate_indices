@@ -707,8 +707,9 @@ def _refit_statistics(
         return {"ks": failed, "ad": failed}, np.zeros(draws.shape[1:], dtype=bool)
     p = compute._broadcast_parameters(draws, fitted.parameters, full=True)
     pit, covered = _sample_pit(distribution, draws, ~np.isnan(draws), p)
-    # a CDF of exactly 0 or 1 is a value on or beyond the end of the fitted support, which the likelihood scores as zero
-    outside = (covered & ~((pit > 0.0) & (pit < 1.0))).any(axis=0)
+    # the observed fit's rule (_score_fit): a value with no finite log-density is outside the fitted support. A CDF of
+    # 0 or 1 is not that rule's evidence, since it also underflows inside the support
+    outside = (covered & ~np.isfinite(_log_density(distribution, draws, p))).any(axis=0)
     usable = _usable(distribution, p) & ~outside
     ks, ad, count = _pit_statistics(np.where(usable, pit, np.nan))
     return {"ks": ks, "ad": ad}, usable & (count > 0)

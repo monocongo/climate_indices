@@ -354,6 +354,23 @@ class TestBootstrap:
         assert succeeded.tolist() == [[True, False]]
         assert np.isfinite(statistics["ks"][0, 0]) and np.isnan(statistics["ks"][0, 1])
 
+    def test_a_refit_with_a_saturated_cdf_inside_its_support_still_succeeds(self, monkeypatch):
+        # a GEV with shape -0.5 starts at loc + scale / shape = -2: -1.95 is inside, with an underflowed CDF but a
+        # finite log-density, which is how an observed fit decides it is inside
+        class Fit:
+            parameters = {"loc": np.zeros((1, 1)), "scale": np.ones((1, 1)), "shape": np.full((1, 1), -0.5)}
+
+        monkeypatch.setattr(compute.FittedDistribution, "resolve", lambda *args, **kwargs: Fit())
+        draws = np.linspace(-1.0, 1.5, 10).reshape(10, 1, 1)
+        draws[0, 0, 0] = -1.95
+        period = types.SimpleNamespace(start_year=START, end_year=START + 9)
+        p = {key: value[..., np.newaxis] for key, value in Fit.parameters.items()}
+        assert (
+            suitability._continuous_cdf(Distribution.gev, np.array([-1.95]), {k: v[0] for k, v in p.items()})[0] == 0.0
+        )
+        _, succeeded = suitability._refit_statistics(Distribution.gev, draws, period, MONTHLY)
+        assert succeeded.tolist() == [[True]]
+
     def test_the_stream_depends_on_the_values_not_on_how_a_value_is_stored(self):
         sample = np.random.default_rng(4).gamma(2.0, 30.0, size=(YEARS, 3))
         sample[3, 0] = np.nan
