@@ -435,9 +435,10 @@ def test_pdi_recursion_takes_the_same_branches_on_boundary_series(monkeypatch) -
         assert _live_triples(output.reshape(_MONTHS, -1)) >= 6
 
 
-def test_wells_recursion_takes_the_same_branches_on_boundary_series(monkeypatch) -> None:
-    factors = DurationFactors.from_defaults()
-    corpus = _straddling_corpus(series=600)
+def _wells_corpus_outcomes(
+    monkeypatch, corpus: np.ndarray, factors: DurationFactors
+) -> tuple[np.ndarray, np.ndarray]:
+    """Run each corpus column through both paths; return the Python PDSI and the completed columns."""
     results = np.zeros(corpus.shape)
     completed = np.zeros(corpus.shape[1], dtype=bool)
     for column in range(corpus.shape[1]):
@@ -450,6 +451,13 @@ def test_wells_recursion_takes_the_same_branches_on_boundary_series(monkeypatch)
             completed[column] = True
     errors = completed.size - np.count_nonzero(completed)
     assert errors < corpus.shape[1] // 10, "the corpus must mostly complete, or it tests only the error path"
+    return results, completed
+
+
+def test_wells_recursion_takes_the_same_branches_on_boundary_series(monkeypatch) -> None:
+    results, completed = _wells_corpus_outcomes(
+        monkeypatch, _straddling_corpus(series=600), DurationFactors.from_defaults()
+    )
     assert _live_triples(results, completed) >= 4  # measured 4, record's H3 table
 
 
@@ -491,19 +499,7 @@ def test_pdi_recursion_takes_the_same_branches_at_spell_thresholds(monkeypatch) 
 
 def test_wells_recursion_takes_the_same_branches_at_spell_thresholds(monkeypatch) -> None:
     factors = DurationFactors.from_defaults()
-    corpus = _spell_threshold_corpus(factors)
-    results = np.zeros(corpus.shape)
-    completed = np.zeros(corpus.shape[1], dtype=bool)
-    for column in range(corpus.shape[1]):
-        z = np.ascontiguousarray(corpus[:, column])
-        rust, python, calls = _rust_and_python(monkeypatch, lambda z=z: palmer._wells_recursion(z, factors))
-        assert calls == {"palmer_wells"} or isinstance(python[0], type)
-        _same_outcome(rust, python)
-        if not isinstance(python[0], type):
-            results[:, column] = python[0]
-            completed[column] = True
-    errors = completed.size - np.count_nonzero(completed)
-    assert errors < corpus.shape[1] // 10, "the corpus must mostly complete, or it tests only the error path"
+    results, completed = _wells_corpus_outcomes(monkeypatch, _spell_threshold_corpus(factors), factors)
     assert _live_triples(results, completed) >= 30  # measured 30, record's H3 table
 
 
