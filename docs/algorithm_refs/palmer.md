@@ -106,6 +106,12 @@ within 0.05. The comparison is qualified because NCEI publishes two decimal
 places and the committed precipitation/PET inputs are not byte-identical to
 NCEI's operational inputs, which sets a practical floor near 0.013.
 
+Stage-level evidence from the literature is in `tests/test_palmer_literature.py`
+(also marked `validation`): it checks the water balance, CAFEC coefficients, K
+normalization, P-hat, d, Z and both X recursions against the worked examples
+printed in Palmer (1965). `VALIDATION.md` states its tolerances and its measured
+gaps.
+
 `tests/test_scpdsi.py` compares the four self-calibrating index outputs and
 fitted duration factors against committed Wells-lineage reference fixtures for
 344 climate divisions at the same tolerance. That comparison is independent
