@@ -82,7 +82,7 @@ Agreement with a product or a fixture under a matched configuration, for example
 
 - **Configuration.** The highest ladder rung the package and the product can both reach. The rung is reported with every number; a result at L0 is never described as an implementation difference.
 - **Measures per series.** With `a` the package and `b` the product: bias `mean(a - b)`, mean absolute error, RMSE, Pearson `r`, `max|a - b|`; the [difference class](#difference-classes); the same-class share and the within-one-class share on each [category scale](#category-scales); the class confusion matrix (counts, rows the product, columns the package); the mask mismatch.
-- **Across units.** The median, 5th, and 95th percentile of each per-series measure, with the bootstrap interval of the median ([Units and sample size](#units-and-sample-size)).
+- **Across units.** For each numeric scalar measure, report the median, the 5th and 95th percentiles, and the bootstrap interval of the median ([Units and sample size](#units-and-sample-size)). The difference class and the confusion matrix are categorical: report them as counts and shares, never as an average class ([Difference classes](#difference-classes)).
 - **Product limits.** A product that is a provider's output, with no source available, is reported as unverified for its method axes (`method-matrix.json` carries the status of each axis).
 
 ### C4 Statistical quality of the output
@@ -204,8 +204,8 @@ The ladder helps attribute differences. At each rung, set the listed method axes
 Cell-months are not independent samples: they are autocorrelated in time (accumulation windows overlap) and correlated across neighbouring locations.
 
 - **Unit of replication.** One *location* (a grid cell, a climate division, a station) for real data; one *replicate series* for synthetic data. Every measure is first computed *per unit*, then summarized across units (C2 is the one exception, see there).
-- **What is reported.** `n_units` and `n_units_defined`, never the number of cell-months. The summary across units is the median, the 5th, and the 95th percentile.
-- **Interval.** A 95% percentile bootstrap interval of the across-unit median: sort the defined values and restart stream 2 for each statistic. Draw `integers(0, n_units_defined, size=(10000, n_units_defined))`. Statistics with the same row key and sample size reuse the same index draws. Take the median of each resample and report the 2.5th and 97.5th percentiles.
+- **What is reported.** `n_units` and `n_units_defined`, never the number of cell-months. For numeric scalar measures, report the median and the 5th and 95th percentiles across units.
+- **Interval.** For each numeric scalar measure, report a 95% percentile bootstrap interval of the across-unit median. Sort the defined values and restart stream 2 for each statistic. Draw `integers(0, n_units_defined, size=(10000, n_units_defined))`. Statistics with the same row key and sample size reuse the same index draws. Take the median of each resample and report the 2.5th and 97.5th percentiles.
 - **Spatial dependence.** Neighbouring locations are correlated, so the interval understates uncertainty for gridded data. Every report that gives such an interval says so in the sentence that gives the interval; the interval is a measure of unit-to-unit variation, not a confidence statement.
 - **Within a unit.** For a single series' statistic (for example, bias), use a moving-block bootstrap over its `n` time steps. `L` is the number of steps in 12 months (12 monthly, 52 weekly, 365 daily), or the accumulation scale in steps if larger. When `n <= L`, at most one non-wrapping block fits. Report the interval as NaN and count the skipped unit. Do not shorten `L`.
   Restart stream 3 for each statistic so that statistics for the same unit reuse the block starts. Draw block starts with `integers(0, n - L + 1, size=(10000, ceil(n / L)))`. Concatenate each row's blocks in draw order and truncate to `n` steps. Apply the same time indices to both series in a pair before excluding nonfinite pairs.
@@ -296,10 +296,10 @@ Row numbers are the stream-2 keys.
 | 13 | outside-band share | per-period statistics and their matching bands | share in [0, 1] or NaN, scored-period count | none | C4 |
 | 14 | output-bound share | a series, `output_bound` | share in [0, 1] or *not applicable* | none | C4 |
 | 15 | robustness outcome | a case, the run's output, warnings, exception | one of six outcomes; for *error*, clear or unclear | none | C5 |
-| 16 | across-unit summary | per-unit values | median, 5th, 95th percentile, `n_units`, `n_units_defined` | as the measure | Units and sample size |
-| 17 | bootstrap interval of a median | per-unit values, seed | two limits | as the measure | Units and sample size |
+| 16 | across-unit summary | numeric scalar values per unit | median, 5th, 95th percentile, `n_units`, `n_units_defined` | as the measure | Units and sample size |
+| 17 | bootstrap interval of a median | numeric scalar values per unit, seed | two limits | as the measure | Units and sample size |
 | 18 | block bootstrap interval | a series (or pair), a statistic, block length, seed | two limits | as the statistic | Units and sample size |
-| 19 | rung effect | per-unit measures at two rungs | per-unit difference, then summary | as the measure | Comparison ladder |
+| 19 | rung effect | scalar measures at two adjacent rungs, each computed on the finite pairs common to every rung of that unit | per-unit difference, then summary | as the measure | Comparison ladder |
 | 20 | performance | repeated timings, peak memory, `n_series`, cell-months | median, minimum, maximum of seconds, bytes, `series_per_s`, and cell-months per second for grids | s, bytes, series per s, cell-months per s | C7 |
 
 ## Changelog
