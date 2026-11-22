@@ -61,13 +61,13 @@ _MIN_COMPARED_MONTHS = 400_000
 _PDSI_MEASURED = {
     "pdsi": {"median": 0.0127, "mean": 0.0432, "p90": 0.0638, "max": 7.6336},
     "phdi": {"median": 0.0156, "max": 3.8524},
-    "pmdi": {"median": 0.0191, "max": 5.5748},
+    "pmdi": {"median": 0.0190, "max": 1.7026},
     "zindex": {"median": 0.0129, "max": 1.0176},
 }
 _PDSI_CEILINGS = {
     "pdsi": {"median": 0.03, "mean": 0.1, "p90": 0.15, "max": 12.0},
     "phdi": {"median": 0.04, "max": 6.0},
-    "pmdi": {"median": 0.05, "max": 9.0},
+    "pmdi": {"median": 0.05, "max": 2.7},
     "zindex": {"median": 0.03, "max": 1.6},
 }
 

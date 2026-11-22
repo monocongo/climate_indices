@@ -33,7 +33,7 @@ SOURCES = (
 
 # The Python revision the checked-in values were generated from. A change to any
 # listed source file is a regeneration decision: review it, then update this.
-SOURCE_REVISION = "f4cb938eb622a3ddf8b96c129337e0ebecd4121e"
+SOURCE_REVISION = "352797513fa309004faaa390b001af5f60f2ddac"
 
 
 # Block extension imports before importing any climate_indices module.

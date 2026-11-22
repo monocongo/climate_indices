@@ -430,9 +430,13 @@ def test_pdi_recursion_takes_the_same_branches_on_boundary_series(monkeypatch) -
     rust, python, calls = _rust_and_python(monkeypatch, lambda: _pdi_run(z))
     assert calls == {"palmer_pdi"}
     _same_outcome(rust, python)
-    # the record's H3 table measured 28, 14 and 6 live triples for these three outputs
-    for output in python:
-        assert _live_triples(output.reshape(_MONTHS, -1)) >= 6
+    # the record's H3 table measured 28, 14 and 6 live triples for these three outputs.
+    # PMDI's 6 all came from the end-of-record flush copying the final month's CASE into
+    # every pending month; since #1666 each month keeps its own, the CASE is continuous
+    # away from its branch points, and this corpus measures 0. PMDI parity here is exact
+    # equality of the two paths, with no liveness floor.
+    for output, floor in zip(python, (6, 6, 0), strict=True):
+        assert _live_triples(output.reshape(_MONTHS, -1)) >= floor
 
 
 def _wells_corpus_outcomes(monkeypatch, corpus: np.ndarray, factors: DurationFactors) -> tuple[np.ndarray, np.ndarray]:
