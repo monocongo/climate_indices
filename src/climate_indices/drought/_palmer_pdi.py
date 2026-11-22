@@ -541,18 +541,17 @@ def _advance_month(factors: PdiDurationFactors, state: _State, year: int, month:
 
 
 def _finish_up(state: _State) -> None:
-    """Flush any spell still open when the record ends, for every cell."""
+    """Flush any spell still open when the record ends, for every cell.
+
+    Each flushed month is recorded from its own ``ppr``/``px1``/``px2``/``px3``,
+    so its PMDI is that month's CASE rather than the final month's. This departs
+    from ``pdi.f`` label 240, which gives every flushed month the final month's
+    value (ADR-0030, issue #1666).
+    """
     if not np.any(state.k8max > 0):
         return
     cells = np.arange(state.k8.shape[0])
-    i_end = state.pdsi.shape[0] - 1
     max_k8max = int(state.k8max.max())
-    final_wplm = _case(
-        state.ppr[i_end, 11],
-        state.px1[i_end, 11],
-        state.px2[i_end, 11],
-        state.px3[i_end, 11],
-    )
 
     for k8 in range(max_k8max):
         step = k8 < state.k8max
@@ -561,12 +560,7 @@ def _finish_up(state: _State) -> None:
         step_cells = cells[step]
         i = state.indexj[k8][step]
         j = state.indexm[k8][step]
-        x_val = state.x[i, j, step_cells]
-        px3_val = state.px3[i, j, step_cells]
-        state.pdsi[i, j, step_cells] = x_val
-        # the same no-established-spell fallback as _record_index_values
-        state.phdi[i, j, step_cells] = np.where(px3_val == 0, x_val, px3_val)  # NOSONAR
-        state.wplm[i, j, step_cells] = final_wplm[step_cells]
+        _record_index_values(state, i, j, state.x[i, j, step_cells], step_cells)
 
 
 def calculate(z_values: np.ndarray, factors: PdiDurationFactors) -> PdiResult:
