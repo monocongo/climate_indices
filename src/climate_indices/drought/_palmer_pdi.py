@@ -208,7 +208,7 @@ def _case(prob: np.ndarray, x1: np.ndarray, x2: np.ndarray, x3: np.ndarray) -> n
     :param x2: index for incipient dry spells (always negative)
     :param x3: severity index for an established wet spell or drought
     """
-    near_normal = np.where(np.abs(x1) > np.abs(x2), x1, x2)
+    near_normal = np.where(np.abs(x2) > np.abs(x1), x2, x1)
 
     pro = prob / 100.0
     interpolated = np.where(x3 <= 0, (1.0 - pro) * x3 + pro * x1, (1.0 - pro) * x3 + pro * x2)
