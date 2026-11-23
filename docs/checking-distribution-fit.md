@@ -223,8 +223,16 @@ index values to the U.S. Drought Monitor classes (None and D0 to D4), and
 same values disagree.
 
 ```python
-gamma_values = spei(precip, pet, scale=3, distribution=Distribution.gamma, **period)
-gev_values = spei(precip, pet, scale=3, distribution=Distribution.gev, **period)
+from climate_indices import spei
+
+gamma_values = spei(
+    precip, pet, scale=3, distribution=Distribution.gamma,
+    calibration_year_initial=1981, calibration_year_final=2010,
+)
+gev_values = spei(
+    precip, pet, scale=3, distribution=Distribution.gev,
+    calibration_year_initial=1981, calibration_year_final=2010,
+)
 change = suitability.compare_categories(
     suitability.drought_category(gamma_values, output_scale="normal"),
     suitability.drought_category(gev_values, output_scale="normal"),

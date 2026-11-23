@@ -246,7 +246,7 @@ def test_distribution_suitability_notebook_runs_on_prepared_sample(
         assert len(plt.get_fignums()) - len(previous_figures) == 4
         # Pin the fixes that this fixture's values cannot distinguish (#1591 review).
         source = "\n".join(_code_cells())
-        assert "(ks_naive <= 0.05).where(ks_naive.notnull())" in source
+        assert "(p_value <= 0.05).where(p_value.notnull())" in source
         assert "np.where(valid, series.values, np.nan)" in source
         assert "np.where(valid, water.values, np.nan)" in source
     finally:
