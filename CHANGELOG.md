@@ -41,8 +41,8 @@ See the [release notes](docs/release-notes-3.3.0.md) and
   Refit saved Pearson parameters if the Calibration Period contains zero
   accumulations. Recomputing from the corrected fit can change SPI values (#1562).
 - The standard **Palmer** end-of-record flush preserves resolved months and
-  uses each pending month's own PMDI (#1665, #1666). The correction for padding
-  after the last supplied month is pending in [#1663](https://github.com/monocongo/climate_indices/issues/1663).
+  uses each pending month's own PMDI (#1665, #1666). The recursion stops at the
+  last supplied month, before any padding added to complete the year (#1663).
   Exact PMDI ties now choose the incipient wet-spell value. Lower-layer water
   loss handles zero Available Water Capacity using the total capacity of both
   layers as the denominator (#1662, #1664).

@@ -55,9 +55,10 @@ those parameters have none. Dimensionless parameters such as `alpha`, `skew` and
 
 The standard Palmer recursion preserves resolved PDSI, PHDI and PMDI values at
 the end of the record. Each month still pending receives its own PMDI. The
-correction to stop the recursion before any padding after the last supplied month
-is pending in [#1663](https://github.com/monocongo/climate_indices/issues/1663).
-See {doc}`the Palmer end-of-record decision <adr/0030-palmer-end-of-record-flush>`.
+recursion stops at the last supplied month, before any padding added to complete
+the year. Recompute cached PDSI, PHDI and PMDI for records that end partway through
+a year or have a deferral run near the end. See
+{doc}`the Palmer end-of-record decision <adr/0030-palmer-end-of-record-flush>`.
 
 PMDI also resolves an exact tie between incipient wet and dry spells in favor of
 the wet spell when no spell is established. Lower-layer water loss handles zero
