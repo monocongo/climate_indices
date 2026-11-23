@@ -23,7 +23,7 @@ from typing import Any
 import numpy as np
 import pytest
 
-from climate_indices.drought import palmer, self_calibration
+from climate_indices.drought import _palmer_pdi, palmer, self_calibration
 from climate_indices.drought._palmer_duration import DurationFactors
 from climate_indices.drought._palmer_pdi import PdiDurationFactors
 from climate_indices.exceptions import ConvergenceError, InsufficientDataError, InvalidArgumentError
@@ -342,7 +342,7 @@ def test_inputs_python_rejects_keep_the_python_error(monkeypatch, run, error) ->
 def test_pdi_dispatch_scans_z_for_infinities_only_when_the_kernel_can_take_it(monkeypatch, native, shape) -> None:
     """The dispatch guard does not pay for a scan the Python path repeats for its own error."""
     monkeypatch.setattr(palmer, "_palmer_native", lambda *args: native)
-    monkeypatch.setattr(palmer._palmer_pdi, "calculate", lambda *args: "python path")
+    monkeypatch.setattr(_palmer_pdi, "calculate", lambda *args, **kwargs: "python path")
     monkeypatch.setattr(np, "isinf", lambda values: pytest.fail("the dispatch guard scanned z"))
 
     assert palmer._pdi_recursion(np.zeros(shape), _PDI_FACTORS) == "python path"
@@ -439,6 +439,36 @@ def test_pdi_recursion_takes_the_same_branches_on_boundary_series(monkeypatch) -
     # its parity is 1e-10 with an identical zero and sign pattern.
     for output, floor in zip(python[:2], (27, 13), strict=True):
         assert _live_triples(output.reshape(_MONTHS, -1)) >= floor
+
+
+@pytest.mark.parametrize("n_months", [0, 1, 6, 11, 12, 13, _MONTHS - 6, _MONTHS])
+def test_pdi_recursion_ends_both_paths_at_the_last_real_month(monkeypatch, n_months: int) -> None:
+    """A record ending before December: the kernel gets the real months only, the padding stays NaN (#1663)."""
+    corpus = _straddling_corpus(series=100)
+    z = corpus.copy()
+    z[n_months:] = np.nan
+    z = z.reshape(_MONTHS // 12, 12, corpus.shape[1])
+    rust, python, calls = _rust_and_python(monkeypatch, lambda: _pdi_run_to(z, n_months))
+    assert calls == {"palmer_pdi"}
+    _same_outcome(rust, python)
+    for output in python:
+        assert output.shape == z.shape
+        flat = output.reshape(_MONTHS, -1)
+        assert np.isfinite(flat[:n_months]).all()
+        assert np.isnan(flat[n_months:]).all()
+
+
+def _pdi_run_to(z: np.ndarray, n_months: int) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    result = palmer._pdi_recursion(z, _PDI_FACTORS, n_months=n_months)
+    return result.pdsi, result.phdi, result.pmdi
+
+
+@pytest.mark.parametrize("n_months", [-1, _MONTHS + 1])
+def test_pdi_recursion_rejects_an_n_months_outside_the_record_on_both_paths(monkeypatch, n_months: int) -> None:
+    z = np.zeros((_MONTHS // 12, 12, 2))
+    rust, python, _ = _rust_and_python(monkeypatch, lambda: _pdi_run_to(z, n_months))
+    _same_outcome(rust, python)
+    assert python[0] is ValueError
 
 
 def _wells_corpus_outcomes(monkeypatch, corpus: np.ndarray, factors: DurationFactors) -> tuple[np.ndarray, np.ndarray]:

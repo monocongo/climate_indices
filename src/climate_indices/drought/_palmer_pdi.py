@@ -12,6 +12,7 @@ may differ bitwise, and the recursions branch on exact comparisons, so each
 module keeps its own expression and its own validation rather than sharing one.
 """
 
+import operator
 from dataclasses import dataclass
 
 import numpy as np
@@ -563,7 +564,7 @@ def _finish_up(state: _State) -> None:
         _record_index_values(state, i, j, state.x[i, j, step_cells], step_cells)
 
 
-def calculate(z_values: np.ndarray, factors: PdiDurationFactors) -> PdiResult:
+def calculate(z_values: np.ndarray, factors: PdiDurationFactors, n_months: int | None = None) -> PdiResult:
     """Run the ``pdi.f`` Palmer recursion over a precomputed Z-index series.
 
     The Z series is the K-factor-weighted departure computed by
@@ -574,12 +575,19 @@ def calculate(z_values: np.ndarray, factors: PdiDurationFactors) -> PdiResult:
         z_values: K-factor-weighted Z-index values, shaped ``(years, 12, n_cells)``
             with NaN denoting a missing period.
         factors: the validated duration factors the recurrence uses.
+        n_months: the number of real months, counted from the first month of ``z_values``.
+            A record that ends before December is padded to whole years; the recursion
+            stops at the last real month and flushes there, as ``pdi.f`` does at
+            ``nendmo``, so the padding never enters it. The padded months of the result
+            stay NaN. ``None`` (the default) runs every month.
 
     Returns:
         The final PDSI, PHDI, and PMDI series, each shaped like ``z_values``.
 
     Raises:
-        ValueError: if ``z_values`` does not have shape ``(years, 12, n_cells)``.
+        ValueError: if ``z_values`` does not have shape ``(years, 12, n_cells)``, or
+            ``n_months`` lies outside ``0 .. years * 12``.
+        TypeError: if ``n_months`` is not an integer.
         ConvergenceError: if a Z-index value is infinite.
     """
     z = np.asarray(z_values, dtype=float)
@@ -590,10 +598,11 @@ def calculate(z_values: np.ndarray, factors: PdiDurationFactors) -> PdiResult:
             "PDSI spell recursion received non-finite Z-index values",
             algorithm="PDSI spell recursion",
         )
+    real_months = z.shape[0] * 12 if n_months is None else operator.index(n_months)
+    if not 0 <= real_months <= z.shape[0] * 12:
+        raise ValueError(f"n_months must lie in 0..{z.shape[0] * 12}, got {real_months}")
     state = _initialize_state(z)
-    n_years = z.shape[0]
-    for year in range(n_years):
-        for month in range(12):
-            _advance_month(factors, state, year, month)
+    for t in range(real_months):
+        _advance_month(factors, state, t // 12, t % 12)
     _finish_up(state)
     return PdiResult(pdsi=state.pdsi, phdi=state.phdi, pmdi=state.wplm)

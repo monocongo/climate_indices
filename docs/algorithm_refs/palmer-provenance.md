@@ -179,8 +179,9 @@ recorded in REFIMPL-46 ([#1661](https://github.com/monocongo/climate_indices/iss
   flushed months is **fixed** too ([#1666](https://github.com/monocongo/climate_indices/issues/1666)).
   The flush now records each month's PMDI from its own `ppr`/`px1`/`px2`/`px3`.
   With both fixes, the maximum PMDI difference from nClimDiv fell from 5.5748 to 1.7026.
-  The median fell from 0.0191 to 0.0190. The recursion still advances through NaN padding
-  for records that end before December; stopping at the last supplied month is pending
+  The median fell from 0.0191 to 0.0190. The recursion now stops at the last real month
+  of a record that ends before December, as `pdi.f` does at `nendmo`, so the NaN padding
+  of the final calendar year never enters it
   ([#1663](https://github.com/monocongo/climate_indices/issues/1663)). The X2 behaviour stays:
   nClimDiv agrees with it better than with updating X2.
 

@@ -2,7 +2,7 @@
 
 ## Status
 
-Approved for implementation. The maintainer made decisions 1 and 2 on 2026-11-19 after
+Accepted. The maintainer made decisions 1 and 2 on 2026-11-19 after
 [REFIMPL-46 (#1661)](https://github.com/monocongo/climate_indices/issues/1661) compared the
 standard Palmer path with NCEI `pdi.f`. The maintainer recorded decision 3 in
 [#1689](https://github.com/monocongo/climate_indices/pull/1689) and linked it from
@@ -10,8 +10,7 @@ standard Palmer path with NCEI `pdi.f`. The maintainer recorded decision 3 in
 This update addresses [#1678](https://github.com/monocongo/climate_indices/issues/1678).
 [#1665](https://github.com/monocongo/climate_indices/issues/1665) implemented decision 1.
 [#1666](https://github.com/monocongo/climate_indices/issues/1666) implemented decision 2.
-Decision 3 is pending in [#1663](https://github.com/monocongo/climate_indices/issues/1663).
-When decision 3 lands, promote this record to `Accepted`.
+[#1663](https://github.com/monocongo/climate_indices/issues/1663) implemented decision 3.
 
 ## Context
 
@@ -82,7 +81,7 @@ record, or truncating it, could change months a spell had long since resolved.
    PDSI = PHDI = X3 and take their own PMDI (decision 2). This decision does not change the
    treatment of NaNs supplied by the caller, including interior gaps and trailing NaNs in
    individual cells. `pdi.f` requires complete data. This decision leaves December-ending
-   records unchanged (their changes come from decisions 1 and 2). *Pending,
+   records unchanged (their changes come from decisions 1 and 2). *Implemented by
    [#1663](https://github.com/monocongo/climate_indices/issues/1663); relies on decision 2.*
 
 ## Scope
