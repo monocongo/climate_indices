@@ -125,7 +125,7 @@ def _publish_store(data_root: Path, ds: xr.Dataset) -> None:
 
 @pytest.fixture
 def e2e_data(tmp_path, monkeypatch):
-    """Synthetic prepared store: one land cell and one masked cell, 1980-2010 monthly."""
+    """Synthetic prepared store: a 2x2 grid with one masked cell, 1980-2010 monthly."""
     pytest.importorskip("zarr")
     ds = _synthetic_dataset()
     _publish_store(tmp_path, ds)
@@ -255,7 +255,7 @@ def test_distribution_suitability_notebook_runs_on_prepared_sample(
 
 
 def _synthetic_dataset(time_freq: str | pd.DateOffset = "MS", cell_shape: tuple[int, int] = (2, 2)) -> xr.Dataset:
-    """One land cell, one fully masked cell, and one meaningful zero, 1980-2010 monthly."""
+    """A small grid with one fully masked cell and one meaningful zero, 1980-2010 monthly."""
     rng = np.random.default_rng(42)
     shape = (372, *cell_shape)
     precip = rng.gamma(2, 40, shape).astype("float32")
