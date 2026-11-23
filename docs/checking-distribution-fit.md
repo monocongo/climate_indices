@@ -68,7 +68,8 @@ mean the KS test could not assess the fit.
 `suitability.compare_distributions()` scores every likelihood-based candidate on
 one shared calibration sample. `index="spi"` and `index="standardized_index"`
 compare gamma and Pearson Type III; `index="spei"` also compares the
-log-logistic and GEV. Name `candidates` to narrow or order the set; any other
+log-logistic and GEV. Name `candidates` to narrow the set; the result always
+follows the canonical enum order, so the input order has no effect. Any other
 family raises. The function prepares the series exactly as the named index
 does, so `index="spei"` requires `pet_mm` and applies the water balance and the
 `+1000` offset.
@@ -130,9 +131,9 @@ Read the ranking with these limits:
 - **Overlapping windows.** Above a Timescale of 12 months, or 365 days, the same
   calendar step in consecutive years shares window mass. The call warns, and
   the goodness-of-fit p-values are invalid there.
-- **Reuse the parameters.** On the NumPy route, `comparison["parameters"]` maps
-  each candidate to arguments `fitting_params` accepts, so a saved fit
-  reproduces the index exactly instead of being refitted.
+- **Reuse the parameters.** On the NumPy route, `comparison.parameters` is a
+  dict that maps each candidate to arguments `fitting_params` accepts, so a
+  saved fit reproduces the index exactly instead of being refitted.
 
 ## Check the absolute goodness of fit
 
@@ -143,20 +144,33 @@ probability integral transform, over the calibration sample:
 
 ```python
 comparison = suitability.compare_distributions(
-    precip, 3, index="spei", pet_mm=pet, **options, gof=("ks", "ad")
+    precip,
+    3,
+    index="spei",
+    pet_mm=pet,
+    calibration_year_initial=1981,
+    calibration_year_final=2010,
+    gof=("ks", "ad"),
 )
-gof = comparison["goodness_of_fit"]          # NumPy route
+# NumPy route: a GoodnessOfFit dataclass.
+gof = comparison.goodness_of_fit
 gof.ks_statistic
 gof.ks_p_value_naive
 gof.ad_statistic
+# xarray route: the same fields as Dataset variables.
+comparison["ks_statistic"]
+comparison["ks_p_value_naive"]
+comparison["ad_statistic"]
 ```
 
 Defaults and limits:
 
 - **The naive K-S p-value is uncalibrated.** The parameters are estimated from
-  the sample the test scores, so the null distribution of D does not apply and
-  the p-value is usually far too large. Anderson-Darling has no naive p-value at
-  all. Treat both as screening statistics.
+  the sample the test scores, so the null distribution of D does not apply. The
+  classical Lilliefors result covers maximum-likelihood estimates, not the
+  L-moment and closed-form estimators used here, so the direction of the
+  miscalibration is not established (ADR-0028). Anderson-Darling has no naive
+  p-value at all. Treat both as screening statistics.
 - **The parametric bootstrap refits.** `n_bootstrap > 0` draws samples from the
   fitted mixed distribution, refits every draw with the library's own estimator,
   and reports `(1 + #{statistic* >= statistic}) / (B_ok + 1)` over the refits
@@ -210,9 +224,10 @@ change["share_changed_in_drought"]
 change["confusion"]
 ```
 
-- `output_scale` is required and only `"normal"` classifies. A probability-scale
-  or bounded-scale array raises, because its values cannot show which scale they
-  are on.
+- `output_scale` is required and only `"normal"` classifies. A `"probability"`
+  or `"bounded"` argument raises. The function validates the declared scale, not
+  the values, so a probability array declared as normal is silently classified
+  and misread.
 - Each class includes its upper edge, so -0.5 is D0, -0.8 is D1, -1.3 is D2,
   -1.6 is D3 and -2.0 is D4, while -0.49 is none. The USDM table does not state
   boundary handling, so this rule is the ADR-0028 contract.
@@ -287,10 +302,15 @@ with a reference event set, both from `climate_indices.runs.identify_runs()` on
 the same validity mask:
 
 ```python
+import numpy as np
 from climate_indices.runs import identify_runs
 
-index_runs = identify_runs(spei_values, threshold=-1.0, min_duration=2)
-reference_runs = identify_runs(reference_values, threshold=reference_threshold, min_duration=2)
+# Mask to the shared valid steps first: NaN separates runs, and a run crossing
+# an unknown step is rejected.
+index_runs = identify_runs(np.where(valid, spei_values, np.nan), threshold=-1.0, min_duration=2)
+reference_runs = identify_runs(
+    np.where(valid, reference_values, np.nan), threshold=reference_threshold, min_duration=2
+)
 report = suitability.event_concordance(
     index_runs, reference_runs, time=time, valid=valid, cadence="monthly"
 )
