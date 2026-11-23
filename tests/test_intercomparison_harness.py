@@ -171,9 +171,34 @@ def _method_not_an_object(result: dict[str, Any]) -> None:
     result["effective_method"] = "gamma"
 
 
+def _warnings_a_string(result: dict[str, Any]) -> None:
+    result["warnings"] = "fit failed"
+
+
+def _version_null(result: dict[str, Any]) -> None:
+    result["version"] = None
+
+
+def _negative_wall_time(result: dict[str, Any]) -> None:
+    result["wall_time_s"] = -1.0
+
+
+def _boolean_wall_time(result: dict[str, Any]) -> None:
+    result["wall_time_s"] = True
+
+
+def _software_version_not_a_string(result: dict[str, Any]) -> None:
+    result["software"] = {"numpy": 2}
+
+
 @pytest.mark.parametrize(
     ("mutate", "match"),
     [
+        (_warnings_a_string, "'warnings' must be a list of strings"),
+        (_version_null, "'version' must be a non-empty string"),
+        (_negative_wall_time, "'wall_time_s'"),
+        (_boolean_wall_time, "'wall_time_s'"),
+        (_software_version_not_a_string, "'software' version"),
         (_escape, "outside"),
         (_absolute, "outside"),
         (_no_hash, "string 'path' and 'sha256'"),

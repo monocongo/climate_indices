@@ -122,6 +122,21 @@ def _require_mappings(document: Mapping[str, Any], keys: Sequence[str], what: st
             raise ContractError(f"{what}: {key!r} must be an object")
 
 
+def _require_metadata(result: Mapping[str, Any]) -> None:
+    """The metadata a manifest copies must satisfy the manifest's own schema (manifest.schema.json)."""
+    for key in ("comparator", "version", "platform"):
+        if not isinstance(result[key], str) or not result[key]:
+            raise ContractError(f"result: {key!r} must be a non-empty string")
+    wall = result["wall_time_s"]
+    if isinstance(wall, bool) or not isinstance(wall, int | float) or not wall >= 0:  # NaN fails `>= 0`
+        raise ContractError("result: 'wall_time_s' must be a number of at least 0")
+    messages = result["warnings"]
+    if not isinstance(messages, list) or not all(isinstance(m, str) for m in messages):
+        raise ContractError("result: 'warnings' must be a list of strings")
+    if not all(isinstance(v, str) for v in result["software"].values()):
+        raise ContractError("result: every 'software' version must be a string")
+
+
 def entry_path(base: Path, entry: Any, what: str) -> tuple[Path, str]:
     """Resolve ``{"path", "sha256"}`` against ``base``; the path may not leave ``base``."""
     if not isinstance(entry, Mapping) or not all(isinstance(entry.get(k), str) for k in ("path", "sha256")):
@@ -166,6 +181,7 @@ def read_result(path: Path) -> dict[str, Any]:
     result = read_json(path)
     _require(result, _RESULT_KEYS, "result")
     _require_mappings(result, ("effective_method", "software", "outputs"), "result")
+    _require_metadata(result)
     for name, entry in result["outputs"].items():
         _verify(path.parent, entry, f"output {name!r}")
     return result
