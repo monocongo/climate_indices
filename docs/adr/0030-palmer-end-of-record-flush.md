@@ -12,7 +12,7 @@ Promote this record to `Accepted` when #1666 lands.
 ## Context
 
 When a record ends, a Palmer spell may still be open: some months have a provisional index
-and no resolved one. `pdi.f` flushes those months at label 240 (lines 754-765). Both the
+and no resolved one. `pdi.f` flushes those months at label 240 (lines 754-766). Both the
 Python recursion (`_palmer_pdi._finish_up`) and the Rust kernel (`palmer_pdi::finish_up`)
 reproduced that flush statement by statement, and the REFIMPL-46 comparison found two places
 where it departs from the literature and from its own evident intent. These are Category C2
