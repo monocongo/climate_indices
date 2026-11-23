@@ -336,7 +336,7 @@ report = suitability.event_concordance(
 report.hits, report.misses, report.false_alarms, report.pod, report.far, report.csi
 ```
 
-- The counting is reference-centric (ADR-0028, decision 4): a hit is a reference
+- The counting is reference-centric (ADR-0028, section 7): a hit is a reference
   event overlapped by at least one index event, a miss is a reference event
   overlapped by none, and a false alarm is an index event overlapping no
   reference event. One index event can overlap several reference events: those
