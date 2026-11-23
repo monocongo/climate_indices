@@ -38,7 +38,7 @@ def test_flood_index_annual_maxima_are_standardized_over_calibration() -> None:
     index = _flood_index(_rain()).reshape(_YEARS, 366)
     maxima = np.nanmax(index[_CAL_INITIAL - _START : _CAL_FINAL - _START + 1], axis=1)
     assert maxima.mean() == pytest.approx(0.0, abs=1e-12)
-    assert maxima.std() == pytest.approx(1.0, abs=1e-12)
+    assert maxima.std() == pytest.approx(1.0, rel=0, abs=1e-12)
 
 
 def test_flood_index_rises_from_a_precipitation_step_and_not_before() -> None:
