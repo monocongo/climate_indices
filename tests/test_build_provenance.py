@@ -124,7 +124,6 @@ def test_the_sdist_and_the_wheel_built_from_it_report_the_commit_without_git(tmp
     wheel = _build(unrelated / sdist.name.removesuffix(".tar.gz"), "build_wheel", tmp_path / "wheel")
     assert _wheel_build_info(wheel) == {"git_commit": head, "git_dirty": False}
     with zipfile.ZipFile(wheel) as archive:
-        assert not [n for n in archive.namelist() if "intercomparison" in n]
         metadata = next(name for name in archive.namelist() if name.endswith(".dist-info/METADATA"))
         wheel_metadata = archive.read(metadata).decode()
         assert "License-Expression: BSD-3-Clause AND BSL-1.0\n" in wheel_metadata
@@ -214,3 +213,14 @@ def test_the_script_writes_build_info_for_maturin_only_in_a_checkout(tmp_path: P
     assert _git(root, "status", "--porcelain") == ""  # git-ignored, so the tree stays clean
     assert refused.returncode != 0
     assert "not its own Git checkout" in refused.stderr
+
+
+def test_the_wheel_built_straight_from_the_source_tree_leaves_out_the_intercomparison_harness(tmp_path: Path) -> None:
+    """The wheel packages only `src/climate_indices` (hatch's default for this layout), not the harness (REFIMPL-08)."""
+    root, _ = _project(tmp_path)
+    assert (root / "intercomparison" / "contract.py").is_file()
+
+    wheel = _build(root, "build_wheel", tmp_path / "wheel")
+
+    with zipfile.ZipFile(wheel) as archive:
+        assert not [name for name in archive.namelist() if "intercomparison" in name]
