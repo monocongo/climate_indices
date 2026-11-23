@@ -24,7 +24,7 @@ The implementation responsibilities and their current state are explicit:
 | `suitability.compare_distributions()`, xarray/Dask route | [#1585](https://github.com/monocongo/climate_indices/issues/1585) | Implemented: a `DataArray` input returns a Dataset over `(candidate, month or dayofyear, *cells)`, with the section 6 attributes. The goodness-of-fit variables and the `climate_indices_gof_bootstrap_samples` and `climate_indices_rng_seed` attributes arrived with [#1586](https://github.com/monocongo/climate_indices/issues/1586). |
 | `GoodnessOfFit`: Anderson–Darling and parametric bootstrap, optional BH adjustment | [#1586](https://github.com/monocongo/climate_indices/issues/1586) | Implemented for NumPy and xarray/Dask, with a synthetic size characterization ([VALIDATION.md](https://github.com/monocongo/climate_indices/blob/main/VALIDATION.md)). The decisions it made are listed under section 5. |
 | `suitability.drought_category()` and `suitability.compare_categories()` | [#1587](https://github.com/monocongo/climate_indices/issues/1587) | Implemented for NumPy and xarray/Dask (both functions are elementwise or count-only, so time need not be a single chunk), with boundary tests against the USDM table and a hand-computed confusion fixture ([VALIDATION.md](https://github.com/monocongo/climate_indices/blob/main/VALIDATION.md)). |
-| `suitability.pit_uniformity()` | [#1588](https://github.com/monocongo/climate_indices/issues/1588) | Not implemented. |
+| `suitability.pit_uniformity()` | [#1588](https://github.com/monocongo/climate_indices/issues/1588) | Implemented for NumPy and xarray/Dask, with naive K–S p-values and Anderson–Darling statistics per calendar step. A separate Pearson trace mask lets the result report exact-zero and trace shares. Daily xarray results count observed leap days only. |
 | `suitability.event_concordance()` and `suitability.category_agreement()` | [#1590](https://github.com/monocongo/climate_indices/issues/1590) | Implemented for NumPy input: `event_concordance()` reuses `compound_events(mode="concurrent")` with the reference-centric counting of section 7, counts censored runs at the record edges or next to an unknown step, and leaves each ratio NaN only when its own denominator is empty; `category_agreement()` returns the #1569 pilot's exact and within-one shares ([VALIDATION.md](https://github.com/monocongo/climate_indices/blob/main/VALIDATION.md)). No xarray route is proposed. |
 | Workflow reproduction notebook and "choosing a distribution" guide | [#1591](https://github.com/monocongo/climate_indices/issues/1591) | Not implemented. |
 
@@ -34,7 +34,7 @@ Amend this status and implementation table as those issues land.
 
 Users must choose a distribution per index, region, season and Timescale.
 The library reports a K–S statistic and exact p-value per fit (`fit_diagnostics`).
-It supports GEV for SPEI, relative-fit comparisons and their goodness of fit, but concordance and PIT-uniformity tools remain unimplemented.
+It supports GEV for SPEI, relative-fit comparisons and their goodness of fit, event concordance, and seasonal PIT uniformity.
 The existing p-value is naive: it does not account for estimating parameters from the tested sample.
 In the classical Lilliefors setting, naive fitted-parameter K–S p-values are conservative
 (as discussed in the SciPy `goodness_of_fit` documentation). This does not establish

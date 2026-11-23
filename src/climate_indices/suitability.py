@@ -7,7 +7,8 @@ log-likelihood, AIC, AICc, BIC and the best candidate for every calendar step (a
 :func:`drought_category` and :func:`compare_categories` then show whether the choice changes
 the U.S. Drought Monitor class an index value falls in, and :func:`event_concordance` and
 :func:`category_agreement` measure the agreement of an index's events and classes with an
-independent reference.
+independent reference. :func:`pit_uniformity` checks how closely probability-scale index values
+follow a uniform distribution at each calendar step.
 
 The criteria are **penalized likelihoods at the library's own estimates**: gamma by Thom's
 (1958) closed-form approximation, Pearson Type III, log-logistic and GEV by L-moments. They are
@@ -36,7 +37,7 @@ import scipy.special
 import scipy.stats
 import xarray as xr
 
-from climate_indices import __version__, compute, provenance
+from climate_indices import __version__, compute, provenance, utils
 from climate_indices._calibration_period import MIN_CALIBRATION_YEARS, CalibrationPeriod, resolve_calibration_period
 from climate_indices.compound import compound_events
 from climate_indices.compound._events import _validated_runs
@@ -59,9 +60,12 @@ from climate_indices.validation import (
 from climate_indices.vocabulary import OUTPUT_SCALES, Aggregation, Distribution
 from climate_indices.xarray_adapter import (
     _align_inputs,
+    _build_calendar_plan,
     _effective_calibration_years,
     _fitted_parameter_output,
+    _infer_calibration_period,
     _infer_data_start_year,
+    _infer_periodicity,
     _infer_temporal_parameters,
     _OutputProvenance,
     _resolve_calendar_plan,
@@ -69,6 +73,7 @@ from climate_indices.xarray_adapter import (
     _SpatialOutput,
     _validate_sufficient_data,
     _validate_supported_calendar,
+    build_output_attrs,
 )
 
 __all__ = [
@@ -80,11 +85,13 @@ __all__ = [
     "GofStatistic",
     "GoodnessOfFit",
     "IndexRoute",
+    "PitUniformity",
     "category_agreement",
     "compare_categories",
     "compare_distributions",
     "drought_category",
     "event_concordance",
+    "pit_uniformity",
 ]
 
 Criterion = Literal["aicc", "aic", "bic"]
@@ -951,16 +958,16 @@ def _compute_gof(
     )
 
 
-def _validate_gof_statistics(gof: Sequence[GofStatistic]) -> tuple[GofStatistic, ...]:
+def _validate_gof_statistics(gof: Sequence[GofStatistic], *, name: str = "gof") -> tuple[GofStatistic, ...]:
     names = ", ".join(_GOF_STATISTICS)
     if isinstance(gof, str) or not isinstance(gof, Sequence):
-        raise _invalid("gof must be a sequence of statistic names.", "gof", gof, names)
+        raise _invalid(f"{name} must be a sequence of statistic names.", name, gof, names)
     chosen = tuple(gof)
     for statistic in chosen:
         if not isinstance(statistic, str) or statistic not in _GOF_STATISTICS:
-            raise _invalid(f"Unsupported goodness-of-fit statistic: {statistic!r}.", "gof", statistic, names)
+            raise _invalid(f"Unsupported goodness-of-fit statistic: {statistic!r}.", name, statistic, names)
     if len(set(chosen)) != len(chosen):
-        raise _invalid("gof statistics must be distinct.", "gof", chosen, names)
+        raise _invalid(f"{name} statistics must be distinct.", name, chosen, names)
     return chosen
 
 
@@ -1371,7 +1378,7 @@ def _shape_all_missing(
     return np.full((-(-prepared.shape[0] // step_count), step_count, *prepared.shape[1:]), np.nan)
 
 
-def _warn_overlapping_windows(scale: int, periodicity: compute.Periodicity) -> None:
+def _warn_overlapping_windows(scale: int, periodicity: compute.Periodicity, *, stacklevel: int | None = None) -> None:
     """Warn that a timescale beyond one year of steps makes consecutive years' windows overlap."""
     window_limit = 365 if periodicity is compute.Periodicity.daily else 12
     if scale > window_limit:
@@ -1380,7 +1387,7 @@ def _warn_overlapping_windows(scale: int, periodicity: compute.Periodicity) -> N
             "calendar step in consecutive years overlap; effective sample sizes shrink and goodness-of-fit "
             "p-values are invalid.",
             ClimateIndicesWarning,
-            stacklevel=_caller_stacklevel(),
+            stacklevel=_caller_stacklevel() if stacklevel is None else stacklevel,
         )
 
 
@@ -2075,6 +2082,325 @@ def _compare_xarray(
     )
 
     return _comparison_dataset(arrays, fields, slots, labels, cell_dims, period_dim, gof)
+
+
+@dataclasses.dataclass(frozen=True, eq=False)
+class PitUniformity:
+    """Seasonal uniformity diagnostics shaped ``(calendar step, *cells)``.
+
+    ``n_valid`` counts continuous probabilities entering the tests. ``zero_share``
+    and ``trace_share`` divide the respective counts by all finite probabilities
+    in that step and cell. Empty denominators give NaN. Unrequested statistics
+    are None. Only K–S has a naive p-value, which assumes independent draws
+    from a fully specified CDF.
+    """
+
+    n_valid: np.ndarray
+    zero_share: np.ndarray
+    trace_share: np.ndarray
+    ks_statistic: np.ndarray | None
+    ks_p_value_naive: np.ndarray | None
+    ad_statistic: np.ndarray | None
+
+
+_PIT_COUNTS = ("n_valid", "zero_share", "trace_share")
+
+
+def _bounded_pit_array(values: np.ndarray, name: str) -> np.ndarray:
+    array = _as_float_array(values, name)
+    if np.any((array < 0) | (array > 1)):
+        raise _invalid(f"{name} must be in [0, 1] or missing.", name, "outside [0, 1]", "[0, 1] or NaN")
+    return array
+
+
+def _pit_mask(mask: Any, shape: tuple[int, ...], name: str) -> np.ndarray:
+    array = np.asarray(mask)
+    if array.dtype.kind != "b" or array.shape != shape or np.ma.is_masked(mask):
+        raise _invalid(f"{name} must be a boolean array matching probabilities.", name, array.shape, str(shape))
+    return array
+
+
+def _fold_pit(values: np.ndarray, steps: int, fill: float | bool, positions: np.ndarray | None = None) -> np.ndarray:
+    """Fold a time-first array, leaving unobserved calendar positions at the given fill value."""
+    length = values.shape[0] if positions is None else int(positions[-1]) + 1
+    years = -(-length // steps)
+    if positions is not None or length % steps:
+        padded = np.full((years * steps, *values.shape[1:]), fill, dtype=values.dtype)
+        padded[slice(length) if positions is None else positions] = values
+        values = padded
+    return values.reshape(years, steps, *values.shape[1:])
+
+
+def _seasonal_pit_statistics(
+    sample: np.ndarray,
+    prob_zero: np.ndarray | None,
+    zero_mask: np.ndarray | None,
+    trace_mask: np.ndarray | None,
+    statistics: tuple[GofStatistic, ...],
+) -> PitUniformity:
+    valid = ~np.isnan(sample)
+    if prob_zero is None:
+        pit = sample.astype(float, copy=False)
+        zero_count = trace_count = np.zeros(sample.shape[1:], dtype=np.int64)
+    else:
+        p0 = _bounded_pit_array(prob_zero, "prob_zero")
+        if p0.shape != sample.shape[1:]:
+            raise _invalid(
+                "prob_zero must match the (calendar step, *cells) shape.",
+                "prob_zero",
+                p0.shape,
+                str(sample.shape[1:]),
+            )
+        mass = _pit_mask(zero_mask, sample.shape, "zero_mask")
+        trace = np.asarray(False) if trace_mask is None else _pit_mask(trace_mask, sample.shape, "trace_mask")
+        if np.any(trace & ~mass):
+            raise ValueError("trace_mask must mark a subset of zero_mask.")
+        continuous = valid & ~mass
+        # Compare at the input precision so rounding the mixed CDF to float32 cannot move p0 below itself.
+        if np.any(continuous & (sample < p0.astype(sample.dtype, copy=False))):
+            raise ValueError("zero_mask misses a point-mass observation: an unmasked probability is below prob_zero.")
+        if np.any(continuous & ~(p0 < 1)):
+            raise ValueError("An unmasked probability requires finite prob_zero strictly below 1.")
+        with np.errstate(invalid="ignore", divide="ignore"):
+            pit = np.where(continuous, np.maximum(sample.astype(float) - p0, 0) / (1 - p0), np.nan)
+        zero_count = (valid & mass & ~trace).sum(axis=0)
+        trace_count = (valid & trace).sum(axis=0)
+    ks, ad, count = _pit_statistics(pit)
+    total = valid.sum(axis=0)
+    denominator = np.where(total > 0, total, np.nan)
+    return PitUniformity(
+        n_valid=count,
+        zero_share=zero_count / denominator,
+        trace_share=trace_count / denominator,
+        ks_statistic=ks if "ks" in statistics else None,
+        ks_p_value_naive=_ks_naive_p_value(ks, count) if "ks" in statistics else None,
+        ad_statistic=ad if "ad" in statistics else None,
+    )
+
+
+def _pit_xarray(
+    probabilities: xr.DataArray,
+    period: CalibrationPeriod,
+    periodicity: compute.Periodicity,
+    scale: int,
+    distribution: Distribution,
+    time_dim: str,
+    statistics: tuple[GofStatistic, ...],
+    inputs: dict[str, Any],
+    calendar_plan: utils.CalendarPlan | None,
+) -> xr.Dataset:
+    step_dim = "month" if periodicity is compute.Periodicity.monthly else "dayofyear"
+    steps = np.arange(1, periodicity.period_length + 1)
+    fields: tuple[str, ...] = _PIT_COUNTS
+    if "ks" in statistics:
+        fields += ("ks_statistic", "ks_p_value_naive")
+    if "ad" in statistics:
+        fields += ("ad_statistic",)
+    _reject_output_name_clashes({step_dim, *fields}, time_dim, probabilities)
+    cell_dims = tuple(dim for dim in probabilities.dims if dim != time_dim)
+    companions = []
+    core_dims = [[time_dim]]
+    for name, array in inputs.items():
+        core_dim = step_dim if name == "prob_zero" else time_dim
+        if not isinstance(array, xr.DataArray) or set(array.dims) != {core_dim, *cell_dims}:
+            raise _invalid(f"{name} must be a DataArray with matching dimensions.", name, type(array), str(core_dim))
+        if core_dim == time_dim and array.chunks is not None:
+            validate_dask_chunks(array, time_dim)
+        if core_dim == step_dim and not np.array_equal(array[step_dim].values, steps):
+            raise _invalid(
+                f"prob_zero needs {step_dim} coordinates 1 to {len(steps)}.", name, "invalid steps", str(steps)
+            )
+        companions.append(array)
+        core_dims.append([core_dim])
+
+    # Map observed days onto the all-leap layout without interpolating the PIT on February 29.
+    positions = None
+    if calendar_plan is not None:
+        positions = calendar_plan.to_gregorian(np.arange(calendar_plan.all_leap_length)).astype(np.intp)
+
+    def fold(values: np.ndarray, fill: float | bool) -> np.ndarray:
+        return _fold_pit(np.moveaxis(values, -1, 0), len(steps), fill, positions)[period.rows]
+
+    def score(values: np.ndarray, *arrays: np.ndarray) -> tuple[np.ndarray, ...]:
+        sample = fold(_bounded_pit_array(values, "probabilities"), np.nan)
+        kwargs = dict.fromkeys(("prob_zero", "zero_mask", "trace_mask"))
+        for name, array in zip(inputs, arrays, strict=True):
+            kwargs[name] = (
+                np.moveaxis(array, -1, 0) if name == "prob_zero" else fold(_pit_mask(array, values.shape, name), False)
+            )
+        result = _seasonal_pit_statistics(sample, **kwargs, statistics=statistics)
+        return tuple(np.moveaxis(getattr(result, field), 0, -1) for field in fields)
+
+    arrays = xr.apply_ufunc(
+        score,
+        probabilities,
+        *companions,
+        input_core_dims=core_dims,
+        output_core_dims=[[step_dim]] * len(fields),
+        output_dtypes=[np.int64] + [float] * (len(fields) - 1),
+        dask="parallelized",
+        dask_gufunc_kwargs={"output_sizes": {step_dim: len(steps)}, "allow_rechunk": True},
+    )
+    metadata = {
+        "distribution": distribution.value,
+        "scale": scale,
+        "periodicity": periodicity.name,
+        "calibration_year_initial": period.start_year,
+        "calibration_year_final": period.end_year,
+    }
+    attrs = build_output_attrs(
+        probabilities,
+        cf_metadata={"long_name": "Seasonal PIT uniformity", "units": "1"},
+        calculation_metadata=metadata,
+        index_name="Seasonal PIT uniformity",
+        inputs={"probabilities": probabilities, **inputs},
+        parameters={**metadata, "statistics": statistics},
+        implementation="climate_indices.suitability.pit_uniformity",
+    )
+    for name in _RANGE_ATTRS:
+        attrs.pop(name, None)
+    return xr.Dataset(
+        {name: array.transpose(step_dim, *cell_dims) for name, array in zip(fields, arrays, strict=True)},
+        coords={step_dim: steps},
+        attrs=attrs,
+    )
+
+
+def pit_uniformity(
+    probabilities: np.ndarray | xr.DataArray,
+    scale: int,
+    *,
+    distribution: Distribution,
+    prob_zero: np.ndarray | xr.DataArray | None = None,
+    zero_mask: np.ndarray | xr.DataArray | None = None,
+    trace_mask: np.ndarray | xr.DataArray | None = None,
+    data_start_year: int | None = None,
+    calibration_year_initial: int | None = None,
+    calibration_year_final: int | None = None,
+    periodicity: compute.Periodicity | None = None,
+    statistics: Sequence[GofStatistic] = ("ks", "ad"),
+    time_dim: str = "time",
+    spatial_time_major: bool = False,
+) -> PitUniformity | xr.Dataset:
+    """Test a continuous index's probability integral transform (PIT) by calendar step.
+
+    In-sample PIT tests can be conservative because they reuse the data that fit
+    the CDF. K–S p-values are naive screening measures. Overlapping windows at
+    Timescales above 12 months or 365 days invalidate those p-values.
+
+    Args:
+        probabilities: Index output from ``output_scale="probability"``. NumPy
+            input starts in January (January 1 for daily), as a flat series,
+            ``(years, periods)`` array, or ``(time, *cells)`` array. Daily NumPy
+            input uses 366 calendar positions per year. A DataArray uses its
+            Gregorian coordinates, starts in January (January 1 for daily),
+            and counts only observed leap days.
+        scale: The source index's Timescale, in steps. No aggregation is applied.
+        distribution: The continuous family that produced the probabilities.
+            Empirical and beta outputs are unsupported.
+        prob_zero: Fitted zero-mass probability by ``(calendar step, *cells)``.
+            Supply it together with ``zero_mask`` for a mixed CDF. For xarray
+            use a DataArray with 1-based ``month`` or ``dayofyear`` coordinates.
+        zero_mask: Boolean array matching probabilities. Mark the full point
+            mass, including Pearson Type III traces scored inside the mass.
+            Unmasked values of a mixed CDF are transformed to ``(p - p0)/(1 - p0)``.
+        trace_mask: For Pearson Type III, mark the trace-only subset of
+            ``zero_mask`` so the shares distinguish traces from exact zeros.
+            If absent, every masked probability is counted as an exact zero.
+        data_start_year: First year of the NumPy record, required for NumPy.
+            For xarray, it must agree with the time coordinate if supplied.
+        calibration_year_initial: First Calibration Period year, inclusive.
+            Defaults to the first year of the record.
+        calibration_year_final: Last Calibration Period year, inclusive.
+            Defaults to the last year of the record. Out-of-range requests
+            follow the index's Calibration Period clamping rule.
+        periodicity: Monthly or daily. Required for NumPy, inferred for xarray.
+        statistics: One or both of ``"ks"`` and ``"ad"``.
+        time_dim: Name of the xarray time dimension, which must be one Dask chunk.
+        spatial_time_major: Read 2-D NumPy input as ``(time, cells)`` instead of
+            ``(years, periods)``.
+
+    Returns:
+        A frozen :class:`PitUniformity` or a Dataset with the same variables,
+        omitting unrequested statistics. Every field is per calendar step and cell.
+
+    Raises:
+        ValueError: A mixed-CDF probability contradicts its point-mass mask.
+        InvalidArgumentError: Invalid distributions, options, or probability inputs.
+    """
+    warnings.warn(_BETA_MESSAGE, BetaFeatureWarning, stacklevel=2)
+    if not isinstance(distribution, Distribution) or distribution in {Distribution.empirical, Distribution.beta}:
+        raise _invalid(
+            "distribution must be a continuous Distribution member.", "distribution", distribution, "continuous"
+        )
+    selected = _validate_gof_statistics(statistics, name="statistics")
+    if not selected:
+        raise _invalid("Choose at least one statistic.", "statistics", statistics, "ks or ad")
+    if (prob_zero is None) != (zero_mask is None) or (trace_mask is not None and zero_mask is None):
+        raise ValueError("Supply prob_zero and zero_mask together, with an optional trace_mask.")
+    if trace_mask is not None and distribution is not Distribution.pearson:
+        raise ValueError("trace_mask applies only to Pearson Type III.")
+    inputs = {
+        name: array
+        for name, array in (("prob_zero", prob_zero), ("zero_mask", zero_mask), ("trace_mask", trace_mask))
+        if array is not None
+    }
+    if isinstance(probabilities, xr.DataArray):
+        if not probabilities.size:
+            raise ValueError("probabilities must be a nonempty array with a time axis.")
+        _validate_time_axis(probabilities, time_dim)
+        first, last = _infer_calibration_period(probabilities[time_dim])
+        if data_start_year is not None and data_start_year != first:
+            raise ValueError("data_start_year must match the first year of the time coordinate.")
+        if periodicity is None:
+            periodicity = _infer_periodicity(probabilities[time_dim])
+        _indices._validate_periodicity(periodicity)
+        calendar_plan = _build_calendar_plan(probabilities[time_dim], periodicity)
+    else:
+        if data_start_year is None or periodicity is None:
+            raise ValueError("NumPy probabilities require data_start_year and periodicity.")
+        _indices._validate_periodicity(periodicity)
+        first = data_start_year
+        values = _bounded_pit_array(probabilities, "probabilities")
+        if values.ndim == 0 or values.size == 0:
+            raise ValueError("probabilities must be a nonempty array with a time axis.")
+        if any(isinstance(array, xr.DataArray) for array in inputs.values()):
+            raise ValueError("NumPy probabilities require NumPy masks and prob_zero.")
+        folded = values.ndim == 2 and not spatial_time_major
+        if folded and values.shape[1] != periodicity.period_length:
+            raise ValueError("A (years, periods) array must have a complete calendar-step axis.")
+        years = values.shape[0] if folded else -(-values.shape[0] // periodicity.period_length)
+        last = first + years - 1
+
+    _indices._validate_scale(scale, periodicity)
+    period = resolve_calibration_period(
+        first,
+        last - first + 1,
+        first if calibration_year_initial is None else calibration_year_initial,
+        last if calibration_year_final is None else calibration_year_final,
+        policy="clamp",
+    )
+    _warn_overlapping_windows(scale, periodicity, stacklevel=3)
+    if isinstance(probabilities, xr.DataArray):
+        return _pit_xarray(
+            probabilities, period, periodicity, scale, distribution, time_dim, selected, inputs, calendar_plan
+        )
+
+    sample = (values if folded else _fold_pit(values, periodicity.period_length, np.nan))[period.rows]
+
+    def fold_mask(mask: np.ndarray | xr.DataArray | None, name: str) -> np.ndarray | None:
+        if mask is None:
+            return None
+        array = _pit_mask(mask, values.shape, name)
+        return (array if folded else _fold_pit(array, periodicity.period_length, False))[period.rows]
+
+    return _seasonal_pit_statistics(
+        sample,
+        None if prob_zero is None else np.asanyarray(prob_zero),
+        fold_mask(zero_mask, "zero_mask"),
+        fold_mask(trace_mask, "trace_mask"),
+        selected,
+    )
 
 
 # ---------------------------------------------------------------------------
