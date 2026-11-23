@@ -80,8 +80,10 @@ fit with a zero mass, mark all accumulated values below 0.0005 where
 `zero_share` and `trace_share` count exact zeros and traces separately as
 fractions of finite probabilities. `n_valid` counts the probabilities that
 enter the statistics. An unmasked mixed-CDF probability below `p0` raises a
-mask error. Check `distribution_used` for fallback before specifying the
-distribution and mask.
+mask error. A masked probability must match a supported point-mass placement
+at the input precision. Pearson Type III also permits 1 at its upper support
+limit. Check `distribution_used` from `fit_diagnostics()` for fallback before
+specifying the distribution and mask.
 
 Removing Pearson traces truncates the continuous sample at 0.0005. Check the
 fitted CDF at that cutoff before interpreting the results. The uniform

@@ -173,6 +173,86 @@ def test_pearson_trace_mask_must_include_point_mass_and_reports_both_shares():
     assert result.ks_statistic[0] == pytest.approx(1 - scipy.stats.gamma.cdf(3, a=4), abs=1e-14)
 
 
+@pytest.mark.parametrize("distribution", [Distribution.gamma, Distribution.pearson])
+@pytest.mark.parametrize("all_masked", [False, True])
+def test_incompatible_masked_probabilities_are_rejected(distribution, all_masked):
+    mask = np.full(24, all_masked, dtype=bool)
+    mask[0] = True
+    with pytest.raises(ValueError, match="zero_mask.*incompatible"):
+        _pit(np.full(24, 0.9), distribution=distribution, prob_zero=np.full(12, 0.4), zero_mask=mask)
+
+
+@pytest.mark.parametrize("dtype", [np.float32, np.float64])
+@pytest.mark.parametrize("distribution", [Distribution.gamma, Distribution.pearson])
+@pytest.mark.parametrize("zero_handling", ["classic", "center_of_mass", "mean_zero"])
+def test_produced_point_mass_placements_are_accepted(dtype, distribution, zero_handling):
+    precipitation = np.full(24, 5.0)
+    precipitation[:12] = 0
+    parameters = {"prob_zero": np.full(12, 0.7)}
+    if distribution is Distribution.gamma:
+        parameters.update(alpha=np.ones(12), beta=np.ones(12))
+    else:
+        parameters.update(loc=np.full(12, 4.0), scale=np.full(12, 2.0), skew=np.ones(12))
+    probabilities = indices.spi(
+        precipitation,
+        1,
+        distribution,
+        START,
+        START,
+        START + 1,
+        MONTHLY,
+        fitting_params=parameters,
+        zero_handling=zero_handling,
+        output_scale="probability",
+    ).astype(dtype)
+    result = _pit(
+        probabilities, distribution=distribution, prob_zero=parameters["prob_zero"], zero_mask=precipitation == 0
+    )
+    assert (result.n_valid == 1).all()
+    assert (result.zero_share == 0.5).all()
+
+
+def test_pearson_upper_support_point_mass_is_accepted_but_gamma_rejects_it():
+    precipitation = np.zeros(24)
+    probabilities = indices.spi(
+        precipitation,
+        1,
+        Distribution.pearson,
+        START,
+        START,
+        START + 1,
+        MONTHLY,
+        fitting_params={
+            "prob_zero": np.full(12, 0.4),
+            "loc": np.full(12, -4.0),
+            "scale": np.full(12, 2.0),
+            "skew": -np.ones(12),
+        },
+        output_scale="probability",
+    )
+    assert (probabilities == 1).all()
+    result = _pit(
+        probabilities, distribution=Distribution.pearson, prob_zero=np.full(12, 0.4), zero_mask=precipitation == 0
+    )
+    assert (result.zero_share == 1).all()
+    with pytest.raises(ValueError, match="zero_mask.*incompatible"):
+        _pit(probabilities, distribution=Distribution.gamma, prob_zero=np.full(12, 0.4), zero_mask=precipitation == 0)
+
+
+@pytest.mark.parametrize("lazy", [False, True])
+def test_xarray_rejects_incompatible_point_mass_mask(lazy):
+    times = pd.date_range("1980-01-01", periods=24, freq="MS")
+    values = xr.DataArray(np.full(24, 0.9), dims="time", coords={"time": times})
+    mask = xr.ones_like(values, dtype=bool)
+    p0 = xr.DataArray(np.full(12, 0.4), dims="month", coords={"month": np.arange(1, 13)})
+    if lazy:
+        values = values.chunk({"time": -1})
+    with pytest.raises(ValueError, match="zero_mask.*incompatible"):
+        result = suitability.pit_uniformity(values, 1, distribution=Distribution.gamma, prob_zero=p0, zero_mask=mask)
+        assert isinstance(result, xr.Dataset)
+        result.compute()
+
+
 def test_all_point_mass_has_share_but_no_statistics():
     probabilities = np.ones(24)
     result = _pit(

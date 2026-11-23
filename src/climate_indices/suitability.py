@@ -2149,6 +2149,7 @@ def _seasonal_pit_statistics(
     zero_mask: np.ndarray | None,
     trace_mask: np.ndarray | None,
     statistics: tuple[GofStatistic, ...],
+    distribution: Distribution,
 ) -> PitUniformity:
     valid = ~np.isnan(sample)
     if prob_zero is None:
@@ -2167,6 +2168,15 @@ def _seasonal_pit_statistics(
         trace = np.asarray(False) if trace_mask is None else _pit_mask(trace_mask, sample.shape, "trace_mask")
         if np.any(trace & ~mass):
             raise ValueError("trace_mask must mark a subset of zero_mask.")
+        # Probability-scale center_of_mass and mean_zero both use p0 / 2.
+        placement = (sample == p0.astype(sample.dtype, copy=False)) | (
+            (p0 > 0) & (p0 < 1) & (sample == (p0 / 2).astype(sample.dtype, copy=False))
+        )
+        if distribution is Distribution.pearson:
+            # A classic Pearson upper-support limit overrides the point mass with 1.
+            placement |= sample == 1
+        if np.any(valid & mass & (~np.isfinite(p0) | ~placement)):
+            raise ValueError("zero_mask marks a probability incompatible with the point-mass placement.")
         continuous = valid & ~mass
         # Compare at the input precision so rounding the mixed CDF to float32 cannot move p0 below itself.
         if np.any(continuous & (sample < p0.astype(sample.dtype, copy=False))):
@@ -2251,7 +2261,7 @@ def _pit_xarray(
             kwargs[name] = (
                 np.moveaxis(array, -1, 0) if name == "prob_zero" else fold(_pit_mask(array, values.shape, name), False)
             )
-        result = _seasonal_pit_statistics(sample, **kwargs, statistics=statistics)
+        result = _seasonal_pit_statistics(sample, **kwargs, statistics=statistics, distribution=distribution)
         return tuple(np.moveaxis(getattr(result, field), 0, -1) for field in fields)
 
     arrays = xr.apply_ufunc(
@@ -2435,6 +2445,7 @@ def pit_uniformity(
         fold_mask(zero_mask, "zero_mask"),
         fold_mask(trace_mask, "trace_mask"),
         selected,
+        distribution,
     )
 
 
