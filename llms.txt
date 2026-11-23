@@ -137,13 +137,13 @@ Supports Python **3.11–3.15**.
 <details>
 <summary>Installation details: Rust wheels, source builds, extras, and version history</summary>
 
-**Version history.** 3.0.0 added the `fire`, `flood`, and `runs` modules and the optional Rust backend. 3.1.0 added the `compound` module and the `energy` family, promoted the DataArray index APIs to Stable, and added optional Icechunk I/O. 3.1.1 added Output Provenance and requires Python 3.11 or later. 3.2.0 added the `reliability` module, SPAI, and its pooled-anomaly fit. See the [CHANGELOG](CHANGELOG.md).
+**Version history.** 3.0.0 added the `fire`, `flood`, and `runs` modules and the optional Rust backend. 3.1.0 added the `compound` module and the `energy` family, promoted the DataArray index APIs to Stable, and added optional Icechunk I/O. 3.1.1 added Output Provenance and requires Python 3.11 or later. 3.2.0 added the `reliability` module, SPAI, and its pooled-anomaly fit. 3.3.0 adds the `drought` and `suitability` namespaces, GEV for SPEI, and Icechunk 2 support. See the [CHANGELOG](CHANGELOG.md).
 
 **Rust wheels.** Wheels for Linux (x86-64 and aarch64, manylinux_2_28, so glibc 2.28 or newer), macOS (Apple silicon and Intel), and Windows (x86-64) include the Rust backend. Every other platform, including a Linux system with older glibc, installs the pure-Python wheel. Both carry the same version and the same public API. Results agree within the [cross-backend parity tolerance](docs/architecture.md#parity-tolerance), not necessarily bit for bit.
 
 **Source builds.** `pip install --no-binary climate_indices climate_indices` installs from the sdist, which builds the pure-Python wheel and needs no Rust toolchain. To build the extension from a checkout, run `uv run maturin develop --release`; see the [Rust backend notes](docs/architecture.md#optional-rust-backend).
 
-**Icechunk.** The optional `icechunk` extra adds Icechunk-backed reads and writes. Releases up to and including 3.2.0 pin `icechunk>=1.1.21,<2`: `pip install "climate_indices[icechunk]>=3.1.0"`. The `icechunk>=2.2,<3` extra needs Python 3.12 or later and is not yet on PyPI. Until a release publishes it, install from a checkout with `pip install ".[icechunk]"`. See [writing outputs](docs/writing-outputs.md#read-and-write-icechunk-snapshots) and the [Icechunk notebook](notebooks/icechunk_spi_spei.ipynb).
+**Icechunk.** For 3.3.0 and later, use `pip install "climate_indices[icechunk]>=3.3.0"` to add Icechunk-backed reads and writes. The extra installs `icechunk>=2.2,<3` on Python 3.12 or later. See [writing outputs](docs/writing-outputs.md#read-and-write-icechunk-snapshots) and the [Icechunk notebook](notebooks/icechunk_spi_spei.ipynb).
 
 **Other extras.** `earthengine` adds the `xee` and `earthengine-api` packages that some notebooks use, and `aws` adds the raster dependencies for available-water-capacity ingest. See [Earth Engine and Climate Engine](docs/earthengine-climate-engine.md).
 
