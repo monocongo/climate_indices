@@ -16,6 +16,7 @@ import sys
 import traceback
 from collections import Counter
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 import pandas as pd
@@ -132,6 +133,16 @@ def e2e_data(tmp_path, monkeypatch):
     return tmp_path, ds
 
 
+@pytest.fixture
+def e2e_data_wide(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> tuple[Path, xr.Dataset]:
+    """Synthetic prepared store with a 7x7 grid, so the 6x6 block search has four windows."""
+    pytest.importorskip("zarr")
+    ds = _synthetic_dataset(cell_shape=(7, 7))
+    _publish_store(tmp_path, ds)
+    monkeypatch.setenv("CLIMATE_INDICES_E2E_DATA", str(tmp_path))
+    return tmp_path, ds
+
+
 @pytest.fixture(params=["MS", pd.offsets.MonthEnd()])
 def e2e_data_any_calendar(request, tmp_path, monkeypatch):
     """Prepared store under each accepted calendar convention (month-start and month-end)."""
@@ -192,7 +203,9 @@ def test_spi_fit_notebook_plots_on_prepared_sample(e2e_data, monkeypatch):
             plt.close(number)
 
 
-def test_distribution_suitability_notebook_runs_on_prepared_sample(e2e_data, monkeypatch):
+def test_distribution_suitability_notebook_runs_on_prepared_sample(
+    e2e_data_wide: tuple[Path, xr.Dataset], monkeypatch: pytest.MonkeyPatch
+) -> None:
     """The suitability workflow executes offline: comparison, bootstrap, categories, PIT and concordance."""
     matplotlib = pytest.importorskip("matplotlib")
     matplotlib.use("Agg")
@@ -203,30 +216,43 @@ def test_distribution_suitability_notebook_runs_on_prepared_sample(e2e_data, mon
     )
     previous_figures = set(plt.get_fignums())
     try:
-        namespace = {}
+        namespace: dict[str, Any] = {}
         _exec_cells(namespace, _code_cells())
         candidates = namespace["candidates"]
         shares = namespace["shares"]
         assert list(shares.columns) == [*candidates, "none"]
-        np.testing.assert_allclose(shares[[*candidates]].sum(axis=1), 1.0)
+        np.testing.assert_allclose(shares.sum(axis=1), 1.0)
+        best = namespace["comparisons"][3]["best"].values
+        assert shares.loc[3, "none"] == pytest.approx(float(np.count_nonzero(best == "none")) / best.size)
+        land = namespace["land"]
+        assert namespace["block_size"] == 6
+        fractions = [(float(land[r : r + 6, c : c + 6].mean()), r, c) for r in range(2) for c in range(2)]
+        _, expected_row, expected_col = max(fractions, key=lambda candidate: candidate[0])
+        assert (namespace["block_row"], namespace["block_col"]) == (expected_row, expected_col)
         rejection = namespace["rejection"]
         assert list(rejection.columns) == ["KS naive", "KS bootstrap", "AD bootstrap"]
         assert np.isfinite(rejection[["KS bootstrap", "AD bootstrap"]].to_numpy()).all()
+        assert (rejection["KS naive"] >= 0).all()
         assert len(namespace["top_two"]) == 2
         change = namespace["change"]
         assert set(change["share_changed"].dims) == {"lat", "lon"}
+        water = namespace["water"]
+        expected_threshold = float(water.sel(time=slice("1981", "2010")).quantile(0.2))
+        assert namespace["threshold"] == pytest.approx(expected_threshold)
         concordance = namespace["concordance"]
         assert concordance.hits + concordance.misses == int(namespace["reference_runs"].start_index.size)
-        assert len(plt.get_fignums()) - len(previous_figures) >= 3
+        if concordance.hits + concordance.misses:
+            assert concordance.pod == pytest.approx(concordance.hits / (concordance.hits + concordance.misses))
+        assert len(plt.get_fignums()) - len(previous_figures) == 4
     finally:
         for number in set(plt.get_fignums()) - previous_figures:
             plt.close(number)
 
 
-def _synthetic_dataset(time_freq="MS") -> xr.Dataset:
+def _synthetic_dataset(time_freq: str | pd.DateOffset = "MS", cell_shape: tuple[int, int] = (2, 2)) -> xr.Dataset:
     """One land cell, one fully masked cell, and one meaningful zero, 1980-2010 monthly."""
     rng = np.random.default_rng(42)
-    shape = (372, 2, 2)
+    shape = (372, *cell_shape)
     precip = rng.gamma(2, 40, shape).astype("float32")
     pet = rng.uniform(20, 100, shape).astype("float32")
     precip[:, 0, 1] = pet[:, 0, 1] = np.nan  # masked/missing cell
@@ -239,8 +265,8 @@ def _synthetic_dataset(time_freq="MS") -> xr.Dataset:
         },
         coords={
             "time": pd.date_range("1980-01-01", periods=372, freq=time_freq),
-            "lat": [35.0, 36.0],
-            "lon": [-100.0, -99.0],
+            "lat": [35.0 + index for index in range(cell_shape[0])],
+            "lon": [-100.0 + index for index in range(cell_shape[1])],
         },
     )
     for name in ds:
