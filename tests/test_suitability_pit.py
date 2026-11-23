@@ -116,6 +116,18 @@ def test_masked_float32_uses_original_precision_at_the_zero_mass_boundary():
     assert result.n_valid[1] == 2
 
 
+def test_float32_zero_mass_preserves_the_upper_probability_endpoint():
+    result = _pit(
+        np.ones(24),
+        distribution=Distribution.gamma,
+        prob_zero=np.full(12, 0.1, dtype=np.float32),
+        zero_mask=np.zeros(24, dtype=bool),
+    )
+    assert result.ks_statistic is not None and result.ad_statistic is not None
+    assert (result.ks_statistic == 1).all()
+    assert np.isposinf(result.ad_statistic).all()
+
+
 def test_seasonal_variance_in_spai_is_detected():
     rng = np.random.default_rng(410)
     precipitation = 200 + rng.normal(size=(120, 12)) * np.tile([1, 30], 6)
@@ -178,6 +190,18 @@ def test_unsupported_distributions_are_rejected(distribution):
         _pit(np.full(24, 0.5), distribution=distribution)
 
 
+def test_zero_mass_inputs_require_a_mixed_distribution():
+    with pytest.raises(ValueError, match="gamma or Pearson Type III"):
+        _pit(np.full(24, 0.5), prob_zero=np.full(12, 0.5), zero_mask=np.ones(24, dtype=bool))
+
+
+def test_ambiguous_spatial_shape_requires_an_explicit_layout():
+    probabilities = np.full((24, 12, 2), 0.5)
+    with pytest.raises(ValueError, match="spatial_time_major=True"):
+        _pit(probabilities)
+    assert (_pit(probabilities, spatial_time_major=True).n_valid == 2).all()
+
+
 @pytest.mark.parametrize("value", [-0.1, 1.1, np.inf])
 def test_invalid_probabilities_are_rejected(value):
     with pytest.raises(InvalidArgumentError, match="probabilities"):
@@ -229,12 +253,15 @@ def test_xarray_refuses_misaligned_zero_mask():
         suitability.pit_uniformity(values, 1, distribution=Distribution.gamma, prob_zero=p0, zero_mask=mask)
 
 
-def test_xarray_refuses_mismatched_auxiliary_spatial_coordinates():
+@pytest.mark.parametrize("indexed", [False, True])
+def test_xarray_refuses_mismatched_auxiliary_spatial_coordinates(indexed):
     times = pd.date_range(f"{START}-01-01", periods=24, freq="MS")
     values = xr.DataArray(
         np.full((24, 2), 0.4), dims=("time", "cell"), coords={"time": times, "latitude": ("cell", [5, 10])}
     )
     mask = values.copy(data=np.zeros((24, 2), dtype=bool)).assign_coords(latitude=("cell", [10, 5]))
+    if indexed:
+        values = values.set_xindex("latitude")
     p0 = xr.DataArray(np.zeros((12, 2)), dims=("month", "cell"), coords={"month": np.arange(1, 13)})
     with pytest.raises(ValueError, match="zero_mask.*latitude"):
         suitability.pit_uniformity(values, 1, distribution=Distribution.gamma, prob_zero=p0, zero_mask=mask)

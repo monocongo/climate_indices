@@ -2155,7 +2155,7 @@ def _seasonal_pit_statistics(
         pit = sample.astype(float, copy=False)
         zero_count = trace_count = np.zeros(sample.shape[1:], dtype=np.int64)
     else:
-        p0 = _bounded_pit_array(prob_zero, "prob_zero")
+        p0 = _bounded_pit_array(prob_zero, "prob_zero").astype(float, copy=False)
         if p0.shape != sample.shape[1:]:
             raise _invalid(
                 "prob_zero must match the (calendar step, *cells) shape.",
@@ -2221,8 +2221,9 @@ def _pit_xarray(
                 raise ValueError(
                     f"{name} and probabilities must both label dimension {dim!r} or both leave it unlabeled."
                 )
+        shared_indexes = probabilities.xindexes.keys() & array.xindexes.keys()
         for coord_name, coord in probabilities.coords.items():
-            if coord_name in array.coords and coord_name not in probabilities.xindexes and time_dim not in coord.dims:
+            if coord_name in array.coords and coord_name not in shared_indexes and time_dim not in coord.dims:
                 if not coord.variable.equals(array.coords[coord_name].variable):
                     raise ValueError(f"{name} and probabilities have different coordinates for {coord_name!r}.")
         if core_dim == time_dim and array.chunks is not None:
@@ -2314,6 +2315,8 @@ def pit_uniformity(
     In-sample PIT tests can be conservative because they reuse the data that fit
     the CDF. K–S p-values are naive screening measures. Overlapping windows at
     Timescales above 12 months or 365 days invalidate those p-values.
+    The function checks probability bounds and mask values when you compute a
+    Dask-backed result.
 
     Args:
         probabilities: Index output from ``output_scale="probability"``. NumPy
@@ -2326,8 +2329,8 @@ def pit_uniformity(
         distribution: The continuous family that produced the probabilities.
             Empirical and beta outputs are unsupported.
         prob_zero: Fitted zero-mass probability by ``(calendar step, *cells)``.
-            Supply it together with ``zero_mask`` for a mixed CDF. For xarray
-            use a DataArray with 1-based ``month`` or ``dayofyear`` coordinates.
+            Supply it with ``zero_mask`` only for a mixed gamma or Pearson Type III CDF.
+            For xarray, use a DataArray with 1-based ``month`` or ``dayofyear`` coordinates.
         zero_mask: Boolean array matching probabilities. Mark the full point
             mass, including Pearson Type III traces scored inside the mass.
             Unmasked values of a mixed CDF are transformed to ``(p - p0)/(1 - p0)``.
@@ -2345,7 +2348,8 @@ def pit_uniformity(
         statistics: One or both of ``"ks"`` and ``"ad"``.
         time_dim: Name of the xarray time dimension, which must be one Dask chunk.
         spatial_time_major: Read 2-D NumPy input as ``(time, cells)`` instead of
-            ``(years, periods)``.
+            ``(years, periods)``. Declare this layout for any spatial block whose
+            first cell axis has a calendar period length.
 
     Returns:
         A frozen :class:`PitUniformity` or a Dataset with the same variables,
@@ -2367,6 +2371,8 @@ def pit_uniformity(
         raise ValueError("Supply prob_zero and zero_mask together, with an optional trace_mask.")
     if trace_mask is not None and distribution is not Distribution.pearson:
         raise ValueError("trace_mask applies only to Pearson Type III.")
+    if prob_zero is not None and distribution not in _ZERO_MASS_FAMILIES:
+        raise ValueError("prob_zero and zero_mask apply only to gamma or Pearson Type III.")
     inputs = {
         name: array
         for name, array in (("prob_zero", prob_zero), ("zero_mask", zero_mask), ("trace_mask", trace_mask))
@@ -2396,6 +2402,8 @@ def pit_uniformity(
         folded = values.ndim == 2 and not spatial_time_major
         if folded and values.shape[1] != periodicity.period_length:
             raise ValueError("A (years, periods) array must have a complete calendar-step axis.")
+        if values.ndim > 2:
+            compute.prepare_input_shape(values, spatial_time_major)
         years = values.shape[0] if folded else -(-values.shape[0] // periodicity.period_length)
         last = first + years - 1
 
