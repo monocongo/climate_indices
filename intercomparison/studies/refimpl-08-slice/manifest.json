@@ -20,7 +20,7 @@
       },
       "store_index": 0,
       "version": "3.2.0",
-      "wall_time_s": 0.008773166991886683,
+      "wall_time_s": 0.009477334009716287,
       "warnings": []
     },
     {
@@ -45,7 +45,7 @@
       },
       "store_index": 1,
       "version": "1.0.0",
-      "wall_time_s": 0.03033108400995843,
+      "wall_time_s": 0.031694332996266894,
       "warnings": [
         "method: position 'accumulation': requested 'sum', applied 'mean'"
       ]
@@ -56,7 +56,7 @@
   "download_date": "2024-01-01",
   "fixture_version": "1.2.0",
   "harness": {
-    "git_commit": "bd40df4a0eae40b35b7d27260b590e7ab6b2541c",
+    "git_commit": "a2566807b0adea5d2b43957d40af113ee9b7c1a6",
     "git_dirty": false
   },
   "index": "spi",
@@ -71,7 +71,7 @@
       "units": "inch"
     }
   },
-  "notes": "Slice of REFIMPL-08 (issue 1610): shows that the harness runs, not that the comparators agree. Metrics are REFIMPL-16. url and download_date are those of the fixture's provenance.json. The series has 0 zero-precipitation months, so the zero_handling position is declared but not exercised.",
+  "notes": "Slice of REFIMPL-08 (issue 1610): shows that the harness runs, not that the comparators agree. Metrics are REFIMPL-16. url and download_date are those of the fixture's provenance.json. The series has 0 zero 3-month accumulations, so the zero_handling position is declared but not exercised.",
   "positions": {
     "accumulation": "sum",
     "calendar_grouping": "calendar_month",
