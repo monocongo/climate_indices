@@ -257,8 +257,9 @@ A paper that states only those adds nothing.
 
 `research-notes.md` lists twelve works whose bibliographic details were unverified and the authorship of the R
 `SEI` article. This ticket verifies all thirteen: see `references.bib` and the corrections table above. The other
-items under its `## Not verified` heading are not bibliographic and stay open: the Wells C++ rescaling passes,
-source licences, Octave and Linux runs, fixture provenance, provider terms, the AI-disclosure policy and the wider
+items under its `## Not verified` heading are not bibliographic and stay open: the Palmer stage-fixture
+tables, the Wells C++ rescaling passes, source licences, Octave and Linux runs, the lineage of small packages
+outside the comparator set, fixture provenance, provider terms, the AI-disclosure policy and the wider
 cross-package search.
 
 ## What this means for the other tickets

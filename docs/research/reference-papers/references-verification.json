@@ -138,7 +138,7 @@
     "heddinghaus1991": {
       "check": "record",
       "record_url": "https://doi.org/10.1890/12-1586.1",
-      "record_states": "Conference preprint with no DOI and no publisher record: Preprints of the 7th Conference on Applied Climatology, Salt Lake City, Utah, 10-13 September 1991, American Meteorological Society, pp. 242-246; authors Heddinghaus and Sabol. Venue, date and page range read from two independent citing works, Munson et al. (2013), Ecology 94(9), 2030-2041, doi:10.1890/12-1586.1, and Ma et al. (2014), Hydrological Processes 28(23), 5645-5661, doi:10.1002/hyp.10063; both Crossref records were read.",
+      "record_states": "Conference preprint with no DOI and no publisher record: Preprints of the 7th Conference on Applied Climatology, Salt Lake City, Utah, 10-13 September 1991, American Meteorological Society, pp. 242-246; authors Heddinghaus and Sabol. Venue, place, date and the first page 242 read from the citing work Munson et al. (2013), Ecology 94(9), 2030-2041, doi:10.1890/12-1586.1; the end page 246, the second author Sabol and the 'Preprints' wording read from the citing work Ma et al. (2014), Hydrological Processes 28(23), 5645-5661, doi:10.1002/hyp.10063; both Crossref records were read.",
       "year": "1991",
       "checked": "2026-11-22"
     },
