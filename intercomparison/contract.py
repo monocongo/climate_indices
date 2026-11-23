@@ -13,6 +13,10 @@ An adapter is a subprocess: ``<adapter> run <request.json> <out_dir>``.
 * A series is a two-column CSV, ``time,value``. Values use ``repr(float)``, the shortest string
   that round-trips a binary64 exactly; a missing value is ``nan`` (``NaN`` is read as well).
 * A ``path`` must stay inside the directory of the document that names it.
+
+The ``NOSONAR (S8707)`` marks below are audited: a path read or written here came from the command
+line through ``path_arg``, was built by the harness, or is a document path that ``entry_path``
+confined to the document's directory.
 """
 
 from __future__ import annotations
@@ -65,14 +69,14 @@ def path_arg(value: str) -> Path:
 
 
 def sha256_file(path: Path) -> str:
-    return hashlib.sha256(path.read_bytes()).hexdigest()
+    return hashlib.sha256(path.read_bytes()).hexdigest()  # NOSONAR (S8707)
 
 
 def write_series(path: Path, times: Sequence[str], values: Sequence[float]) -> str:
     """Write ``time,value`` rows and return the file's SHA-256."""
     if len(times) != len(values):
         raise ContractError(f"{len(times)} times but {len(values)} values")
-    with path.open("w", newline="", encoding="utf-8") as handle:
+    with path.open("w", newline="", encoding="utf-8") as handle:  # NOSONAR (S8707)
         writer = csv.writer(handle, lineterminator="\n")
         writer.writerow(("time", "value"))
         writer.writerows((t, repr(float(v))) for t, v in zip(times, values, strict=True))
@@ -97,7 +101,7 @@ def read_series(path: Path, sha256: str | None = None) -> tuple[list[str], list[
 
 
 def read_json(path: Path) -> dict[str, Any]:
-    loaded = json.loads(path.read_text(encoding="utf-8"))
+    loaded = json.loads(path.read_text(encoding="utf-8"))  # NOSONAR (S8707)
     if not isinstance(loaded, dict):
         raise ContractError(f"{path}: expected a JSON object")
     return loaded
@@ -251,7 +255,7 @@ def run_adapter(
         name: read_entry_series(request_path.parent, entry, f"input {name!r}")
         for name, entry in request["inputs"].items()
     }
-    out_dir.mkdir(parents=True, exist_ok=True)
+    out_dir.mkdir(parents=True, exist_ok=True)  # NOSONAR (S8707)
     # warnings raised inside compute (fit quality, clamped windows) belong in the result, not only on stderr
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter("always")
