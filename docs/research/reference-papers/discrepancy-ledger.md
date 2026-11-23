@@ -28,3 +28,12 @@ The `pdi.f`-lineage values are closer to nClimDiv on 87.6% of the P disagreement
 
 - The 6.3% and 8-unit provenance figures reproduce (6.316%, 8.135), so no change to `tests/fixture/palmer/provenance.json`, `VALIDATION.md`, or `docs/algorithm_refs/palmer.md` is proposed.
 - Whether Wells et al. (2004) fixes E, A, or C could not be checked: the full text was not retrievable (HTTP 403).
+
+## Entries from REFIMPL-08
+
+Study [#1610](https://github.com/monocongo/climate_indices/issues/1610), the harness slice: gamma SPI-3 on division 0101 of `tests/fixture/palmer/` (1,536 months, 1895-01 to 2022-12, inches), `climate_indices` 3.2.0 against `xclim` 1.0.0, both in the aligned configuration `spi-gamma-thom` (Thom closed form, zeros as a mass of n0/n, calendar months, calibration 1895-2022). Stored in `intercomparison/studies/refimpl-08-slice/manifest.json`. This is one series; it shows that the harness runs and is not evidence of agreement.
+
+| ID | Class | Configuration | Size | Cause | Proposed disposition |
+| --- | --- | --- | --- | --- | --- |
+| P08-B | output bound | `spi-gamma-thom`, 0101, SPI-3 | 1 of 1,534 paired months (1965-12): library -3.09, xclim -3.1527, difference 0.0627 | The library clips SPI at ±3.09; xclim clips at ±8.21 (`method-matrix.json`, axis `output_bound`). The unclipped value at that month is below -3.09 | **Method choice** (documented in `method-matrix.json`); the protocol puts the output bound in rung L4 of the ladder |
+| P08-N | numerical noise | same | the other 1,533 paired months: maximum absolute difference 7.4e-14 (month 1348) | Not traced; the size is that of two floating-point code paths computing the same closed form | **Numerical noise** ("identical" class is 1e-10) |
