@@ -24,8 +24,9 @@ No kernel or API behavior changed.
 Amended after reading the Deo et al. (2015) full text
 (`docs/research/deo-2015-flood-index-notes.md`): its Eq. (1) is the harmonic
 double sum of decision 2, so the abstract's "exponentially decaying" wording is
-descriptive and the kernel is no longer unverified. The Hickman, Nebraska record
-is also now committed as a Table 5 *characterization* fixture
+descriptive and the kernel is no longer unverified; decision 5 now records the
+return-period estimator and event wording the same reading recovered. The Hickman,
+Nebraska record is also now committed as a Table 5 *characterization* fixture
 (`tests/fixture/flood_hickman/`), not an exact reference. No kernel or API behavior
 changed.
 
@@ -202,14 +203,17 @@ unreproducible claim of reproduction.
      explicit `periods` labels; the DataArray path labels each step with the
      start year of its `year_start_month` annual period, the same boundary
      `flood_index()` takes, and assigns an event to its onset period.
-   - **`T` is not implemented.** The 2015 estimator is not recoverable from the
-     accessible material, and no plotting position is invented. The summary
-     reports `frequency`, an event rate per valid input step, and
-     `docs/flood_applications.md` gives a caller-side ranked-severity recipe
-     explicitly not offered as flood-frequency analysis of discharge. The
-     paper's published values (`I_F_acc = 118`, `I_F_max = 4.4`, `D_F = 104`
-     days, `T = 106.2` years, Brisbane January 1974) are **not** claimed as
-     reproduced: no reproducible input record or estimator is available.
+   - **`T` is not implemented.** The full text supplies the estimator the survey
+     could not reach: a partial-duration series with a mean-rank position, with
+     `I_F_acc >= 1` marking severe events
+     (`docs/research/deo-2015-flood-index-notes.md`). No reproducible input record
+     exists to check that estimator against, so the library does not compute `T`
+     from an unvalidated position. The summary reports `frequency`, an event rate
+     per valid input step, and `docs/flood_applications.md` gives a caller-side
+     ranked-severity recipe explicitly not offered as flood-frequency analysis of
+     discharge. The paper's published values (`I_F_acc = 118`, `I_F_max = 4.4`,
+     `D_F = 104` days, `T = 106.2` years, Brisbane January 1974) are **not** claimed
+     as reproduced: no reproducible input record is available.
 6. **Scope boundary.** Rx1day, Rx5day, and R95pTOT are **out of scope**: the
    `xclim` package already implements the ETCCDI precipitation-extreme
    calculations — `max_1day_precipitation_amount` and

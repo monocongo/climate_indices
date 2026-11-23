@@ -1,4 +1,4 @@
-"""PE/EDI characterization against Byun and Wilhite (1999) Table 5 (#1135).
+"""EDI characterization, with PE as its input, against Byun and Wilhite (1999) Table 5 (#1135).
 
 This is **characterization, not exact-reference validation**. Table 5 reports
 one-decimal summary rows for a variable-duration EDI over a 113-station record,

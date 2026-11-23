@@ -107,9 +107,10 @@ The [flood-family epic #1098][flood-epic] tracks the implementation order.
 - **Flood Index (I_F)** — *NumPy and stable xarray APIs available
   (FLOOD-10 [#1107][flood-1107], FLOOD-11 [#1108][flood-1108])*. A daily flood-potential index that standardizes effective precipitation
   ([Deo et al. (2015)][deo-2015]). The annual-maximum window follows the
-  caller's year boundary, and the kernel question — the abstracts say "exponentially
-  decaying" while the paper's Eq. (1) is the harmonic double sum implemented here — is recorded in
-  [ADR-0014](adr/0014-flood-family-scientific-conventions.md); see
+  caller's year boundary. The kernel interpretation is resolved: the paper's
+  Eq. (1) is the harmonic double sum implemented here, despite the abstracts'
+  "exponentially decaying" wording. [ADR-0014](adr/0014-flood-family-scientific-conventions.md)
+  records the resolution; see
   {doc}`algorithm_refs/flood_index` for the algorithm and validation status.
   For DataArray input, omitted `calibration_year_initial` defaults to the first
   coordinate year plus one, excluding the standard 365-day PE warm-up year.
@@ -190,9 +191,11 @@ gridded DataArray returns an `xr.Dataset` with the summary variables over a
 period it starts in, so an event spanning a boundary contributes its full
 duration to its onset period.
 
-A return period `T` is not computed. The Deo et al. (2015) estimator is not
-recoverable from the available material, so the package reports the event rate
-instead and does not invent a plotting position. For a rough recurrence
+A return period `T` is not computed. The full text supplies the estimator (a
+partial-duration series with a mean-rank position; `I_F_acc >= 1` marks severe
+events; see `docs/research/deo-2015-flood-index-notes.md`), but no reproducible
+input record exists to check it against, so the package reports the event rate
+instead. For a rough recurrence
 interval, rank each year's maximum severity and apply a caller-side
 plotting-position convention such as the Weibull `T = (n + 1) / rank`; state
 that it describes the index record, not a flood-frequency analysis of discharge.

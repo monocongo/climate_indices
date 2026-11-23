@@ -2,8 +2,8 @@
 
 `api.csv` compares the API recurrence against R `ahrapi` on synthetic inputs.
 No exact numeric reference is committed for PE, EDI, or I_F. The Hickman, Nebraska
-characterization of PE/EDI against Byun and Wilhite (1999) Table 5 lives in
-`tests/fixture/flood_hickman/` with its own `provenance.json`.
+characterization of EDI, with PE exercised as its input, against Byun and Wilhite
+(1999) Table 5 lives in `tests/fixture/flood_hickman/` with its own `provenance.json`.
 `tests/test_flood_reference.py` asserts the selected Eq. (2) identity,
 its endpoint weights, and the API closed form. The paper's candidate identities
 are recorded here to make the ADR-0014 selection explicit:
@@ -43,7 +43,7 @@ is not a reference for this library's gap policy.
 
 | Index | Needed before committing an oracle |
 | --- | --- |
-| PE / EDI | Characterized, not exactly reproduced, in `tests/fixture/flood_hickman/` (single station, calendar-day-mean fill). For an exact reference, reconstruct the paper's 113-station High Plains subset and 100 km substitution rule; pin the 30-year MEP window within the 1960–1996 record; resolve AMS reuse terms. The published Table 5 uses variable-duration EDI, not the fixed-window public contract. |
+| EDI (PE as its input) | Characterized, not exactly reproduced, in `tests/fixture/flood_hickman/` (single station, calendar-day-mean fill); no PE quantity is compared with a published value. For an exact reference, reconstruct the paper's 113-station High Plains subset and 100 km substitution rule; pin the 30-year MEP window within the 1960–1996 record; resolve AMS reuse terms. The published Table 5 uses variable-duration EDI, not the fixed-window public contract. |
 | I_F | The Deo et al. (2015) full text confirms the kernel (`docs/research/deo-2015-flood-index-notes.md`); the Brisbane values need the paper's adjusted BoM 40094 rainfall for 1915–2012, which is not published, and its 365-day calendar, then reuse terms. The 2014 USQ conference paper is another possible source for the inputs. |
 | API | Retrieve the remaining Kohler and Linsley (1951) pages to check for published numeric values. The R comparison does not establish agreement on observed inputs or validate flood prediction. |
 

@@ -28,12 +28,13 @@ table, and figure numbers below are the paper's.
   mean and standard deviation of the *yearly maximum daily* `P_E` over the
   recorded hydrological period (1915–2012). Whether `σ` is the population or
   sample deviation is not stated; the library uses `ddof=0`.
-- **Events (Eqs. 5–7).** Onset is the first day with `I_F > 0`; severity is the
-  running sum of positive `I_F`; peak danger is the maximum; duration is the day
-  count. The return period (Eqs. 8–10) uses a partial-duration series with a
-  mean-rank estimator `i / (n + 1)`; the cutoff `I_F_acc ≥ 1` selects "severe"
-  events. The library's event helpers follow ADR-0014 decision 5 and do not
-  implement a return period.
+- **Events (Eqs. 5–7).** The body's onset is the first day with `I_F > 0`; the
+  abstract's onset phrasing is `I_F >= 0`. Severity is the running sum of positive
+  `I_F`; peak danger is the maximum; duration is the day count. The return period
+  (Eqs. 8–10) uses a partial-duration series with a mean-rank estimator
+  `i / (n + 1)`; the cutoff `I_F_acc ≥ 1` selects "severe" events. The library's
+  event helpers keep the strict `I_F > 0` of ADR-0014 decision 5, which follows the
+  surveyed same-lineage code, and do not implement a return period.
 - **Calendar.** Footnote 1: leap-day rainfall is added to the 1 March value so
   every year has 365 days. The library instead keeps 366 positions per year and
   interpolates the non-leap-year 29 February (ADR-0014 decision 4, #1147). The two
