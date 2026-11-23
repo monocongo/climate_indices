@@ -3,6 +3,7 @@
 import importlib.util
 import io
 import json
+import urllib.request
 from datetime import date
 from pathlib import Path
 from types import ModuleType
@@ -132,7 +133,9 @@ def test_the_verification_file_names_its_source(verification: dict[str, Any]) ->
         ("guttman1999", "entry", "number", "3", "number"),
         ("guttman1999", "entry", "pages", "311--323", "pages"),
         ("mckee1993", "entry", "pages", "999--999", "pages"),
+        ("mckee1993", "entry", "pages", "2", "pages"),
         ("wmo1090", "entry", "number", "77", "number"),
+        ("wmo1090", "entry", "number", "90", "number"),
         ("mckee1993", "entry", "author", "", "needs author"),
         ("mckee1993", "entry", "doi", "10.1/foo", "not a Crossref check"),
         ("mckee1993", "record", "record_url", "http://example.invalid/a", "not https"),
@@ -219,31 +222,58 @@ def test_a_dotless_i_spelling_matches(verifier: ModuleType) -> None:
     """The dotless-letter accent spelling is the same name as the plain accented one."""
     plain = cast(Any, verifier)._plain
     assert plain(r"Beguer{\'{\i}}a") == plain("Beguería")
+    assert plain(r"x\index{y}") == plain("xy")
 
 
-class _Response(io.BytesIO):
-    """A Crossref reply that reports its final URL, as urlopen returns it."""
+class _Opener:
+    """A stand-in for the module opener that returns one fixed reply."""
 
-    url = "https://api.crossref.org/works/10.1175/jamc-d-19-0272.1"
+    def __init__(self, payload: bytes) -> None:
+        self.payload = payload
 
-    def geturl(self) -> str:
-        return self.url
+    def open(self, *args: Any, **kwargs: Any) -> io.BytesIO:
+        return io.BytesIO(self.payload)
 
 
-@pytest.mark.parametrize("payload", [b"[]", b'{"message": null}', b'{"message": {}}'], ids=["list", "null", "no-doi"])
+@pytest.mark.parametrize(
+    ("payload", "reason"),
+    [
+        (b"[]", "failed"),
+        (b'{"message": null}', "returned no work record"),
+        (b'{"message": {}}', "returned no work record"),
+    ],
+    ids=["list", "null", "no-doi"],
+)
 def test_a_malformed_crossref_response_is_a_lookup_failure(
-    verifier: ModuleType, monkeypatch: pytest.MonkeyPatch, payload: bytes
+    verifier: ModuleType, monkeypatch: pytest.MonkeyPatch, payload: bytes, reason: str
 ) -> None:
     """A response that is not a work record raises the error the retry path handles."""
-    monkeypatch.setattr(verifier.urllib.request, "urlopen", lambda *args, **kwargs: _Response(payload))
-    with pytest.raises(RuntimeError, match="Crossref lookup"):
+    monkeypatch.setattr(verifier, "OPENER", _Opener(payload))
+    with pytest.raises(RuntimeError, match=reason):
         cast(Any, verifier).fetch("10.1175/JAMC-D-19-0272.1")
 
 
-def test_a_redirect_off_crossref_is_a_lookup_failure(verifier: ModuleType, monkeypatch: pytest.MonkeyPatch) -> None:
-    """A redirect leaves the fixed Crossref endpoint, so its body is not trusted."""
-    redirect = _Response(b'{"message": {"DOI": "10.1175/jamc-d-19-0272.1"}}')
-    redirect.url = "https://example.invalid/works/10.1175/jamc-d-19-0272.1"
-    monkeypatch.setattr(verifier.urllib.request, "urlopen", lambda *args, **kwargs: redirect)
-    with pytest.raises(RuntimeError, match="Crossref lookup"):
+def test_a_response_larger_than_the_cap_is_a_lookup_failure(
+    verifier: ModuleType, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A reply body is read up to a bound, so a huge body cannot be held in memory."""
+    payload = b'{"message": {"DOI": "' + b"x" * 200 + b'"}}'
+    monkeypatch.setattr(verifier, "OPENER", _Opener(payload))
+    monkeypatch.setattr(verifier, "MAX_RESPONSE", 64)
+    with pytest.raises(RuntimeError, match="failed"):
         cast(Any, verifier).fetch("10.1175/JAMC-D-19-0272.1")
+
+
+def test_a_redirect_off_crossref_is_refused(verifier: ModuleType) -> None:
+    """An off-endpoint redirect is refused before the request goes to the new host."""
+    handler = cast(Any, verifier)._CrossrefRedirect()
+    with pytest.raises(OSError, match="redirected a lookup"):
+        handler.redirect_request(None, None, 302, "Found", {}, "https://example.invalid/works/10.1/x")
+
+
+def test_a_redirect_within_crossref_is_followed(verifier: ModuleType) -> None:
+    """A redirect that stays on the Crossref endpoint is allowed."""
+    handler = cast(Any, verifier)._CrossrefRedirect()
+    request = urllib.request.Request("https://api.crossref.org/works/10.1/x")
+    moved = handler.redirect_request(request, None, 302, "Found", {}, "https://api.crossref.org/works/10.1/y")
+    assert moved is not None

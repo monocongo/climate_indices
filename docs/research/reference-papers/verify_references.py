@@ -104,16 +104,27 @@ def _plain(value: object) -> str:
     return re.sub(r"[^a-z0-9]", "", unicodedata.normalize("NFKD", text).lower())
 
 
+class _CrossrefRedirect(urllib.request.HTTPRedirectHandler):
+    """Refuse a redirect that leaves the fixed Crossref endpoint, before it is requested."""
+
+    def redirect_request(
+        self, req: urllib.request.Request, fp: Any, code: int, msg: str, headers: Any, newurl: str
+    ) -> urllib.request.Request | None:
+        if not newurl.startswith(CROSSREF):
+            raise OSError(f"Crossref redirected a lookup to {newurl}")
+        return super().redirect_request(req, fp, code, msg, headers, newurl)
+
+
+OPENER = urllib.request.build_opener(_CrossrefRedirect)
+
+
 def fetch(doi: str) -> dict[str, Any]:
     """Return the Crossref work record for a DOI."""
     request = urllib.request.Request(
         CROSSREF + urllib.parse.quote(doi), headers={"User-Agent": USER_AGENT, "Accept": "application/json"}
     )
     try:
-        with urllib.request.urlopen(request, timeout=60) as response:  # noqa: S310  # nosec B310 # fixed https endpoint
-            final = response.geturl()
-            if not final.startswith(CROSSREF):
-                raise OSError(f"Crossref redirected the {doi} lookup to {final}")
+        with OPENER.open(request, timeout=60) as response:
             message = json.loads(response.read(MAX_RESPONSE))["message"]
     except (OSError, ValueError, KeyError, TypeError) as error:
         raise RuntimeError(f"Crossref lookup for {doi} failed") from error
@@ -227,7 +238,7 @@ def _record_problems(key: str, entry: dict[str, str], record: dict[str, Any]) ->
     stated = str(record.get("record_states", "")).replace("--", "-")
     for name in ("pages", "number"):
         value = entry.get(name, "").replace("--", "-")
-        if value and value not in stated:
+        if value and not re.search(rf"(?<!\w){re.escape(value)}(?!\w)", stated):
             found.append(f"{key}: {name} {entry.get(name)!r} is not stated in the record")
     return found
 
