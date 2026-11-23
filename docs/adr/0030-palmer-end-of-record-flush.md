@@ -2,12 +2,15 @@
 
 ## Status
 
-Approved for implementation. The maintainer made both decisions on 2026-11-19, after
+Approved for implementation. The maintainer made decisions 1 and 2 on 2026-11-19 and
+decision 3 on 2026-11-22, after
 [REFIMPL-46 (#1661)](https://github.com/monocongo/climate_indices/issues/1661) compared the
-standard Palmer path with NCEI `pdi.f`. Decision 1 is implemented by
-[#1665](https://github.com/monocongo/climate_indices/issues/1665). Decision 2 is not yet
-implemented and is tracked by [#1666](https://github.com/monocongo/climate_indices/issues/1666).
-Promote this record to `Accepted` when #1666 lands.
+standard Palmer path with NCEI `pdi.f`. The record was completed under
+[#1678](https://github.com/monocongo/climate_indices/issues/1678). Decision 1 is implemented by
+[#1665](https://github.com/monocongo/climate_indices/issues/1665). Decision 2 is tracked by
+[#1666](https://github.com/monocongo/climate_indices/issues/1666) and decision 3 by
+[#1663](https://github.com/monocongo/climate_indices/issues/1663); neither is implemented yet.
+Promote this record to `Accepted` when both land.
 
 ## Context
 
@@ -17,7 +20,10 @@ Python recursion (`_palmer_pdi._finish_up`) and the Rust kernel (`palmer_pdi::fi
 reproduced that flush statement by statement, and the REFIMPL-46 comparison found two places
 where it departs from the literature and from its own evident intent. These are Category C2
 in that study's classification: `pdi.f` differs from the literature, so the maintainer
-decides.
+decides. A third defect, the padding below, is Category C1: the library differs from `pdi.f`,
+and `pdi.f` agrees with the literature. All three are corrections to intended behaviour, not a
+new algorithm or a new default. The published method (Palmer 1965; Heddinghaus and Sabol 1991;
+Heim 2002) is the reference.
 
 1. **A stale high-water mark.** `pdi.f` means to reset `k8max` when a spell resolves
    (ASSIGN, lines 850-851). `k8max` is neither an argument of ASSIGN nor in COMMON, so
@@ -34,8 +40,21 @@ decides.
    (`pdi.f` computes `final_wplm` once). PMDI is defined per month as a probability-weighted
    value of that month's terms (NCEI `divisional-readme.txt` item 4; Heim 2002, p. 1156), and
    `pdi.f` itself computes it per month elsewhere (ASSIGN, lines 846-848; statement 210).
+3. **NaN padding drives the recursion.** For a record that does not end in December,
+   `palmer.py` pads the final year with NaN and the spell recursion runs through the padded
+   months (`_palmer_pdi.calculate`; Rust `palmer_pdi.rs`, whose contract says "NaN Z still
+   advances the recursion"). A NaN Z drives arbitrary transitions through statements 170, 190
+   and 200, can backtrack months that are still pending, and `_finish_up` reads `final_wplm`
+   from a padded month. `pdi.f` stops at the last month with data (`nendmo`, lines 562-564) and
+   flushes at label 240. Measured on 2026-11-22 on `0f37cefa` (fixture inputs cut at June 2022,
+   1530 months, against the full 1536-month run, 344 divisions): PMDI is NaN in 627 months of
+   182 divisions, 552 of them in the last six months; PDSI differs in 306 months of 82
+   divisions (up to 5.09) and PHDI in 8 months of 7 divisions (up to 0.81). Division 0101 loses
+   its last three PMDI months. [#1663](https://github.com/monocongo/climate_indices/issues/1663)
+   measured 182 divisions and 552 NaN months in the last six months on `55f3f28c`, plus 22 zero
+   months; the zeros do not reproduce on `0f37cefa`.
 
-The library had reproduced both on purpose, because agreement with `pdi.f` on full-year
+The library had reproduced the first two on purpose, because agreement with `pdi.f` on full-year
 records to 1e-14 was the validation. Reproducing them also meant that appending data to a
 record, or truncating it, could change months a spell had long since resolved.
 
@@ -49,10 +68,21 @@ record, or truncating it, could change months a spell had long since resolved.
 2. **Each flushed month gets the PMDI of its own state.** The flush computes
    `CASE(ppr, px1, px2, px3)` from that month's own values, not the final month's. *Pending,
    #1666.*
-3. **Ending the recursion at the last real month is a separate change**, [#1663](https://github.com/monocongo/climate_indices/issues/1663): a record that ends before December
-   stops padding with NaN and flushes at its last real month. It relies on decision 2, because
-   the flush then never reads a padded month. It is listed here so the three issues share one
-   record, and it changes nothing for December-ending records.
+3. **The recursion stops at the last real observation.** A record that ends before December is
+   no longer run through NaN padding: NaN after the last observation does not advance the spell
+   or the deferral run, and the flush happens at the last real month. Pending months keep
+   PDSI = PHDI = X3 and take their own PMDI (decision 2), so the flush never reads a padded
+   month. Months inside a record that are NaN are out of scope: `pdi.f` requires complete data
+   and cannot express them. December-ending records are unchanged. *Pending,
+   [#1663](https://github.com/monocongo/climate_indices/issues/1663); relies on decision 2.*
+
+## Scope
+
+PDSI, PHDI and PMDI change for records that do not end in December and for records whose last
+deferral run is not closed. Only `pdsi()` and the standard recursion change; the Z-index and the
+Wells recursion behind `scpdsi()` do not. Python (`_palmer_pdi`) and Rust (`palmer_pdi`) kernels
+change together in every pull request, and native parity stays at `rtol = atol = 1e-10` with
+matching NaN positions (`tests/test_native_parity_palmer.py`).
 
 The three changes touch the same lines, so each issue lands in its own pull request and
 updates this record's status line.
@@ -80,7 +110,11 @@ updates this record's status line.
   (1.29 to 0.045) and PMDI (1.48 to 0.057); PHDI fell on average (0.42 to 0.19) but rose in
   divisions 1108 and 1109.
 - **A truncation test replaces the `pdi.f` comparison** for this behavior: truncating division
-  0101 at December 2002 must not change any month before it.
+  0101 at December 2002 must not change any month before it (decision 1; fixture
+  `tests/fixture/palmer/0101`, 1895-2002).
+- **June-ending records verify decisions 2 and 3.** A fixture record cut at June 2022 must equal
+  the full-record run on every month it contains, with no NaN PMDI, in Python and in Rust; a
+  December-ending record must not change.
 - **REFIMPL-29's mechanism F is retired.** The divergence study counted this bug as
   Pdi-vs-Wells class F. With decision 1 the library follows the Wells rule there, so the F
   case no longer diverges, and the pinned study results remain the record of the pinned commit.
