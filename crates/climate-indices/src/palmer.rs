@@ -186,10 +186,6 @@ pub struct WaterBalance {
 ///   to a calendar-year block with a trailing cell axis; `awc` the total
 ///   available water capacity per cell, in inches.
 /// - Outputs: the nine monthly arrays and their calibration-period monthly sums.
-/// - Zero and NaN semantics: every branch keeps NumPy's comparison order, so a
-///   NaN precipitation or PET propagates through the same expressions the Python
-///   path evaluates, and an exact-zero denominator (`awc == 0`) reaches the same
-///   `inf`/`NaN` arithmetic.
 ///
 /// # Numerical contract
 ///
@@ -202,11 +198,14 @@ pub struct WaterBalance {
 /// years independently per cell. Calibration bounds select inclusive, zero-based
 /// year rows for ordinary sums; they do not restrict the state updates.
 ///
-/// Zero precipitation and PET are observations, not missing values. A zero AWC
-/// is not replaced; divisions use IEEE arithmetic and ordered min/max selection.
-/// NaNs are not skipped, and ordered comparisons with NaN are false. Selections
-/// can retain finite operands, so a missing input need not make every output
-/// missing. State updates continue, and a NaN added to a calibration sum remains.
+/// Zero precipitation and PET are valid observations. The potential and actual
+/// soil moisture loss calculations divide by the combined layer capacity
+/// (`awc_bot + AWCTOP`). For zero or sub-inch AWC, the underlying layer has
+/// zero capacity and the one-inch surface layer supplies the denominator.
+/// The calculations include NaNs and preserve NumPy's comparison order.
+/// Ordered comparisons with NaN return false. Selections can retain finite
+/// operands when an input is missing. State updates continue, and a NaN
+/// added to a calibration sum remains.
 /// No calendar padding or missing-value replacement occurs.
 ///
 /// See the Measured accuracy section in [`crate`] for `palmer_pdsi` and
