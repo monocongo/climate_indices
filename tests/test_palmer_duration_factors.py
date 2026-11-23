@@ -575,3 +575,26 @@ def test_non_contracting_duration_factor_override_is_attributed_to_pdsi():
         palmer.pdsi(precips, pet, 5.0, 2000, 2000, 2003, fitting_params=non_contracting)
 
     assert error.value.algorithm == "PDSI duration-factor override"
+
+
+@pytest.mark.parametrize(
+    ("x1", "x2", "expected"),
+    [
+        (0.5, -0.5, 0.5),  # exact |X1| == |X2| tie goes to X1, as in pdi.f CASE (878-879)
+        (0.3, -0.7, -0.7),  # |X2| larger -> X2
+        (0.7, -0.3, 0.7),  # |X1| larger -> X1
+        (0.0, 0.0, 0.0),
+    ],
+)
+def test_case_near_normal_selects_x2_only_when_strictly_larger(x1, x2, expected):
+    result = _palmer_pdi._case(np.array([0.0]), np.array([x1]), np.array([x2]), np.array([0.0]))
+
+    assert result[0] == expected
+    assert np.signbit(result[0]) == np.signbit(expected)
+
+
+def test_case_zero_tie_keeps_x1_sign():
+    # |0.0| == |-0.0| is a tie; X1 (+0.0) wins, as in pdi.f.
+    result = _palmer_pdi._case(np.array([0.0]), np.array([0.0]), np.array([-0.0]), np.array([0.0]))
+
+    assert not np.signbit(result[0])

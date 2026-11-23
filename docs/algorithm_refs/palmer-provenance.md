@@ -82,7 +82,7 @@ citation is NCEI's, not a reading of the paper.
 | 19 | Backtracking, assignment of X | Palmer 1965 p. 33: while X3 is 0, X takes X1 or X2 according to which reached zero first, applied back through the period. Alley 1984 p. 1104: "(i) assign X = X1 until X1 = 0; (ii) then assign X = X2 until X2 = 0; (iii) repeat steps (i) and (ii) until a month was reached which already had an X value assigned". Wells C++ `Backtrack` (`pdsi.cpp:3562-3578`) and `ChooseX` (3626-3640). `pdi.f` ASSIGN (792-855) and label 240 (754-766) | pdi: `_backtrack_assigned_values` (`_palmer_pdi.py:245`), `_flush_spells` (270), `_assign` (299), `_finish_up` (540). Wells: `_backtrack` (`_palmer_wells.py:80`), `_assign_period` (258) | pdi: `backtrack` (`palmer_pdi.rs:156`), `flush` (178), `assign` (192), `finish_up` (380). Wells: `backtrack` (`palmer_wells.rs:96`), `assign_period` (304) | The end-of-record flush rewrites only the months still pending. `pdi.f` never resets the main program's `k8max` (ASSIGN's `k8max = k8` at 851 sets a local), so it re-flushes months a closed spell had resolved; the code stopped reproducing that in #1665 (ADR-0030) and `pdi.f` still does; see D9. Code uses exact-zero comparisons where the C++ uses `tolerance` in `Backtrack` (`pdsi.cpp:3575`); see {doc}`palmer` "Exact-zero comparisons". | V+R |
 | 20 | PDSI selection | Palmer 1965 p. 33 (rule above). Alley 1984 p. 1104 and Wells 2004 p. 2337: with no established spell, the PDSI is X1 or X2, "whichever has the largest absolute value"; with an established spell it is X3. NCEI readme: "Only one value is selected as the PDSI drought index for the month." `pdi.f` CASE (875-880) | `_record_index_values` (`_palmer_pdi.py:222`) | `palmer_pdi.rs:record` (147) | None of the opened papers says which of X1 and X2 wins a tie in absolute value; `pdi.f` CASE gives X1 (879). See D2. `_record_index_values` only stores what backtracking assigned (row 19); the largest-\|X\| comparison is in `_case` (`_palmer_pdi.py:211`) and supplies the near-real-time PMDI. | V |
 | 21 | PHDI | Karl 1986 p. 83: the PHDI "does not change sign until Pe equals 100%, and it only differs from the actual value of the PDSI when a series of months are encountered when 0 < Pe < 100%". Heim 2002 p. 1156: the X3 term "has come to be known as the Palmer Hydrological Drought Index". NCEI readme item 2. Wells C++ `getPHDI` (`pdsi.cpp:3982-3993`): PHDI = X3 when X3 is nonzero, else X. `pdi.f` 733-734, 761-763, 810-811, 843-845: the same rule | `_record_index_values` (`_palmer_pdi.py:236`); Wells lineage `_palmer_wells.py:348` | `palmer_pdi.rs:record`; `palmer_wells.rs` (403-423) | No source gives an equation labelled PHDI; the rule is `pdi.f`'s and the C++'s, consistent with Karl's and Heim's descriptions. Karl and Knight (1985), the cited PHDI atlas, was not opened. | V+R |
-| 22 | PMDI | Heim 2002 p. 1156: the NWS modification "allows computation of the PDSI operationally by taking the sum of the wet and dry terms after they have been weighted by their probabilities (P and 100% - P, where P = the probability that the spell is over)", citing Heddinghaus and Sabol (1991). NCEI readme item 4: "a weighted average of the wet and dry index terms, using the probability as the weighting factor". Wells C++ `getWPLM` (`pdsi.cpp:3945-3980`). `pdi.f` CASE (861-899) | `_case` (`_palmer_pdi.py:203`); `_pmdi` (`_palmer_wells.py:104`) | `palmer_pdi.rs:case` (64); `palmer_wells.rs:pmdi` (123) | **Tie behaviour differs from `pdi.f` and `getWPLM`; tolerance behaviour differs from `getWPLM` only**; see D2. Every month flushed at the end of the record gets the final month's PMDI, in `pdi.f` and here; see D9. Alley 1984 p. 1104 describes an earlier operational rule, from a 1983 personal communication with Heddinghaus: X3 when 0 < Pe <= 50, else the X1 or X2 of opposite sign to X3; that rule is not the weighted average and is not implemented. Neither function cites Heddinghaus and Sabol; the paper was not opened. | S (Heim, NCEI) + R |
+| 22 | PMDI | Heim 2002 p. 1156: the NWS modification "allows computation of the PDSI operationally by taking the sum of the wet and dry terms after they have been weighted by their probabilities (P and 100% - P, where P = the probability that the spell is over)", citing Heddinghaus and Sabol (1991). NCEI readme item 4: "a weighted average of the wet and dry index terms, using the probability as the weighting factor". Wells C++ `getWPLM` (`pdsi.cpp:3945-3980`). `pdi.f` CASE (861-899) | `_case` (`_palmer_pdi.py:203`); `_pmdi` (`_palmer_wells.py:104`) | `palmer_pdi.rs:case` (64); `palmer_wells.rs:pmdi` (123) | **Tie behaviour matches `pdi.f` and `getWPLM`; tolerance behaviour differs from `getWPLM` only**; see D2. Every month flushed at the end of the record gets the final month's PMDI, in `pdi.f` and here; see D9. Alley 1984 p. 1104 describes an earlier operational rule, from a 1983 personal communication with Heddinghaus: X3 when 0 < Pe <= 50, else the X1 or X2 of opposite sign to X3; that rule is not the weighted average and is not implemented. Neither function cites Heddinghaus and Sabol; the paper was not opened. | S (Heim, NCEI) + R |
 
 ### 5. Self-calibrating replacements (Wells lineage)
 
@@ -117,11 +117,13 @@ users passed the total capacity as `WCBOT`; that is an inference.
 **D2. PMDI near-normal and tolerance rules.** With no established spell
 (`x3 == 0`), `pdi.f` CASE returns `X1` unless `ABS(X2) .GT. ABS(X1)` (878-879),
 and `getWPLM` returns `x1` unless `-x2 > x1 + tolerance`; both give a tie to `x1`.
-`_case` and `_pmdi` return `x1` only if `|x1| > |x2|`, so an exact tie goes to
-`x2`. Alley 1984 and Wells 2004 say "largest absolute value" without a tie rule.
+`_case` and `_pmdi` (and `case` and `pmdi` in Rust) return `x2` only if
+`|x2| > |x1|`, so an exact tie goes to `x1`, as in both references
+([#1662](https://github.com/monocongo/climate_indices/issues/1662)). Alley 1984
+and Wells 2004 say "largest absolute value" without a tie rule.
 `pdi.f` compares the probability exactly with 0 and 100 (883), as the Python
 does; `getWPLM` treats probabilities within `tolerance/100` of 0 or 1 as the
-established case. The tie is to be fixed to X1 ([#1662](https://github.com/monocongo/climate_indices/issues/1662)).
+established case; the library does not apply that tolerance.
 
 **D3. Spell-establishment threshold.** Palmer 1965 (p. 32) and Alley 1984
 (p. 1103) establish a spell at X1 >= 1.00 or X2 <= -1.00, which the pdi lineage
@@ -172,10 +174,11 @@ recorded in REFIMPL-46 ([#1661](https://github.com/monocongo/climate_indices/iss
 
   The Wells manual calls a related form of the X2 behaviour "the bug found in the
   FORTRAN program" (its `-b` flag).
-- **Differs from `pdi.f`.** The code differs on an exact PMDI tie (D2) and on records
-  that end before December (the NaN padding runs through the recursion). Fixes:
-  [#1662](https://github.com/monocongo/climate_indices/issues/1662),
+- **Differs from `pdi.f`.** The code differs on records that end before December (the
+  NaN padding runs through the recursion). Fix:
   [#1663](https://github.com/monocongo/climate_indices/issues/1663).
+  An exact PMDI tie now goes to X1, as in `pdi.f`
+  ([#1662](https://github.com/monocongo/climate_indices/issues/1662)).
   The UL denominator at `awc == 0` now matches `pdi.f`
   ([#1664](https://github.com/monocongo/climate_indices/issues/1664)).
 - **Maintainer decisions (2026-11-19), recorded in {doc}`ADR-0030 <../adr/0030-palmer-end-of-record-flush>`.**
