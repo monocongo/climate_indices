@@ -120,6 +120,11 @@ def _git(*args: str) -> str:
     return subprocess.run(["git", *args], cwd=ROOT, check=True, capture_output=True, text=True).stdout.strip()
 
 
+def harness_state() -> dict[str, Any]:
+    """The commit that ran and whether the checkout (untracked files included) differs from it."""
+    return {"git_commit": _git("rev-parse", "HEAD"), "git_dirty": bool(_git("status", "--porcelain"))}
+
+
 def build_manifest(
     *,
     study: str,
@@ -133,6 +138,7 @@ def build_manifest(
     units: str,
     store_name: str,
     zeros: int,
+    harness: dict[str, Any],
     created: str | None = None,
 ) -> dict[str, Any]:
     provenance = contract.read_json(FIXTURE_DIR / "provenance.json")
@@ -161,10 +167,7 @@ def build_manifest(
         "schema_version": contract.SCHEMA_VERSION,
         "study": study,
         "created": created or datetime.date.today().isoformat(),
-        "harness": {
-            "git_commit": _git("rev-parse", "HEAD"),
-            "git_dirty": bool(_git("status", "--porcelain")),
-        },
+        "harness": harness,
         "source": f"{source_path.relative_to(ROOT).as_posix()} of this repository",
         # url and download_date are the fixture's own provenance (tests/fixture/palmer/provenance.json)
         "url": provenance["url"],
@@ -207,6 +210,7 @@ def run_study(study_dir: Path, division: str, scale: int, adapters: dict[str, li
     values = np.load(source)
     times = monthly_times(1895, len(values))
     positions = positions_for(scale, 1895, int(times[-1][:4]))
+    harness = harness_state()  # before the old manifest goes: it is tracked, and its absence would read as dirty
     (study_dir / "manifest.json").unlink(missing_ok=True)  # a failed rerun must not leave the old one
     work = study_dir / "work"
     request = write_request(
@@ -227,6 +231,7 @@ def run_study(study_dir: Path, division: str, scale: int, adapters: dict[str, li
         units="inch",
         store_name="store.zarr",
         zeros=int((values == 0).sum()),
+        harness=harness,
     )
     contract.write_json(study_dir / "manifest.json", manifest)
     return manifest
