@@ -420,6 +420,18 @@ def test_a_rerun_that_fails_leaves_no_stale_manifest(tmp_path: Path) -> None:
 
 
 @needs_git
+def test_a_rerun_that_fails_before_any_adapter_runs_leaves_no_stale_manifest(tmp_path: Path) -> None:
+    study = tmp_path / "s"
+    _run_study(study)
+    assert (study / "manifest.json").is_file()
+
+    with pytest.raises(FileNotFoundError):  # an unknown division: np.load fails before any adapter
+        harness.run_study(study, "9999", 3, ADAPTERS)
+
+    assert not (study / "manifest.json").exists()
+
+
+@needs_git
 def test_manifest_without_a_required_field_is_rejected(tmp_path: Path) -> None:
     jsonschema = pytest.importorskip("jsonschema")
     manifest = _run_study(tmp_path / "s")

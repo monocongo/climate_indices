@@ -207,11 +207,12 @@ def build_manifest(
 
 def run_study(study_dir: Path, division: str, scale: int, adapters: dict[str, list[str]]) -> dict[str, Any]:
     source = FIXTURE_DIR / division / "precips.npy"
+    harness = harness_state()  # before the old manifest goes: it is tracked, and its absence would read as dirty
+    # first thing after that, so no failure (a bad division included) can leave the old manifest standing
+    (study_dir / "manifest.json").unlink(missing_ok=True)
     values = np.load(source)
     times = monthly_times(1895, len(values))
     positions = positions_for(scale, 1895, int(times[-1][:4]))
-    harness = harness_state()  # before the old manifest goes: it is tracked, and its absence would read as dirty
-    (study_dir / "manifest.json").unlink(missing_ok=True)  # a failed rerun must not leave the old one
     work = study_dir / "work"
     request = write_request(
         work, study=study_dir.name, unit=division, times=times, values=values, units="inch", positions=positions
