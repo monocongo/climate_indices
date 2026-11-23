@@ -7,7 +7,7 @@
     ],
     "calendar_steps": 12,
     "repeats": 5,
-    "n_bootstrap": 99,
+    "n_bootstrap": 399,
     "alpha": 0.05,
     "default_rounding_unit": 10.0,
     "band_confidence": 0.999,
@@ -26,20 +26,20 @@
       "series": 3600,
       "statistics": {
         "ks": {
-          "rejected": 181,
-          "rate": 0.050277777777777775,
+          "rejected": 183,
+          "rate": 0.050833333333333335,
           "wilson_95": [
-            0.04360676141280878,
-            0.057907542976266796
+            0.04412463824790529,
+            0.058499592880652596
           ],
           "within_nominal_band": true
         },
         "ad": {
-          "rejected": 187,
-          "rate": 0.051944444444444446,
+          "rejected": 184,
+          "rate": 0.051111111111111114,
           "wilson_95": [
-            0.04516109594611085,
-            0.05968298866141163
+            0.04438366534458056,
+            0.05879552915371847
           ],
           "within_nominal_band": true
         }
@@ -53,7 +53,7 @@
         "mean": 0.0,
         "max": 0.0
       },
-      "seconds": 5.5
+      "seconds": 21.6
     },
     "pearson": {
       "rounding_unit": null,
@@ -61,34 +61,34 @@
       "series": 3138,
       "statistics": {
         "ks": {
-          "rejected": 151,
-          "rate": 0.04811982154238369,
+          "rejected": 167,
+          "rate": 0.05321861057998725,
           "wilson_95": [
-            0.04116838282799452,
-            0.05617626769918175
+            0.0458969251683622,
+            0.06163283508488259
           ],
           "within_nominal_band": true
         },
         "ad": {
-          "rejected": 130,
-          "rate": 0.041427660930529,
+          "rejected": 163,
+          "rate": 0.05194391332058636,
           "wilson_95": [
-            0.034997737899350054,
-            0.04897895611236126
+            0.04471280978982243,
+            0.06027067303190523
           ],
           "within_nominal_band": true
         }
       },
-      "mean_grid_fraction_at_or_below_alpha": 0.043905059057392094,
+      "mean_grid_fraction_at_or_below_alpha": 0.048557972362602314,
       "nominal_band": [
         118.0,
         199.0
       ],
       "bootstrap_failed_share": {
-        "mean": 0.11967990935486154,
-        "max": 0.4545454545454546
+        "mean": 0.11912908466194166,
+        "max": 0.40100250626566414
       },
-      "seconds": 5.8
+      "seconds": 24.0
     },
     "loglogistic": {
       "rounding_unit": null,
@@ -96,34 +96,34 @@
       "series": 3383,
       "statistics": {
         "ks": {
-          "rejected": 142,
-          "rate": 0.04197457877623411,
+          "rejected": 159,
+          "rate": 0.046999704404374815,
           "wilson_95": [
-            0.03572057999757305,
-            0.04926759034356868
+            0.040367392541669676,
+            0.054659629754425655
           ],
           "within_nominal_band": true
         },
         "ad": {
-          "rejected": 125,
-          "rate": 0.036949453148093406,
+          "rejected": 146,
+          "rate": 0.0431569612769731,
           "wilson_95": [
-            0.031099981509349988,
-            0.04384933687683815
+            0.036811752365612654,
+            0.05053850078845934
           ],
-          "within_nominal_band": false
+          "within_nominal_band": true
         }
       },
-      "mean_grid_fraction_at_or_below_alpha": 0.043122249202902974,
+      "mean_grid_fraction_at_or_below_alpha": 0.048675341115176136,
       "nominal_band": [
         129.0,
         212.0
       ],
       "bootstrap_failed_share": {
-        "mean": 0.04842990949996565,
-        "max": 0.18181818181818177
+        "mean": 0.04824728092771097,
+        "max": 0.1528822055137845
       },
-      "seconds": 1.1
+      "seconds": 4.5
     },
     "gev": {
       "rounding_unit": null,
@@ -131,11 +131,11 @@
       "series": 3600,
       "statistics": {
         "ks": {
-          "rejected": 171,
-          "rate": 0.0475,
+          "rejected": 174,
+          "rate": 0.04833333333333333,
           "wilson_95": [
-            0.0410210481172636,
-            0.05494362257440046
+            0.041796104187509744,
+            0.05583345661337777
           ],
           "within_nominal_band": true
         },
@@ -149,16 +149,16 @@
           "within_nominal_band": true
         }
       },
-      "mean_grid_fraction_at_or_below_alpha": 0.048687236171088444,
+      "mean_grid_fraction_at_or_below_alpha": 0.049209083152925555,
       "nominal_band": [
         138.0,
         224.0
       ],
       "bootstrap_failed_share": {
-        "mean": 0.0021492704826038115,
-        "max": 0.11111111111111116
+        "mean": 0.0021860206070732527,
+        "max": 0.09523809523809523
       },
-      "seconds": 1.5
+      "seconds": 6.6
     },
     "gamma_rounded_with_resolution": {
       "rounding_unit": 10.0,
@@ -166,20 +166,20 @@
       "series": 3600,
       "statistics": {
         "ks": {
-          "rejected": 164,
-          "rate": 0.04555555555555556,
+          "rejected": 161,
+          "rate": 0.04472222222222222,
           "wilson_95": [
-            0.03921488150981551,
-            0.05286504559366049
+            0.03844183158787079,
+            0.051973205406381756
           ],
           "within_nominal_band": true
         },
         "ad": {
-          "rejected": 148,
-          "rate": 0.04111111111111111,
+          "rejected": 149,
+          "rate": 0.04138888888888889,
           "wilson_95": [
-            0.03509952950179265,
-            0.048100983685824925
+            0.03535617187252467,
+            0.048399304684834055
           ],
           "within_nominal_band": true
         }
@@ -193,7 +193,7 @@
         "mean": 0.0,
         "max": 0.0
       },
-      "seconds": 5.5
+      "seconds": 22.0
     },
     "control_gamma_rounded_without_resolution": {
       "rounding_unit": 10.0,
@@ -201,20 +201,20 @@
       "series": 3600,
       "statistics": {
         "ks": {
-          "rejected": 850,
-          "rate": 0.2361111111111111,
+          "rejected": 867,
+          "rate": 0.24083333333333334,
           "wilson_95": [
-            0.2225239498311659,
-            0.25026084891474004
+            0.22714663961874018,
+            0.25507253641276534
           ],
           "within_nominal_band": false
         },
         "ad": {
-          "rejected": 567,
-          "rate": 0.1575,
+          "rejected": 577,
+          "rate": 0.16027777777777777,
           "wilson_95": [
-            0.14596650588298699,
-            0.1697636592261731
+            0.14865682862734794,
+            0.17262297017922365
           ],
           "within_nominal_band": false
         }
@@ -228,7 +228,7 @@
         "mean": 0.0,
         "max": 0.0
       },
-      "seconds": 5.2
+      "seconds": 21.4
     },
     "control_gamma_naive_k_s": {
       "rounding_unit": null,
@@ -259,20 +259,20 @@
       "series": 3600,
       "statistics": {
         "ks": {
-          "rejected": 282,
-          "rate": 0.07833333333333334,
+          "rejected": 281,
+          "rate": 0.07805555555555556,
           "wilson_95": [
-            0.06999875262146718,
-            0.0875668521114647
+            0.0697354855113637,
+            0.08727515585182703
           ],
           "within_nominal_band": false
         },
         "ad": {
-          "rejected": 350,
-          "rate": 0.09722222222222222,
+          "rejected": 338,
+          "rate": 0.09388888888888888,
           "wilson_95": [
-            0.08796953947379253,
-            0.10733357440153767
+            0.08478917735734828,
+            0.10385437608108808
           ],
           "within_nominal_band": false
         }
@@ -286,7 +286,7 @@
         "mean": 0.0,
         "max": 0.0
       },
-      "seconds": 6.3
+      "seconds": 22.5
     }
   }
 }

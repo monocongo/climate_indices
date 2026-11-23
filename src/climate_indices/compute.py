@@ -2354,8 +2354,19 @@ def prepare_input_shape(values: np.ndarray, spatial_time_major: bool) -> np.ndar
     return values
 
 
+def _sum_in_time_order(values: np.ndarray, scale: int) -> np.ndarray:
+    """Sum each complete window in time order, independently of the array layout."""
+    result = np.full(values.shape, np.nan)
+    sums = result[scale - 1 :]
+    size = sums.shape[0]
+    sums[...] = values[:size]
+    for offset in range(1, scale):
+        sums += values[offset : offset + size]
+    return result
+
+
 def prepare_scaled(
-    values: np.ndarray,
+    values: np.ndarray,  # NOSONAR (S107) preserves the shared preparation options and lets bootstrap fix the sum order.
     scale: int,
     periodicity: Periodicity,
     *,
@@ -2363,6 +2374,7 @@ def prepare_scaled(
     reshape: bool = True,
     spatial_time_major: bool = False,
     aggregation: Aggregation = "sum",
+    _fixed_sum_order: bool = False,
 ) -> np.ndarray:
     """
     Prepare an array of values for distribution fitting by flattening, clipping,
@@ -2402,6 +2414,8 @@ def prepare_scaled(
             divided by ``scale``, so the leading (scale - 1) pad and any window holding a
             missing value stay NaN exactly as they do for a sum; a ``scale`` of 1 is the
             identity under either operation.
+        _fixed_sum_order: Use the same summation order in every layout when the
+            bootstrap needs identical input bytes for its random streams.
 
     Returns:
         The scaled values, either 2-D with shape (years, periodicity.period_length),
@@ -2455,7 +2469,7 @@ def prepare_scaled(
 
     # get a sliding sums array, with each time step's value scaled
     # by the specified number of time steps
-    scaled_values = sum_to_scale(values, scale)
+    scaled_values = _sum_in_time_order(values, scale) if _fixed_sum_order and scale > 1 else sum_to_scale(values, scale)
 
     # a masked sum stands for the missing value it represents, so make it an explicit NaN
     if np.ma.isMaskedArray(scaled_values):

@@ -335,6 +335,20 @@ class TestBootstrap:
         np.testing.assert_array_equal(alone.ks_p_value_bootstrap[:, :, 0, 0], grid.ks_p_value_bootstrap[:, :, 1, 2])
         np.testing.assert_array_equal(alone.ad_p_value_bootstrap[:, :, 0, 0], grid.ad_p_value_bootstrap[:, :, 1, 2])
 
+    @pytest.mark.parametrize("use_native", [False, True], ids=["python", "native"])
+    def test_a_scaled_cell_gets_the_same_bootstrap_counts_in_every_layout(
+        self, monkeypatch: pytest.MonkeyPatch, use_native: bool
+    ) -> None:
+        monkeypatch.setattr(compute, "_native", conftest.import_native() if use_native else None)
+        grid = _grid(seed=3)
+        options = {"n_bootstrap": 17, "seed": 6, "candidates": GAMMA}
+        alone = _gof(grid.isel(lat=0, lon=1).values, 12, **options)
+        for data in (grid, grid.chunk({"time": -1, "lat": 1, "lon": 1})):
+            cell = _compare(data, 12, **options).isel(lat=0, lon=1)
+            np.testing.assert_array_equal(cell.ks_p_value_bootstrap.values, alone.ks_p_value_bootstrap)
+            np.testing.assert_array_equal(cell.ad_p_value_bootstrap.values, alone.ad_p_value_bootstrap)
+            np.testing.assert_array_equal(cell.bootstrap_failed_share.values, alone.bootstrap_failed_share)
+
     def test_the_batch_size_does_not_change_the_result(self, monkeypatch):
         values = _gamma(10, 2, 2)
         whole = _gof(values, n_bootstrap=17, seed=6, spatial_time_major=True)
@@ -432,7 +446,22 @@ class TestBootstrap:
         p = {"loc": np.array([0.0]), "scale": np.array([1.0]), "skew": np.array([0.0]), "prob_zero": np.array([0.0])}
         draws = suitability._simulate(Distribution.pearson, uniforms, p, 1.0)
         assert draws[0] == 1.0  # the draw that rounds to zero sits on the least positive lattice point
-        assert draws[1] < 0.0 and draws[2] > 0.0  # the real negative and positive support stays on the lattice
+        assert draws[1] < 0.0
+        assert draws[2] > 0.0
+
+    def test_a_pearson_point_near_zero_stays_on_the_lattice(self) -> None:
+        p = {"loc": np.array([0.0]), "scale": np.array([1.0]), "skew": np.array([0.0]), "prob_zero": np.array([0.0])}
+        draws = suitability._simulate(Distribution.pearson, np.array([[0.5]]), p, 1.0, origin=-1e-10)
+        np.testing.assert_array_equal(draws, [[-1e-10]])
+
+    @pytest.mark.parametrize(("origin", "resolution", "least_positive"), [(3000.0, 0.3, 0.3), (1000.0, 6.0, 4.0)])
+    def test_gamma_rounds_small_positive_draws_to_the_least_positive_lattice_point(
+        self, origin: float, resolution: float, least_positive: float
+    ) -> None:
+        uniforms = np.array([[0.1], [0.21]])
+        p = {"alpha": np.array([1.0]), "beta": np.array([1.0]), "prob_zero": np.array([0.2])}
+        draws = suitability._simulate(Distribution.gamma, uniforms, p, resolution, origin)
+        np.testing.assert_array_equal(draws[:, 0], [0.0, least_positive])
 
     def test_the_draws_lie_on_the_lattice_of_the_prepared_sample_not_on_multiples_of_the_unit(self):
         # a SPEI sample of values recorded in 3s carries +1000 per step, so it lies on 1000 + 3k, not on 3k
@@ -671,6 +700,7 @@ class TestArguments:
             {"gof": "ks"},
             {"gof": ("ks", "chi2")},
             {"gof": ("ks", "ks")},
+            {"gof": [np.array(["ks"])]},
             {"gof": 5},
             {"n_bootstrap": -1},
             {"n_bootstrap": 2.5},
@@ -920,7 +950,7 @@ def _draws(distribution: Distribution, years: int, cells: tuple[int, ...], seed:
 
 
 N_BOOTSTRAP, ALPHA, ROUNDING = 99, 0.05, 10.0
-# Broad regression bounds for the fixed-seed synthetic cases, allowing Monte Carlo noise and estimator bias.
+# These fast regression checks do not replace the 399-draw acceptance experiment in the characterization script.
 SIZE_REGRESSION_BOUNDS = (0.02, 0.09)
 
 

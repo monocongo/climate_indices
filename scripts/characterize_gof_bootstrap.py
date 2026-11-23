@@ -17,7 +17,8 @@ rounded record bootstrapped without a resolution. One further case probes a hard
 0.8 and scale 3 with 15% exact zeros, rounded to a unit of 1, where 35% of the record is zero and the unit is
 comparable to the mean.
 
-Reproduction is seeded. Runtime is about half a minute.
+Reproduction uses a fixed seed. The 399 draws reduce the gap between the nominal level and the
+attainable p-value threshold when refits fail. Runtime depends on the number of draws.
 
 Run: uv run scripts/characterize_gof_bootstrap.py --output docs/design/gof-bootstrap-characterization.json
 """
@@ -45,7 +46,7 @@ OUTPUT_ROOT = Path(__file__).resolve().parents[1] / "docs" / "design"
 YEARS = 40
 CELLS = (6, 10)
 REPEATS = 5
-N_BOOTSTRAP = 99
+N_BOOTSTRAP = 399
 ALPHA = 0.05
 CONFIDENCE = 0.999
 SEED = 1586
@@ -54,7 +55,7 @@ ROUNDING = 10.0  # the unit of the rounded record, coarse enough that a sample h
 
 def _draw(
     distribution: Distribution, rng: np.random.Generator, zero_heavy: bool = False
-) -> tuple[np.ndarray, str, dict[str, Any]]:
+) -> tuple[np.ndarray, suitability.IndexRoute, dict[str, Any]]:
     """One record whose every calendar step and cell is iid from ``distribution``, with its route and extra arguments."""
     shape = (YEARS * 12, *CELLS)
     if distribution is Distribution.gamma and zero_heavy:
@@ -64,13 +65,14 @@ def _draw(
     if distribution is Distribution.gamma:
         return rng.gamma(2.0, 30.0, size=shape), "spi", {}
     if distribution is Distribution.pearson:
-        return scipy.stats.pearson3.rvs(1.0, loc=100.0, scale=30.0, size=shape, random_state=rng), "spi", {}
+        draw = scipy.stats.pearson3.rvs(1.0, loc=100.0, scale=30.0, size=shape, random_state=rng)
+        return np.asarray(draw), "spi", {}
     if distribution is Distribution.loglogistic:
         # Fisk(c=1/0.3, scale=60) is Hosking's GLO with loc=60, scale=18, k=-0.3 (CDFs agree to 2e-16)
         draw = scipy.stats.fisk.rvs(c=1 / 0.3, scale=60.0, size=shape, random_state=rng)
     else:
         draw = scipy.stats.genextreme.rvs(-0.1, loc=100.0, scale=30.0, size=shape, random_state=rng)
-    return draw, "spei", {"pet_mm": np.zeros(shape)}  # zero PET leaves the water balance equal to the draw
+    return np.asarray(draw), "spei", {"pet_mm": np.zeros(shape)}  # zero PET leaves the water balance equal to the draw
 
 
 def _fit_record(
@@ -187,7 +189,7 @@ CASES: dict[str, Callable[[], dict[str, Any]]] = {
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    parser = argparse.ArgumentParser(description=(__doc__ or "").partition("\n")[0])
     parser.add_argument("--output", type=Path, required=True, help="JSON file below docs/design")
     arguments = parser.parse_args()
     output = arguments.output.resolve()

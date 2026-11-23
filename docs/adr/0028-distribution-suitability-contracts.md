@@ -122,7 +122,8 @@ Implementation decisions of SUIT-05 ([#1586](https://github.com/monocongo/climat
   prepared sample and is never inferred (that unit is the record's for SPI; `aggregation="mean"` divides it by the Timescale). The
   library fits p0 on the rounded record, so p0 already counts what rounded to zero: a draw that rounds to zero is set to the
   least positive point of the lattice, which keeps the simulated zero share at p0 and every nonzero value on the lattice, as in
-  the record. A negative draw from a family with a real support below zero stays negative; only a draw that rounds to zero moves.
+  the record. Gamma draws that round below zero move to the same lattice point, since negative values are outside gamma's
+  support. Negative Pearson Type III lattice points stay negative.
   Rounding the draws a second time would add zeros beyond p0, and rejected 8.9% (K-S) and 17.8% (A²) of series at a nominal 4% in a
   zero-heavy record. Without `resolution`, a record rounded to a coarse unit is rejected far too often
   ([VALIDATION.md](https://github.com/monocongo/climate_indices/blob/main/VALIDATION.md)).
@@ -135,7 +136,8 @@ Implementation decisions of SUIT-05 ([#1586](https://github.com/monocongo/climat
 - **Streams are keyed on the data.** Each calendar step and cell draws from its own stream, seeded by the seed and a digest of that
   column's calibration values, each value written one way (every NaN alike, `-0.0` as `0.0`, little-endian). A result therefore
   does not depend on a cell's position, on its neighbours, on the batching of replicates, on the Dask chunking, or on how a
-  missing value happens to be stored. Identical columns share a stream, which leaves each p-value valid. A seed of `None` draws
+  missing value happens to be stored. When a bootstrap runs, all layouts sum Timescale windows in time order so aggregation
+  does not change the digest. Identical columns share a stream, which leaves each p-value valid. A seed of `None` draws
   128 bits from the operating system's entropy; it is drawn once per call and recorded as a decimal string.
 - **No warnings or log events from simulated samples.** The library's calibration-quality and goodness-of-fit warnings, and the
   log events of its fitting functions, describe a real series, so a context variable (`compute._fit_warnings_suppressed`)

@@ -698,10 +698,9 @@ def _simulate(
     to that unit, which gives the simulated sample the observed record's tie structure. The values lie on the lattice
     ``origin + k * resolution``: the prepared SPEI sample carries an offset (``+1000`` per summed step), so its
     multiples of the unit start at ``origin``, not at zero. The library fits p0 on the rounded record, so p0 already
-    counts the values that rounded to zero: a draw that rounds to zero would add zeros beyond p0, and is set to the
-    least positive lattice value instead. Every nonzero value stays on the lattice, and the simulated zero share stays
-    p0. A negative draw from a family with a real support below zero stays negative; only a draw that rounds to zero is
-    moved.
+    counts the values that rounded to zero. Move a continuous draw that rounds to zero to the least positive lattice
+    point, so the simulated zero share stays p0. For gamma, also move a draw that rounds below zero, outside its support.
+    Keep negative Pearson Type III lattice points.
     """
     with np.errstate(all="ignore"):
         if distribution in _ZERO_MASS_FAMILIES:
@@ -711,8 +710,11 @@ def _simulate(
             draws = np.where(positive, _continuous_ppf(distribution, conditional, p), 0.0)
             if resolution is not None:
                 lattice = np.round((draws - origin) / resolution) * resolution + origin
-                smallest = (origin % resolution) or resolution  # the least positive point of the lattice
-                draws = np.where(positive, np.where(lattice == 0.0, smallest, lattice), 0.0)
+                nearest_zero = np.rint(-origin / resolution) * resolution + origin
+                smallest = nearest_zero if nearest_zero > 0.0 else nearest_zero + resolution
+                # Nonzero Pearson lattice points stay on the lattice, even when close to zero.
+                replace = lattice <= 0.0 if distribution is Distribution.gamma else np.equal(lattice, 0.0)
+                draws = np.where(positive, np.where(replace, smallest, lattice), 0.0)
         else:
             draws = _continuous_ppf(distribution, np.clip(uniforms, _PIT_MARGIN, 1.0 - _PIT_MARGIN), p)
             if resolution is not None:
@@ -807,7 +809,7 @@ def _bootstrap_p_values(
         done += size
     defined = scored & (succeeded > 0)
     with np.errstate(all="ignore"):
-        p_values = {
+        p_values: dict[GofStatistic, np.ndarray] = {
             name: np.where(defined & np.isfinite(observed[name]), (1 + exceeded[name]) / (succeeded + 1), np.nan)
             for name in observed
         }
@@ -896,7 +898,7 @@ def _compute_gof(
     ks_p_bootstrap = ad_p_bootstrap = failed_share = None
     if gof.n_bootstrap > 0:
         statistics = {"ks": ks_statistic, "ad": ad_statistic}
-        observed = {name: statistics[name] for name in gof.statistics}
+        observed: dict[GofStatistic, np.ndarray] = {name: statistics[name] for name in gof.statistics}
         p_values, failed_share = _bootstrap_p_values(
             chosen,
             fits,
@@ -940,7 +942,7 @@ def _validate_gof_statistics(gof: Sequence[GofStatistic]) -> tuple[GofStatistic,
         raise _invalid("gof must be a sequence of statistic names.", "gof", gof, names)
     chosen = tuple(gof)
     for statistic in chosen:
-        if statistic not in _GOF_STATISTICS:
+        if not isinstance(statistic, str) or statistic not in _GOF_STATISTICS:
             raise _invalid(f"Unsupported goodness-of-fit statistic: {statistic!r}.", "gof", statistic, names)
     if len(set(chosen)) != len(chosen):
         raise _invalid("gof statistics must be distinct.", "gof", chosen, names)
@@ -1014,7 +1016,7 @@ def _resolve_gof_options(
     resolved_seed = 0
     if n_bootstrap > 0:
         resolved_seed = secrets.randbits(128) if seed is None else int(seed)
-    statistics = tuple(statistic for statistic in _GOF_STATISTICS if statistic in chosen)
+    statistics: tuple[GofStatistic, ...] = tuple(statistic for statistic in _GOF_STATISTICS if statistic in chosen)
     return _GofOptions(statistics, int(n_bootstrap), resolution, bh_adjust, alpha, resolved_seed)
 
 
@@ -1149,11 +1151,11 @@ def compare_distributions(
 ) -> DistributionComparison | xr.Dataset:
     """Compare candidate distributions for an index on one shared calibration sample.
 
-    The series is prepared exactly as the named index prepares it (SPEI's water balance and
-    +1000 offset, ``standardized_index``'s ``aggregation`` and ``clip_negatives``), each
-    candidate is fitted with the library's own estimator for the calibration period, and the
-    log-likelihood is evaluated at those estimates. A zero is an exact zero, the definition
-    both existing zero-mass estimators fit with; the 0.0005 Pearson trace rule is a transform
+    Preparation uses the named index's rules (SPEI's water balance and +1000 offset,
+    ``standardized_index``'s ``aggregation`` and ``clip_negatives``). When a bootstrap runs,
+    window sums use a fixed order across array layouts. Each candidate is fitted with the
+    library's own estimator for the calibration period. The log-likelihood uses those estimates.
+    Both zero-mass estimators count exact zeros. The 0.0005 Pearson trace rule is a transform
     convention and does not change the sample. SPEI's log-logistic and GEV candidates score zeros
     as continuous observations when they lie within their fitted support (ADR-0016).
     The Pearson-to-gamma fallback is disabled: a failed fit is recorded in ``fit_failed``,
@@ -1433,6 +1435,7 @@ def _compare_numpy(
         clip_negatives=clip,
         spatial_time_major=spatial_time_major,
         aggregation=aggregation,
+        _fixed_sum_order=gof.n_bootstrap > 0,
     )
     if not require_valid:
         scaled = _shape_all_missing(scaled, prepared, periodicity, spatial_time_major)
@@ -1589,8 +1592,8 @@ _FIELD_METADATA: dict[str, dict[str, str]] = {
         "long_name": "Naive Kolmogorov-Smirnov p-value",
         "units": "1",
         "description": (
-            "Exact K-S p-value for fully specified parameters. The parameters were estimated from the same sample, "
-            "so it is uncalibrated and too high; use the bootstrap p-value for a test."
+            "P-value under the fully specified K-S null, interpolated for samples of seven or more values. "
+            "It is not calibrated for parameters fitted to the same sample."
         ),
     },
     "ad_statistic": {
