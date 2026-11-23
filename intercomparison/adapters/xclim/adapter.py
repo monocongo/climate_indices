@@ -21,7 +21,7 @@ def compute(request: dict[str, Any], inputs: dict[str, tuple[list[str], list[flo
     import pandas as pd
     import xarray as xr
     import xclim
-    from xclim.indices import standardized_precipitation_index
+    from xclim.compute import standardized_precipitation_index
 
     times, values = inputs["precip"]
     first, last = request["positions"]["calibration_period"].split("/")
