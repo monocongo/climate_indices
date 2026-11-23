@@ -490,13 +490,38 @@ def test_finish_up_leaves_months_of_a_resolved_spell_alone():
     assert (state.pdsi[0, 1, 0], state.phdi[0, 1, 0], state.wplm[0, 1, 0]) == (1.5, 2.5, 3.5)
 
 
+def test_finish_up_flushes_each_cell_up_to_its_own_pending_count():
+    """_finish_up keeps the per-cell k8 mask when cells have different runs pending.
+
+    A regression that flushed the longest cell's slot count for every cell would
+    overwrite the shorter cell's resolved slot 1 with its provisional values.
+    """
+    state = _palmer_pdi._initialize_state(np.full((1, 12, 2), np.nan))
+    state.k8 = np.array([1, 2])
+    for cell in (0, 1):
+        for slot, month in enumerate((0, 1)):
+            state.indexj[slot, cell], state.indexm[slot, cell] = 0, month
+            state.x[0, month, cell] = 9.0
+    # cell 0's slot 1 is a resolved month; cell 1's slot 1 is still pending
+    state.pdsi[0, 1, 0], state.phdi[0, 1, 0], state.wplm[0, 1, 0] = 1.5, 2.5, 3.5
+
+    _palmer_pdi._finish_up(state)
+
+    assert state.pdsi[0, 0, 0] == 9.0  # cell 0 slot 0 pending: flushed
+    assert (state.pdsi[0, 1, 0], state.phdi[0, 1, 0], state.wplm[0, 1, 0]) == (1.5, 2.5, 3.5)
+    assert state.pdsi[0, 0, 1] == 9.0  # cell 1 both slots pending: flushed
+    assert state.pdsi[0, 1, 1] == 9.0
+
+
 def test_a_resolved_month_keeps_its_value_when_nothing_is_pending_at_the_end():
     """#1665: the REFIMPL-29 "F" sequence, where the stale ``k8max`` rewrote a resolved month.
 
     The spell resolves at the fifth month and the sixth resolves directly, so nothing is
     pending when the record ends. Before the fix the fifth month's PDSI was re-flushed to
     its provisional -0.618839 and its PMDI to the final month's 1.897. Values are the
-    library's own, pinned to the Rust test of the same name in ``palmer_pdi.rs``.
+    library's own, pinned to the same contract as the Rust test
+    ``finish_up_leaves_months_of_a_resolved_spell_alone`` in ``palmer_pdi.rs``, which
+    checks month 4 of the six-month series that this test pads to a whole year.
     """
     wetm = drym = (1.0 - 0.897) / (1.0 / 3.0)
     wetb = dryb = 0.897 / (1.0 / 3.0)
