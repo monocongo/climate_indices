@@ -236,6 +236,10 @@ def test_distribution_suitability_notebook_runs_on_prepared_sample(
         assert len(namespace["top_two"]) == 2
         change = namespace["change"]
         assert set(change["share_changed"].dims) == {"lat", "lon"}
+        # The printed share pools pairs; the map keeps the per-cell share.
+        pooled = namespace["pooled"]
+        confusion = pooled["confusion"].values
+        assert float(pooled["share_changed"]) == pytest.approx(1.0 - np.trace(confusion) / confusion.sum())
         water = namespace["water"]
         expected_threshold = float(water.sel(time=slice("1981", "2010")).quantile(0.2))
         assert namespace["threshold"] == pytest.approx(expected_threshold)
