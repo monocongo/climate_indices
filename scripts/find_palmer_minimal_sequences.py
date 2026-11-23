@@ -122,7 +122,7 @@ def seed_window(division: str, start: int, stop: int, target: str) -> list[float
     """The smallest left extension of a real episode that reproduces ``target`` on its own."""
     z = c.load_z(division)
     for tail in (6, 12):
-        end = len(z) if target == "F" else min(stop + tail, len(z))
+        end = min(stop + tail, len(z))
         for lead in range(6, start + 1, 6):
             active = [float(v) for v in z[start - lead : end]]
             if label_of(active) == target:
