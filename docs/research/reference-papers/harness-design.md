@@ -4,7 +4,7 @@
 
 **Question.** What is the smallest harness that runs every comparator on identical inputs, records exactly what each one did, and can be rerun by a reviewer?
 
-**Answer in one line.** A top-level `intercomparison/` directory in this repository: a driver that calls each comparator as a subprocess in its own locked environment through a JSON-and-CSV contract, writes one Zarr store and one JSON manifest per study, and commits only the manifest and derived metrics.
+**Answer in one line.** A top-level `intercomparison/` directory in this repository: a driver that calls each comparator as a subprocess in its declared environment through a JSON-and-CSV contract, writes one Zarr store and one JSON manifest per study, commits the harness code plus manifests and derived metrics, and ignores bulk stores and work directories.
 
 ## 1. Location: `intercomparison/` in this repository
 
@@ -23,7 +23,7 @@ What this changed in the repository, and what was checked:
 
 ## 2. Environment per comparator
 
-- **Python comparators:** one uv project each, `intercomparison/adapters/<name>/`, with its own `pyproject.toml` and committed `uv.lock`, run as `uv run --locked --project <dir> python <adapter>`. The `xclim` project pins `xclim==1.0.0` and resolves the same NumPy, pandas and xarray as the survey (`comparators.lock.yaml`: numpy 2.5.5, pandas 3.1.1, xarray 2026.9.0). Its Python is limited to 3.12, the survey's version; the repository environment runs the library on its own Python.
+- **Python comparators:** a comparator that needs isolation gets one uv project, `intercomparison/adapters/<name>/`, with its own `pyproject.toml` and committed `uv.lock`, run as `uv run --locked --project <dir> python <adapter>`. The current `climate_indices` slice has no project of its own: it runs in the repository environment, so a rerun of it depends on the environment active at the root. The `xclim` project pins `xclim==1.0.0` and resolves the same NumPy, pandas and xarray as the survey (`comparators.lock.yaml`: numpy 2.5.5, pandas 3.1.1, xarray 2026.9.0). Its Python is limited to 3.12, the survey's version; the repository environment runs the library on its own Python.
 - **R and Octave comparators:** a container per comparator, as the existing recipes in `docs/research/reference-papers/containers/` do. Those pin the base image by digest only for `ndmc-spi`; `linux-smoke` and `ncl` use tags, so a container adopted into the harness must be pinned by digest first. These are not built in this slice. The adapter tickets (REFIMPL-12 to REFIMPL-15, [#1614](https://github.com/monocongo/climate_indices/issues/1614) to [#1617](https://github.com/monocongo/climate_indices/issues/1617)) and the Palmer comparator adapters own them. Open: `comparators.md` notes that CRAN dependencies are not pinned in `containers/linux-smoke/`; the first R adapter must choose a dated package snapshot or an `renv.lock`. That is not decided here.
 - GPL comparators are executed, never vendored: an adapter holds a call and a pin, not the comparator's source. Only numeric outputs and provenance are committed.
 
@@ -43,13 +43,13 @@ The proposal in the ticket, `run(index, method_spec, inputs) -> Result`, is kept
 
 - **Store.** One Zarr group per study, array `values` of dtype float64 and dims `(implementation, unit, time)`, written only by the driver in the repository environment. `attrs` carry the implementation order, the units and the time labels. Chosen over Parquet because the studies are arrays and the gridded demonstration (REFIMPL-36, [#1638](https://github.com/monocongo/climate_indices/issues/1638)) is an array; Parquet is the better format for the derived metrics, and those are committed as JSON or CSV.
 - **Manifest.** `manifest.json`, validated by `intercomparison/manifest.schema.json`. It reuses the provenance field names of `tests/fixture/provenance_schema.json` (`source`, `url`, `download_date`, `subset_description`, `checksum_sha256`, `fixture_version`, `license`, `notes`). It omits `validation_tolerance`: tolerances belong to each study's pre-registration under the protocol (`protocol.md`). It adds the harness commit and dirty flag, the positions, each input's source path and both hashes, and per implementation the version, effective method, software, platform, wall time, warnings and output SHA-256.
-- **Reproducibility.** A rerun reproduces every `output_sha256` and `checksum_sha256`; wall time (adapters import their comparator before the timer starts), platform, the creation date and the harness commit and dirty flag differ. Tested offline (`test_rerun_gives_identical_output_hashes`), and by running the documented commands in a fresh clone of the branch, where every output hash matched the committed manifest. `git_dirty` counts untracked files.
+- **Reproducibility.** On the platform and with the Python and package versions a manifest records, a rerun reproduces every `output_sha256` and `checksum_sha256`. That is the claim tested: offline in one environment (`test_rerun_gives_identical_output_hashes`), and by running the documented commands in a fresh clone of the branch on the same machine, where every output hash matched the committed manifest. It is not a cross-platform or cross-version guarantee: values are written as binary64, so another platform or NumPy and SciPy version can change the last bits and so a hash, and the root project supports several Python versions. Wall time (adapters import their comparator before the timer starts), platform, the creation date and the harness commit and dirty flag are recorded metadata that may differ between reruns. `git_dirty` counts untracked files.
 
 ## 5. What is committed
 
 | Committed | Not committed |
 | --- | --- |
-| `manifest.json` per study, derived metrics (REFIMPL-16), small paired fixtures, the adapters, the contract, the schema, each adapter's `uv.lock` | `store.zarr`, `work/` (requests, input CSVs, per-adapter results), each adapter's `.venv` |
+| `manifest.json` per study, the adapters, the contract, the schema, each adapter's `uv.lock`. Later, from REFIMPL-16, derived metrics and small paired fixtures: this slice has none | `store.zarr`, `work/` (requests, input CSVs, per-adapter results), each adapter's `.venv` |
 
 Bulk size, for planning: 344 divisions x about 15 implementations x 1,536 months x 8 bytes is about 63 MB per index and configuration, which stays in git-ignored stores. Anyone can regenerate a store from the manifest's inputs, pins and one command.
 
@@ -57,7 +57,7 @@ Bulk size, for planning: 344 divisions x about 15 implementations x 1,536 months
 
 Gamma SPI-3 for division 0101 of `tests/fixture/palmer/` (precipitation, inches, 1895-01 to 2022-12), through `climate_indices` 3.2.0 and `xclim` 1.0.0 in the aligned configuration `spi-gamma-thom`, to `intercomparison/studies/refimpl-08-slice/manifest.json`. Rerun: [`intercomparison/README.md`](../../../intercomparison/README.md).
 
-Observation, not a result (metrics are REFIMPL-16): 1,534 of 1,536 months are paired (the first two have no three-month sum in either). 1,533 differ by at most 7.4e-14. One month (1965-12, index 851) differs by 0.0627: the library clips SPI at -3.09 (its output bound) and xclim's bound is ±8.21, so it returns -3.1527. The three are logged in the [discrepancy ledger](discrepancy-ledger.md) as P08-N, P08-B and P08-A. The `climate_indices` adapter reported no method difference. The `xclim` adapter reported one: it applies a rolling mean where the request says sum, which gives the same gamma SPI. Division 0101 has no zero-precipitation month, so the `zero_handling` position is declared but not exercised in this slice.
+Observation, not a result (metrics are REFIMPL-16): 1,534 of 1,536 months are paired (the first two have no three-month sum in either). 1,533 differ by at most 7.4e-14. One month (1965-12, index 851) differs by 0.0627: the library clips SPI at -3.09 (its output bound) and xclim's bound is ±8.21, so it returns -3.1527. The three are logged in the [discrepancy ledger](discrepancy-ledger.md) as P08-N, P08-B and P08-A. The `climate_indices` adapter reported no method difference. The `xclim` adapter reported one: it applies a rolling mean where the request says sum, which gives the same gamma SPI. Division 0101 has no zero three-month accumulation, so the `zero_handling` position is declared but not exercised in this slice.
 
 ## Not done here
 

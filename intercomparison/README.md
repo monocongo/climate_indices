@@ -31,5 +31,5 @@ The first `xclim` run builds `intercomparison/adapters/xclim/.venv` from its `uv
 | `studies/<study>/store.zarr` | no | array `values`, dims (implementation, unit, time) |
 | `studies/<study>/work/` | no | the request, the input CSV, and each adapter's `result.json` and series |
 
-A rerun on the same inputs reproduces every `output_sha256` and `checksum_sha256`. Wall time, platform, `created` and the `harness` commit and dirty flag differ.
+For this committed slice, a rerun on the same inputs, on the platform and with the Python and package versions the manifest records, reproduces every `output_sha256` and `checksum_sha256`. Other platforms or NumPy and SciPy versions can change the last bits of a float, and so a hash; compare with a tolerance there. Wall time, platform, `created` and the `harness` commit and dirty flag are recorded metadata that may differ.
 Validate a manifest with `manifest.schema.json`.
