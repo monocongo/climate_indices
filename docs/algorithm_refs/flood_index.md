@@ -23,9 +23,10 @@ the convention and its measured size.
 
 The PE kernel is the harmonic double sum of Byun and Wilhite (1999), Eq. (2),
 selected over their Eq. (3) by [ADR-0014](../adr/0014-flood-family-scientific-conventions.md).
-The Deo et al. (2015, 2019) abstracts describe an exponentially decaying PE;
-whether the 2015 implementation uses that kernel remains unverified. The
-exponential form and flood-event detection helpers are **not implemented**.
+The Deo et al. (2015) abstract describes an "exponentially decaying" PE, but the
+paper's Eq. (1) is the same harmonic double sum (see
+[`docs/research/deo-2015-flood-index-notes.md`](../research/deo-2015-flood-index-notes.md)).
+No separate exponential form is implemented.
 Moishin et al. (2021), co-authored with Deo, supplies an openly licensed
 same-lineage statement of the double sum, not a numeric oracle for this API.
 

@@ -107,8 +107,8 @@ The [flood-family epic #1098][flood-epic] tracks the implementation order.
 - **Flood Index (I_F)** — *NumPy and stable xarray APIs available
   (FLOOD-10 [#1107][flood-1107], FLOOD-11 [#1108][flood-1108])*. A daily flood-potential index that standardizes effective precipitation
   ([Deo et al. (2015)][deo-2015]). The annual-maximum window follows the
-  caller's year boundary, and the kernel question — the abstracts describe an
-  exponential form while the implemented kernel is unverified — is recorded in
+  caller's year boundary, and the kernel question — the abstracts say "exponentially
+  decaying" while the paper's Eq. (1) is the harmonic double sum implemented here — is recorded in
   [ADR-0014](adr/0014-flood-family-scientific-conventions.md); see
   {doc}`algorithm_refs/flood_index` for the algorithm and validation status.
   For DataArray input, omitted `calibration_year_initial` defaults to the first

@@ -21,6 +21,12 @@ Amended for [#1147](https://github.com/monocongo/climate_indices/issues/1147):
 decision 4 now records the interpolated-PE convention for chained xarray calls.
 No kernel or API behavior changed.
 
+Amended after reading the Deo et al. (2015) full text
+(`docs/research/deo-2015-flood-index-notes.md`): its Eq. (1) is the harmonic
+double sum of decision 2, so the abstract's "exponentially decaying" wording is
+descriptive and the kernel is no longer unverified. No kernel or API behavior
+changed.
+
 Amended for [#1258](https://github.com/monocongo/climate_indices/issues/1258):
 decision 5 now records the flood-event helper conventions — the strict
 comparison, raw-sum severity, caller-supplied hydrological-year periods, and the
@@ -42,8 +48,8 @@ series (plotted only, never tabulated), the paper's missing-data substitution
 rules, and a multi-decade per-calendar-day baseline; the paper names its data
 source as 193 High Plains stations with 37 years (1960–96) of daily
 precipitation, reduced to 113 after discarding stations missing more than 1% of
-their record. Deo et al. (2015) is paywalled, and its abstract alone does not
-describe the kernel it implements. Kohler & Linsley (1951) is partially
+their record. Deo et al. (2015) was paywalled when this ADR was written, and its abstract alone does not
+describe the kernel it implements (the full text has since been read; see the amendment above). Kohler & Linsley (1951) is partially
 retrievable through HathiTrust, which confirms its definitional content but
 supplies no tabulated values. Where a convention cannot be pinned from
 accessible sources, this record prefers a documented, citable deviation over an
@@ -90,17 +96,17 @@ unreproducible claim of reproduction.
    upper basins, mountainous areas, and sandy areas while recommending Eq. (3)
    for lower basins with good water retention, so the choice is this package's
    decision rather than a reading of the paper. The Deo et al. (2015) and (2019)
-   abstracts describe an exponentially decaying effective precipitation
-   (Byun & Wilhite's Eq. (1) form) instead, which is not algebraically
-   equivalent; **the kernel the 2015 paper implements is unverified** until its
-   full text or Byun & Jung (1998) is retrieved. The exponential is **not**
+   abstracts describe an exponentially decaying effective precipitation,
+   which would be Byun & Wilhite's Eq. (1) form and is not algebraically
+   equivalent; **the 2015 full text, since read, shows its Eq. (1) is the double
+   sum**, so the abstract wording is descriptive. The exponential is **not**
    implemented, because its parameterization — decay constant, summation length,
-   definition of "hydrological period" — is not recoverable from the abstracts,
+   definition of "hydrological period" — is not recoverable from the abstracts or the body,
    and it would fork the family's shared kernel. Moishin et al. (2021, CC BY 4.0),
    co-authored with Deo, implements the double sum for the same index and
    attributes that PE form to Byun & Jung (1998), which is the openly licensed
-   statement of the algebra to cite until the full text settles the question; no
-   kernel-selecting parameter is added before then.
+   statement of the algebra, now corroborated by the 2015 full text; no
+   kernel-selecting parameter is added.
 3. **I_F's annual maxima are grouped by a caller-supplied year boundary.**
    `flood_index()` takes a required, keyword-only `year_start_month`; there is no
    default and no water-year detector. The 2015/2019 abstracts say the maxima
@@ -245,9 +251,9 @@ implementation, and regression, and its
 recursion is now cited rather than assumed (Kohler & Linsley 1951 Eq. (3): each
 day's index is the previous day's multiplied by `k` with that day's rain added —
 the non-lagged form — with typical `k` of 0.85–0.90 and an assumed initial value
-converging within several weeks); I_F has
-no Deo-algebra check available and stays specification-level until the full text
-arrives. `tidyindex` is precedent that harmonic weighting on a rolling window is
+converging within several weeks); I_F's kernel is
+confirmed against the Deo et al. (2015) full text, but no numeric check is
+possible and it stays specification-level. `tidyindex` is precedent that harmonic weighting on a rolling window is
 an established EDI construction — it does **not** share this kernel's weights
 (`H_D − H_{m−1}`, against its reversed `H_n`) and is not an oracle. None of this
 is external validation: no reproducible numeric paper oracle has been
@@ -257,8 +263,8 @@ and regression tiers.
 Deferred work is blocked on retrieval rather than on design: reproducing Table 5
 and implementing the variable-duration EDI both wait on the Hickman record, whose
 source the paper names, with the dry-day threshold and the `DS` definition now
-settled by decision 1; an I_F numeric oracle waits on the Deo et al. (2015) full
-text; an API numeric oracle waits on the remaining pages of Kohler & Linsley
+settled by decision 1; an I_F numeric oracle waits on the Deo et al. (2015) rainfall
+inputs (adjusted BoM 40094, not published); an API numeric oracle waits on the remaining pages of Kohler & Linsley
 (1951), whose retrieved portion tabulates no values. A reader who
 wants the published variable-duration EDI should treat it as an unimplemented
 index, not as a bug in `edi()`.

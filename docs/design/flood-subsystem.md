@@ -159,7 +159,8 @@ observed flooding.
   "Minimum of CNS" row cannot be a consecutive-day count under the paper's own
   definition of CNS, and that the Fig. 2 legend plots ANES in those panels — the
   row appears mislabelled, so it is not a CNS fixture.
-- **A numeric I_F oracle**, blocked on the Deo et al. (2015) full text; I_F is
-  specification-level until then, and the exponential kernel its abstracts
-  describe is not implemented (ADR-0014).
+- **A numeric I_F oracle**, blocked on the paper's rainfall inputs (BoM station
+  40094, 1915–2012, adjusted and gap-filled; not published). The Deo et al. (2015)
+  full text confirms the harmonic kernel, so I_F stays specification-level
+  (ADR-0014, `docs/research/deo-2015-flood-index-notes.md`).
 - **A numeric API oracle**, blocked on Kohler & Linsley (1951).
