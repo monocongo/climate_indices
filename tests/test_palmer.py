@@ -3,16 +3,31 @@ import os
 import numpy as np
 import pytest
 
+from climate_indices.drought import palmer
+
 # Tests for `climate_indices.drought.palmer.py`
 ATOL = 5e-5
 RTOL = 0
 
-pytestmark = pytest.mark.validation
-
 _FIXTURE_ROOT = os.path.join(os.path.split(__file__)[0], "fixture", "palmer")
 
 
+@pytest.mark.parametrize("awc", [0.0, 0.5, 1.0])
+def test_pdsi_with_surface_layer_only(monkeypatch: pytest.MonkeyPatch, awc: float) -> None:
+    monkeypatch.setattr(palmer, "_native", None)
+    precips = np.repeat([0.5, 3.0], 12)
+    pet = np.full(24, 2.0)
+
+    with np.errstate(all="raise"):
+        pdsi, phdi, pmdi, zindex, params = palmer.pdsi(precips, pet, awc, 2000, 2000, 2001)
+
+    assert np.isfinite([pdsi, phdi, pmdi, zindex]).all()
+    # The dry year loses one inch of stored water in January. The wet year meets PET every month.
+    np.testing.assert_array_equal(params["alpha"], [3.5 / 4] + [2.5 / 4] * 11)
+
+
 # ---------------------------------------------------------------------------------------
+@pytest.mark.validation
 def test_pdsi(
     palmer_pdsi_results,
     data_year_start_monthly,
