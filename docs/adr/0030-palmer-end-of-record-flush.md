@@ -7,12 +7,11 @@ Approved for implementation. The maintainer made decisions 1 and 2 on 2026-11-19
 standard Palmer path with NCEI `pdi.f`. The maintainer recorded decision 3 in
 [#1689](https://github.com/monocongo/climate_indices/pull/1689) and linked it from
 [the tracking issue](https://github.com/monocongo/climate_indices/issues/1663#issuecomment-7091623769).
-This update addresses
-[#1678](https://github.com/monocongo/climate_indices/issues/1678). Decision 1 is implemented by
-[#1665](https://github.com/monocongo/climate_indices/issues/1665). Decision 2 is tracked by
-[#1666](https://github.com/monocongo/climate_indices/issues/1666) and decision 3 by
-[#1663](https://github.com/monocongo/climate_indices/issues/1663); neither is implemented yet.
-Promote this record to `Accepted` when both land.
+This update addresses [#1678](https://github.com/monocongo/climate_indices/issues/1678).
+[#1665](https://github.com/monocongo/climate_indices/issues/1665) implemented decision 1.
+[#1666](https://github.com/monocongo/climate_indices/issues/1666) implemented decision 2.
+Decision 3 is pending in [#1663](https://github.com/monocongo/climate_indices/issues/1663).
+When decision 3 lands, promote this record to `Accepted`.
 
 ## Context
 
@@ -47,12 +46,13 @@ whose paper the study did not review.
 3. **NaN padding drives the recursion.** For a record that does not end in December,
    `palmer.py` pads the final year with NaN and the spell recursion runs through the padded
    months (`_palmer_pdi.calculate`; Rust `palmer_pdi.rs`, whose contract says "NaN Z still
-   advances the recursion"). A NaN Z drives arbitrary transitions through statements 170, 190
-   and 200, can backtrack months that are still pending, and `_finish_up` reads `final_wplm`
-   from a padded month. `pdi.f` stops at the last month with data (`nendmo`, lines 562-564) and
-   flushes at label 240. Measured on 2026-11-22 on `0f37cefa` (fixture inputs cut at June 2022,
-   1530 months, against the full 1536-month run, 344 divisions): PMDI is NaN in 627 months of
-   182 divisions, 552 of them in the last six months. PDSI differs from the full run in 306
+   advances the recursion"). A NaN Z can cause transitions through statements 170, 190 and 200
+   and backtrack months that are still pending. Before #1666, `_finish_up` also read
+   `final_wplm` from a padded month. `pdi.f` stops at the last month with data (`nendmo`,
+   lines 562-564) and flushes at label 240. On 2026-11-22, the comparison at `0f37cefa` used
+   344 divisions and cut the 1536-month fixture inputs to 1530 months (June 2022).
+   PMDI is NaN in 627 months of 182 divisions, 552 of them in the last six months.
+   PDSI differs from the full run in 306
    months of 82 divisions (up to 5.09) and PHDI in 8 months of 7 divisions (up to 0.81); those
    counts include months that are legitimately still pending at the cut, so only the NaN PMDI
    counts are unambiguous defects. Division 0101 loses its last three PMDI months.
@@ -74,8 +74,8 @@ record, or truncating it, could change months a spell had long since resolved.
    happens later in the record. This departs from `pdi.f` deliberately, in the direction the
    Fortran's own ASSIGN intended. *Implemented by #1665.*
 2. **Each flushed month gets the PMDI of its own state.** The flush computes
-   `CASE(ppr, px1, px2, px3)` from that month's own values, not the final month's. *Pending,
-   #1666.*
+   `CASE(ppr, px1, px2, px3)` from that month's own values, not the final month's.
+   *Implemented by #1666.*
 3. **The recursion stops at the last month of the supplied record.** NaN padding added after
    that month to complete the final calendar year does not advance the spell or the deferral
    run. The flush uses only months on the supplied time axis. Pending months keep
@@ -87,14 +87,14 @@ record, or truncating it, could change months a spell had long since resolved.
 
 ## Scope
 
-PDSI, PHDI and PMDI change in three cases. Already-resolved months of the last deferral run
-are no longer rewritten (decision 1, any end month). The PMDI of months still pending at the
-end is their own (decision 2). Records that do not end in December stop at their last real
-month (decision 3). Only `pdsi()` and the standard recursion change; the Z-index and the
-Wells recursion behind `scpdsi()` do not. Python (`_palmer_pdi`) and Rust (`palmer_pdi`) kernels
-change together in every pull request, and native parity stays at `rtol = atol = 1e-10` with
-matching NaN positions (`tests/test_native_parity_palmer.py`; exact on macOS arm64, where
-the division-wide tests pin 0.0). No registry entry may loosen it.
+Decision 1 preserves the PDSI, PHDI and PMDI of resolved months in the last deferral run.
+Decision 2 changes only the PMDI of months still pending at the end.
+Decision 3 can change PDSI, PHDI and PMDI for records that do not end in December.
+Only `pdsi()` and the standard recursion change. The Z-Index and the Wells recursion
+behind `scpdsi()` do not change. The Python (`_palmer_pdi`) and Rust (`palmer_pdi`) kernels
+change together in each pull request. Native parity requires `rtol = atol = 1e-10` and matching
+NaN positions (`tests/test_native_parity_palmer.py`). The division-wide tests require exact
+agreement on macOS arm64. No registry entry may loosen these requirements.
 
 The three changes touch the same lines, so each issue lands in its own pull request and
 updates this record's status line.
@@ -108,22 +108,26 @@ updates this record's status line.
   December 2002 and the same record extended to 2022 now agree on every resolved month. A month
   still pending at the end is unchanged by decision 1.
 - **Agreement with nClimDiv improves.** Against NCEI nClimDiv over the 344 fixture divisions,
-  the maximum PMDI difference falls from 5.5748 to 4.3961, the PDSI mean from 0.0432 to
+  the maximum PMDI difference falls from 5.5748 to 1.7026, the PDSI mean from 0.0432 to
   0.0428, and the PMDI median from 0.0191 to 0.0190; the PDSI median (0.0127) and the 86.2%
   within 0.05 are unchanged. `tests/test_nclimdiv_reference.py` records the new measurements.
-- **`pdsi()` no longer matches `pdi.f` on the months the stale flush rewrote.** Those months
-  differ from a compiled `pdi.f` by up to the amounts in Context item 1. Every other month
-  runs the same recursion as before. The provenance record (`palmer-provenance.md`, row 19 and
-  D9) records the departure. Decision 2 also departs from the reference's use of the December
-  state for PMDI. Decision 3 can change records that do not end in December. Update the
-  provenance record when each decision lands.
-- **The standard-Palmer fixtures were regenerated.** `tests/fixture/palmer/` holds this
-  library's own PDSI, PHDI and PMDI output, so it now encodes the departure: only the months that
-  moved (PDSI 177 in 51 divisions, PMDI 252 in 80, PHDI 24 in 14) were patched, and the fixture
-  provenance records it. On those months the mean absolute difference from nClimDiv fell for PDSI
-  (1.29 to 0.045) and PMDI (1.48 to 0.057); PHDI fell on average (0.42 to 0.19) but rose in
-  divisions 1108 and 1109. For decision 2, remeasure the nClimDiv comparison and update any
-  changed PMDI fixture values. Decision 3 does not change these December-ending fixtures.
+- **Decision 2 changes PMDI for some months still pending at the end of a record.**
+  Compared with decision 1 alone, 606 months in 182 fixture divisions change by more
+  than 5e-5. The largest change is 4.34 in division 0207. Decision 2 does not change
+  PDSI or PHDI. With the same Z-Index and duration factors, extending the record does
+  not change a pending month's PMDI because spell resolution uses the same monthly state.
+- **The library deliberately differs from `pdi.f` in two cases.** It does not re-flush
+  resolved months, and it uses each pending month's own state for PMDI. The provenance
+  record (`palmer-provenance.md`, rows 19 and 22 and D9) describes both differences.
+  Update the provenance record when decision 3 lands.
+- **The standard-Palmer fixtures were regenerated.** `tests/fixture/palmer/` holds the
+  library's PDSI, PHDI and PMDI output. Compared with fixture 1.1.1, fixture 1.2.0 reflects
+  both decisions: 177 PDSI months in 51 divisions, 24 PHDI months in 14 divisions, and
+  858 PMDI months in 262 divisions changed. The largest combined PMDI change is 5.54 in
+  division 2010. For decision 1 alone, the mean absolute difference from nClimDiv fell
+  on the changed months for PDSI (1.29 to 0.045) and PMDI (1.48 to 0.057). For PHDI it
+  fell on average (0.42 to 0.19) but rose in divisions 1108 and 1109. Decision 3 does not
+  change these December-ending fixtures.
 - **Test decision 1 by cutting division 0101 at December 2002.** Every month before
   December 2002 must agree with the full run. The existing Python test,
   `test_resolved_months_survive_truncating_the_record_division_0101`, uses

@@ -376,25 +376,16 @@ impl<'a> Cell<'a> {
     /// Flushes only the `k8` months still pending, as Python does (#1665, ADR-0030).
     ///
     /// `pdi.f` flushes to a high-water mark its ASSIGN never resets, which re-flushes
-    /// months a closed spell already resolved; this departs from it on purpose.
+    /// months a closed spell already resolved; this departs from it on purpose. Each
+    /// flushed month is recorded from its own `ppr`/`px1`/`px2`/`px3`, so its PMDI is
+    /// that month's CASE rather than the final month's (issue #1666).
     fn finish_up(&mut self) {
         if self.k8 == 0 {
             return;
         }
-        let last = self.z.len() - 1;
-        let final_wplm = case(
-            self.ppr[last],
-            self.px1[last],
-            self.px2[last],
-            self.px3[last],
-        );
         for k in 0..self.k8 {
             let t = self.index[k];
-            let x = self.x[t];
-            let px3 = self.px3[t];
-            self.pdsi[t] = x;
-            self.phdi[t] = if px3 == 0.0 { x } else { px3 };
-            self.wplm[t] = final_wplm;
+            self.record(t, self.x[t]);
         }
     }
 }
@@ -505,8 +496,44 @@ mod tests {
         let x3 = carry(factors.wetm, factors.wetb, result.pdsi[[0, 0]], -1.0);
         assert_eq!(result.pdsi[[1, 0]], x3);
         assert_eq!(result.phdi[[1, 0]], x3);
-        // the final month's PMDI interpolates toward the incipient dry index
+        // the final month is its own pending month: its PMDI interpolates toward
+        // the incipient dry index
         assert!(result.pmdi[[1, 0]] < x3);
+    }
+
+    #[test]
+    fn each_month_pending_at_the_end_of_the_record_gets_its_own_pmdi() {
+        let factors = PdiDurationFactors {
+            wetm: 0.309,
+            wetb: 2.691,
+            drym: 0.309,
+            dryb: 2.691,
+        };
+        // The last three months are still pending when the record ends. Expected
+        // values come from Python `_palmer_pdi.calculate` for the same Z series.
+        let z = ndarray::Array2::from_shape_vec(
+            (12, 1),
+            vec![
+                -0.65, -1.75, 2.61, -0.74, 0.49, -0.39, 2.38, 1.98, 0.95, -3.31, 0.08, 1.03,
+            ],
+        )
+        .unwrap();
+        let result = calculate(z.view(), factors);
+        let expected = [
+            -1.0705010306601557,
+            -0.9630233333333332,
+            -0.5204985966666664,
+        ];
+        for (offset, want) in expected.iter().enumerate() {
+            let got = result.pmdi[[9 + offset, 0]];
+            // the CASE is a few multiply-adds on identical inputs: 1e-12 is far
+            // above rounding yet far below the 0.1-0.5 gaps between the months
+            assert!(
+                (got - want).abs() <= 1e-12,
+                "month {}: {got} vs {want}",
+                9 + offset
+            );
+        }
     }
 
     #[test]

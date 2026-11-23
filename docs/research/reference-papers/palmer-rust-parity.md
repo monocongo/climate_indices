@@ -104,6 +104,8 @@ The random corpora use -0.0 (equal to 0), +-0.15, +-0.5, +-1 and one ulp either 
 
 The outputs agreed within the test tolerance. In the Wells counts, all three runs of each counted triple returned results. These tests did not observe which branches ran, so H3 remains unverified.
 
+After both flush fixes, revision `632282e7` produced 27 PDSI, 13 PHDI, and 0 PMDI responses on the random corpus. The established-spell corpus produced 14 PMDI responses. The table above retains the results from `380aa01f`.
+
 **Which boundaries are live.** Injected Rust mutants, each built, run against the tests, and reverted:
 
 | Mutant | Caught |

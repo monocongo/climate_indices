@@ -228,6 +228,15 @@ def test_transform_fitted_gamma_all_zeros_produces_finite_spi():
     "gamma_monthly",
     "gamma_daily",
 )
+def test_gamma_parameters_preserves_a_fully_masked_month():
+    values = np.ma.array(np.arange(1.0, 37.0).reshape(3, 12), mask=False)
+    values[:, 0] = np.ma.masked
+
+    for parameters in compute.gamma_parameters(values, 2000, 2000, 2002, compute.Periodicity.monthly):
+        np.testing.assert_array_equal(np.ma.getmaskarray(parameters), np.arange(12) == 0)
+        assert np.isfinite(parameters[1:]).all()
+
+
 def test_gamma_parameters(
     precips_mm_monthly,
     precips_mm_daily,
