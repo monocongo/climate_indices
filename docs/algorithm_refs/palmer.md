@@ -47,11 +47,11 @@ retroactively.
   parameters or the Z-Index of the calibration-window months (later months have
   their own Z-Index values, which of course follow the later data). They can
   change the PDSI and PHDI of the months in that one open spell, which form a
-  single block ending at the boundary. Their PMDI also takes the final record
-  month's value, so later data can move it. The end-of-record flush rewrites only the
-  months still pending when the record ends, so it cannot move a month an earlier,
-  closed spell had resolved (ADR-0030, #1665). NCEI's `pdi.f` can, through a stale
-  high-water mark; this library deliberately does not.
+  single block ending at the boundary. They do not change PMDI: both spell
+  resolution and the end-of-record flush compute it from each month's own state
+  (ADR-0030, #1666). The flush only writes months still pending when the record
+  ends (ADR-0030, #1665). In contrast, NCEI's `pdi.f` can overwrite resolved months
+  and gives flushed months the final month's PMDI.
 - `scpdsi()`: the fitted parameters are likewise unaffected. Its three rescaling
   passes take percentiles of the calibration-window PDSI, which includes that open
   spell, so later data can in rare cases move the rescaling anchors and with them

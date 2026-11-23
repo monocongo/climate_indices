@@ -1,14 +1,14 @@
 # Palmer standalone Rust regression fixtures.
 # Classification: Python regression, NOT external or independent scientific validation.
 # Source repository: https://github.com/monocongo/climate_indices
-# Exact Python source revision: f4cb938eb622a3ddf8b96c129337e0ebecd4121e
-# Source files: palmer.py, _palmer_common.py, _palmer_duration.py, _palmer_pdi.py, _palmer_wells.py, self_calibration.py, _calibration_period.py, utils.py, compute.py (under src/climate_indices/).
+# Exact Python source revision: 159d3bc5
+# Source files: drought/palmer.py, drought/_palmer_common.py, drought/_palmer_duration.py, drought/_palmer_pdi.py, drought/_palmer_wells.py, drought/self_calibration.py, _calibration_period.py, utils.py, compute.py (under src/climate_indices/).
 # The generator refuses modifications to these source files relative to the recorded revision.
 # Generator: scripts/prepare_rust_palmer_fixtures.py
 # Generation command (repository root):
 # PYTHONPATH=src uv run python scripts/prepare_rust_palmer_fixtures.py
 # An existing local Python environment with project dependencies also works.
-# Generation environment: Python 3.14.7, NumPy 2.4.2.
+# Generation environment: Python 3.14.7, NumPy 2.4.6.
 # The generator blocks climate_indices._native before package imports.
 # No Rust output is used. Cargo never invokes Python or the generator.
 #
@@ -32,13 +32,13 @@
 # recursion.z: 120 months x 3 independent cells, with zeros, reversals, isolated
 # and consecutive gaps, and a fully missing cell. Both recursions use the same Z.
 # Cell 0 alternates rapidly; cell 1 has 24-month wet/dry regimes with rational noise.
-# pdi.*: _palmer_pdi.calculate through _pdi_recursion, flattened from (10, 12, 3).
-# wells.*: _palmer_wells.calculate through _wells_recursion, once per cell.
-# factors.*: _palmer_duration.DurationFactors default and asymmetric coefficients.
+# pdi.*: climate_indices.drought._palmer_pdi.calculate through _pdi_recursion, flattened from (10, 12, 3).
+# wells.*: climate_indices.drought._palmer_wells.calculate through _wells_recursion, once per cell.
+# factors.*: climate_indices.drought._palmer_duration.DurationFactors default and asymmetric coefficients.
 # PDI uses b/(m+b); Wells uses the stored Python-derived complement coefficients.
-# duration.*: self_calibration.duration_factors on each finite recursion.z cell,
+# duration.*: climate_indices.drought.self_calibration.duration_factors on each finite recursion.z cell,
 # using all 120 periods, omitting NaN periods. Each pair is (m, b), wet and dry.
-# percentile.*: self_calibration.nan_safe_percentile, truncated ranks, not interpolated.
+# percentile.*: climate_indices.drought.self_calibration.nan_safe_percentile, truncated ranks, not interpolated.
 # Padded NaN samples also represent all-missing and one-value cases.
 
 # shape=(4,); units=inches; C-order (last axis varies fastest)

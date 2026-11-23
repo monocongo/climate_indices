@@ -542,20 +542,16 @@ def _finish_up(state: _State) -> None:
 
     Only the ``k8`` pending slots are flushed. ``pdi.f`` flushes up to a high-water
     mark (``k8max``) that its ASSIGN never resets, so it re-flushes months a closed
-    spell had already resolved; the maintainer decided to depart from that (#1665,
-    ADR-0030).
+    spell had already resolved (#1665, ADR-0030).
+
+    Each flushed month is recorded from its own ``ppr``/``px1``/``px2``/``px3``, so
+    its PMDI is that month's CASE rather than the final month's, departing from
+    ``pdi.f`` label 240 (ADR-0030, issue #1666).
     """
     if not np.any(state.k8 > 0):
         return
     cells = np.arange(state.k8.shape[0])
-    i_end = state.pdsi.shape[0] - 1
     max_pending = int(state.k8.max())
-    final_wplm = _case(
-        state.ppr[i_end, 11],
-        state.px1[i_end, 11],
-        state.px2[i_end, 11],
-        state.px3[i_end, 11],
-    )
 
     for slot in range(max_pending):
         step = slot < state.k8
@@ -564,12 +560,7 @@ def _finish_up(state: _State) -> None:
         step_cells = cells[step]
         i = state.indexj[slot][step]
         j = state.indexm[slot][step]
-        x_val = state.x[i, j, step_cells]
-        px3_val = state.px3[i, j, step_cells]
-        state.pdsi[i, j, step_cells] = x_val
-        # the same no-established-spell fallback as _record_index_values
-        state.phdi[i, j, step_cells] = np.where(px3_val == 0, x_val, px3_val)  # NOSONAR
-        state.wplm[i, j, step_cells] = final_wplm[step_cells]
+        _record_index_values(state, i, j, state.x[i, j, step_cells], step_cells)
 
 
 def calculate(z_values: np.ndarray, factors: PdiDurationFactors) -> PdiResult:

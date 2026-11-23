@@ -82,7 +82,7 @@ citation is NCEI's, not a reading of the paper.
 | 19 | Backtracking, assignment of X | Palmer 1965 p. 33: while X3 is 0, X takes X1 or X2 according to which reached zero first, applied back through the period. Alley 1984 p. 1104: "(i) assign X = X1 until X1 = 0; (ii) then assign X = X2 until X2 = 0; (iii) repeat steps (i) and (ii) until a month was reached which already had an X value assigned". Wells C++ `Backtrack` (`pdsi.cpp:3562-3578`) and `ChooseX` (3626-3640). `pdi.f` ASSIGN (792-855) and label 240 (754-766) | pdi: `_backtrack_assigned_values` (`_palmer_pdi.py:245`), `_flush_spells` (270), `_assign` (299), `_finish_up` (540). Wells: `_backtrack` (`_palmer_wells.py:80`), `_assign_period` (258) | pdi: `backtrack` (`palmer_pdi.rs:156`), `flush` (178), `assign` (192), `finish_up` (380). Wells: `backtrack` (`palmer_wells.rs:96`), `assign_period` (304) | The end-of-record flush rewrites only the months still pending. `pdi.f` never resets the main program's `k8max` (ASSIGN's `k8max = k8` at 851 sets a local), so it re-flushes months a closed spell had resolved; the code stopped reproducing that in #1665 (ADR-0030) and `pdi.f` still does; see D9. Code uses exact-zero comparisons where the C++ uses `tolerance` in `Backtrack` (`pdsi.cpp:3575`); see {doc}`palmer` "Exact-zero comparisons". | V+R |
 | 20 | PDSI selection | Palmer 1965 p. 33 (rule above). Alley 1984 p. 1104 and Wells 2004 p. 2337: with no established spell, the PDSI is X1 or X2, "whichever has the largest absolute value"; with an established spell it is X3. NCEI readme: "Only one value is selected as the PDSI drought index for the month." `pdi.f` CASE (875-880) | `_record_index_values` (`_palmer_pdi.py:222`) | `palmer_pdi.rs:record` (147) | None of the opened papers says which of X1 and X2 wins a tie in absolute value; `pdi.f` CASE gives X1 (879). See D2. `_record_index_values` only stores what backtracking assigned (row 19); the largest-\|X\| comparison is in `_case` (`_palmer_pdi.py:211`) and supplies the near-real-time PMDI. | V |
 | 21 | PHDI | Karl 1986 p. 83: the PHDI "does not change sign until Pe equals 100%, and it only differs from the actual value of the PDSI when a series of months are encountered when 0 < Pe < 100%". Heim 2002 p. 1156: the X3 term "has come to be known as the Palmer Hydrological Drought Index". NCEI readme item 2. Wells C++ `getPHDI` (`pdsi.cpp:3982-3993`): PHDI = X3 when X3 is nonzero, else X. `pdi.f` 733-734, 761-763, 810-811, 843-845: the same rule | `_record_index_values` (`_palmer_pdi.py:236`); Wells lineage `_palmer_wells.py:348` | `palmer_pdi.rs:record`; `palmer_wells.rs` (403-423) | No source gives an equation labelled PHDI; the rule is `pdi.f`'s and the C++'s, consistent with Karl's and Heim's descriptions. Karl and Knight (1985), the cited PHDI atlas, was not opened. | V+R |
-| 22 | PMDI | Heim 2002 p. 1156: the NWS modification "allows computation of the PDSI operationally by taking the sum of the wet and dry terms after they have been weighted by their probabilities (P and 100% - P, where P = the probability that the spell is over)", citing Heddinghaus and Sabol (1991). NCEI readme item 4: "a weighted average of the wet and dry index terms, using the probability as the weighting factor". Wells C++ `getWPLM` (`pdsi.cpp:3945-3980`). `pdi.f` CASE (861-899) | `_case` (`_palmer_pdi.py:203`); `_pmdi` (`_palmer_wells.py:104`) | `palmer_pdi.rs:case` (64); `palmer_wells.rs:pmdi` (123) | **Tie behaviour matches `pdi.f` and `getWPLM`; tolerance behaviour differs from `getWPLM` only**; see D2. Every month flushed at the end of the record gets the final month's PMDI, in `pdi.f` and here; see D9. Alley 1984 p. 1104 describes an earlier operational rule, from a 1983 personal communication with Heddinghaus: X3 when 0 < Pe <= 50, else the X1 or X2 of opposite sign to X3; that rule is not the weighted average and is not implemented. Neither function cites Heddinghaus and Sabol; the paper was not opened. | S (Heim, NCEI) + R |
+| 22 | PMDI | Heim 2002 p. 1156: the NWS modification "allows computation of the PDSI operationally by taking the sum of the wet and dry terms after they have been weighted by their probabilities (P and 100% - P, where P = the probability that the spell is over)", citing Heddinghaus and Sabol (1991). NCEI readme item 4: "a weighted average of the wet and dry index terms, using the probability as the weighting factor". Wells C++ `getWPLM` (`pdsi.cpp:3945-3980`). `pdi.f` CASE (861-899) | `_case` (`_palmer_pdi.py:203`); `_pmdi` (`_palmer_wells.py:104`) | `palmer_pdi.rs:case` (64); `palmer_wells.rs:pmdi` (123) | **Tie behaviour matches `pdi.f` and `getWPLM`; tolerance behaviour differs from `getWPLM` only**; see D2. `pdi.f` gives every month flushed at the end of the record the final month's PMDI; the library gives each month its own ([#1666](https://github.com/monocongo/climate_indices/issues/1666), ADR-0030); see D9. Alley 1984 p. 1104 describes an earlier operational rule, from a 1983 personal communication with Heddinghaus: X3 when 0 < Pe <= 50, else the X1 or X2 of opposite sign to X3; that rule is not the weighted average and is not implemented. Neither function cites Heddinghaus and Sabol; the paper was not opened. | S (Heim, NCEI) + R |
 
 ### 5. Self-calibrating replacements (Wells lineage)
 
@@ -161,20 +161,14 @@ recorded so nobody "corrects" the code to Karl.
 recorded in REFIMPL-46 ([#1661](https://github.com/monocongo/climate_indices/issues/1661)); the report is
 `docs/research/reference-papers/pdi-f-fidelity.md`.
 
-- **Agreement.** Measured by REFIMPL-46 before #1665: on the 344 fixture divisions, the
-  code reproduced a double-precision `pdi.f` build to within 1.2e-14 in every
-  water-balance term, coefficient and index. Since #1665 that holds for every
-  month except those the stale `k8max` flush rewrote, which the library no longer
-  rewrites. The published single-precision build differs from that
-  build by at most 2.8e-5.
-- **Faithful to `pdi.f` but unsupported by any source.** The code reproduces two
-  `pdi.f` behaviours that no opened source supports:
-  - every month flushed at the end of the record gets the final month's PMDI;
-  - X2 is not updated in the month X1 establishes a spell (row 14).
-
-  The Wells manual calls a related form of the X2 behaviour "the bug found in the
-  FORTRAN program" (its `-b` flag).
-- **Differs from `pdi.f`.** The code differs on records that end before December (the
+- **Agreement before the flush fixes.** On the 344 fixture divisions, REFIMPL-46
+  measured agreement within 1.2e-14 with a double-precision `pdi.f` build in every
+  water-balance term, coefficient and index. The published single-precision build
+  differs from that build by at most 2.8e-5.
+- **Faithful to `pdi.f` but unsupported by any opened source.** The library does not
+  update X2 in the month X1 establishes a spell (row 14). The Wells manual calls a
+  related behaviour "the bug found in the FORTRAN program" (its `-b` flag).
+- **Other fidelity notes.** The library differs on records that end before December (the
   NaN padding runs through the recursion). Fix:
   [#1663](https://github.com/monocongo/climate_indices/issues/1663).
   An exact PMDI tie now goes to X1, as in `pdi.f`
@@ -184,9 +178,13 @@ recorded in REFIMPL-46 ([#1661](https://github.com/monocongo/climate_indices/iss
 - **Maintainer decisions (2026-11-19), recorded in {doc}`ADR-0030 <../adr/0030-palmer-end-of-record-flush>`.**
   The stale `k8max` (row 19), which re-flushed months a closed spell had already resolved,
   is **fixed** ([#1665](https://github.com/monocongo/climate_indices/issues/1665)): the library now flushes only the months still pending, so it
-  differs from `pdi.f` on the months the stale flush rewrote. Against nClimDiv the PMDI
-  maximum difference fell from 5.5748 to 4.3961. The final-month PMDI of the flushed months
-  ([#1666](https://github.com/monocongo/climate_indices/issues/1666)) is still to change. The X2 behaviour stays: nClimDiv agrees with it better than with updating X2.
+  differs from `pdi.f` on the months the stale flush rewrote. The final-month PMDI of the
+  flushed months is **fixed** too
+  ([#1666](https://github.com/monocongo/climate_indices/issues/1666)): each flushed month is
+  recorded from its own `ppr`/`px1`/`px2`/`px3`, and the flush no longer reads a month 12 the
+  record never computed. Together, against nClimDiv, the PMDI maximum difference fell from
+  5.5748 to 1.7026 and its median from 0.0191 to 0.0190. The X2 behaviour stays: nClimDiv
+  agrees with it better than with updating X2.
 
 ## History
 
