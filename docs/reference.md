@@ -956,6 +956,20 @@ you name and stay lazy under Dask. Both classifications must share their shape, 
 and the result's variable names are reserved. Pairs with a missing category are left out. A pair counts as in
 drought when either classification is D0 to D4, so a change into or out of drought is never hidden.
 
+`event_concordance` and `category_agreement` answer whether the choice changes agreement with something
+observed independently. `event_concordance` takes two run sets from `climate_indices.runs.identify_runs` on
+one shared validity mask, pairs them with `compound_events(mode="concurrent")`, and counts
+reference-centrically: a hit is a reference event overlapped by at least one index event, a miss is a
+reference event overlapped by none, and a false alarm is an index event overlapping no reference event.
+POD, FAR and CSI follow from those counts, and each ratio is NaN only when its own denominator is empty, so
+reference events without index events give POD and CSI of zero and leave only FAR NaN. Runs that touch the
+record edge or an unknown step are counted as censored, because their physical onset or end is unknown; a
+censored run still takes part in the counts like any other, so an event extending past the record can be
+scored as a miss or a false alarm. Every ratio is a point estimate with no interval.
+`category_agreement` returns the exact and within-one shares of two `drought_category` classifications over
+the pairs where both are present, the two definitions the Earth Engine pilot uses. It rejects an xarray
+`DataArray`, which would otherwise be compared position by position and lose its labels.
+
 ```{eval-rst}
 .. automodule:: climate_indices.suitability
    :members:

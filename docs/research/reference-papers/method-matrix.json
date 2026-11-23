@@ -1,0 +1,4778 @@
+{
+  "schema_version": 1,
+  "ticket": "https://github.com/monocongo/climate_indices/issues/1611",
+  "axes": [
+    "accumulation",
+    "calendar_grouping",
+    "calibration_period",
+    "distribution",
+    "estimator",
+    "location_offset",
+    "zero_handling",
+    "plotting_position",
+    "inverse_normal",
+    "output_bound",
+    "missing_data_minimum_sample",
+    "fit_failure"
+  ],
+  "implementations": {
+    "climate_indices": {
+      "name": "climate_indices",
+      "ref": "monocongo/climate_indices@98578c87",
+      "source_read": true
+    },
+    "xclim": {
+      "name": "xclim",
+      "ref": "xclim 1.0.0 sdist (sha256 e06477de)",
+      "source_read": true
+    },
+    "spei": {
+      "name": "spei (Vonk)",
+      "ref": "spei 0.8.3 sdist (sha256 50221408)",
+      "source_read": true
+    },
+    "standard_precip": {
+      "name": "standard_precip",
+      "ref": "standard-precip 2.0.0 sdist (sha256 6a1f65c0); L-moment fits read in lmoments3 1.0.8 sdist (sha256 bb58bfc2, not pinned in comparators.lock.yaml)",
+      "source_read": true
+    },
+    "r_spei": {
+      "name": "R SPEI",
+      "ref": "SPEI 1.8.1 CRAN tarball (sha256 56cfcf6c)",
+      "source_read": true
+    },
+    "r_sci": {
+      "name": "R SCI",
+      "ref": "SCI 1.0-3 CRAN tarball (sha256 1ec42a6c)",
+      "source_read": true
+    },
+    "r_sei": {
+      "name": "R SEI",
+      "ref": "SEI 0.2.0 CRAN tarball (sha256 55ac099c)",
+      "source_read": true
+    },
+    "r_climatekit": {
+      "name": "R climatekit",
+      "ref": "climatekit 0.2.3 CRAN tarball (sha256 f3bdc9f8); provisional include",
+      "source_read": true,
+      "note": "Absent from the lineage SPEI table, so its SPEI pairs have no independence class yet."
+    },
+    "ndmc_spi": {
+      "name": "NDMC SPI Generator",
+      "ref": "SPIgenerator.zip sha256 ce8f37bc (1.7.6.0); source under code/ (VB.NET front end, C# DLL)",
+      "source_read": true,
+      "note": "spimonthlyonly.cs ships but is not in the DLL project (spi_dll.csproj compiles two files)."
+    },
+    "ncl": {
+      "name": "NCL dim_spi_n",
+      "ref": "NCAR/ncl tag 6.6.2 (06f54867); the conda-forge 6.6.2 binary was run in REFIMPL-03, its build is not compared with this source",
+      "source_read": true
+    },
+    "climate_engine": {
+      "name": "Climate Engine API",
+      "ref": "live service, accessed 2026-11-18 (comparators.md)",
+      "source_read": false,
+      "note": "No source; rows rest on the pilot's documentation and observations."
+    },
+    "gridmet_drought": {
+      "name": "Earth Engine GRIDMET/DROUGHT",
+      "ref": "live collection, accessed 2026-11-18 (comparators.md)",
+      "source_read": false,
+      "note": "No source; rows rest on the pilot's documentation and observations."
+    },
+    "ncei_climdiv_spi": {
+      "name": "NCEI nClimDiv SPI",
+      "ref": "fixture downloaded 2026-09-12 (tests/fixture/ncei_spi/provenance.json)",
+      "source_read": false,
+      "note": "Operational code is not public."
+    },
+    "speibase": {
+      "name": "SPEIbase v2.11",
+      "ref": "fixture downloaded 2026-09-17 (tests/fixture/speibase/provenance.json)",
+      "source_read": false,
+      "note": "Described as built with R SPEI 1.8.1; not read here (lineage.json marks source_read true for it; here no source of the product was read)."
+    },
+    "noaa_psl_eddi": {
+      "name": "NOAA PSL EDDI",
+      "ref": "fixtures under tests/fixture (tests/test_noaa_eddi_reference.py)",
+      "source_read": false,
+      "note": "The NOAA Fortran is not read here."
+    }
+  },
+  "families": {
+    "spi": {
+      "title": "SPI",
+      "entries": [
+        {
+          "implementation": "climate_indices",
+          "entry_point": "drought.indices.spi (distribution= gamma | pearson, required)",
+          "cells": {
+            "accumulation": {
+              "value": "Sum over `scale` steps; a window holding a NaN is NaN; first scale-1 steps NaN",
+              "status": "verified",
+              "citations": [
+                {
+                  "file": "src/climate_indices/compute.py",
+                  "lines": "243-245"
+                },
+                {
+                  "file": "src/climate_indices/compute.py",
+                  "lines": "309"
+                }
+              ],
+              "options": [
+                {
+                  "value": "Mean of the window",
+                  "how": "standardized_index(aggregation='mean')",
+                  "citations": [
+                    {
+                      "file": "src/climate_indices/CONTEXT.md",
+                      "lines": "50"
+                    }
+                  ]
+                }
+              ]
+            },
+            "calendar_grouping": {
+              "value": "Calendar month (12) or day of year on a 366-column calendar, every year a leap year; Feb 29 interpolated in non-leap years",
+              "status": "verified",
+              "citations": [
+                {
+                  "file": "src/climate_indices/CONTEXT.md",
+                  "lines": "27-28"
+                },
+                {
+                  "file": "src/climate_indices/compute.py",
+                  "lines": "724-725"
+                }
+              ]
+            },
+            "calibration_period": {
+              "value": "Required calibration_year_initial/final; parameters fit on that window, every year standardized against it; a window the record does not cover is clamped to the record (a window ending one year past it keeps its start) with CalibrationPeriodClampedWarning. The 30-year minimum raises InsufficientDataError only in the xarray adapter, for an in-memory single series containing NaN; the NumPy functions only warn (ShortCalibrationWarning)",
+              "status": "verified",
+              "citations": [
+                {
+                  "file": "src/climate_indices/compute.py",
+                  "lines": "699"
+                },
+                {
+                  "file": "src/climate_indices/_calibration_period.py",
+                  "lines": "24"
+                },
+                {
+                  "file": "src/climate_indices/xarray_adapter.py",
+                  "lines": "2056"
+                },
+                {
+                  "file": "src/climate_indices/compute.py",
+                  "lines": "1249"
+                }
+              ]
+            },
+            "distribution": {
+              "value": "Chosen by required `distribution`: gamma or Pearson Type III; Pearson falls back to gamma on a failed fit or more than 50% lost values; log-logistic and GEV rejected by spi()",
+              "status": "verified",
+              "citations": [
+                {
+                  "file": "src/climate_indices/drought/indices.py",
+                  "lines": "991-992"
+                },
+                {
+                  "file": "src/climate_indices/compute.py",
+                  "lines": "116"
+                }
+              ],
+              "options": [
+                {
+                  "value": "gamma",
+                  "how": "distribution=Distribution.gamma"
+                },
+                {
+                  "value": "Pearson Type III",
+                  "how": "distribution=Distribution.pearson"
+                }
+              ]
+            },
+            "estimator": {
+              "value": "Gamma: Thom (1958) closed-form approximation to maximum likelihood on non-zero calibration values. Pearson: Hosking SAMLMR sample L-moments (unbiased PWM) on non-zero values",
+              "status": "verified",
+              "citations": [
+                {
+                  "file": "src/climate_indices/compute.py",
+                  "lines": "2000-2001"
+                },
+                {
+                  "file": "src/climate_indices/lmoments.py",
+                  "lines": "279"
+                }
+              ]
+            },
+            "location_offset": {
+              "value": "Gamma has no location (scale and shape only); Pearson fits a location; no offset added; negative precipitation clipped to zero before fitting",
+              "status": "verified",
+              "citations": [
+                {
+                  "file": "src/climate_indices/compute.py",
+                  "lines": "2535"
+                },
+                {
+                  "file": "src/climate_indices/compute.py",
+                  "lines": "2299"
+                }
+              ]
+            },
+            "zero_handling": {
+              "value": "Mixed CDF p0 + (1-p0)F(x), p0 = zeros / non-missing calibration values per calendar step; a zero scores Phi^-1(p0) ('classic', the top of the zero mass). For Pearson, a support-limit mask can override that score and values below 0.0005 are placed with the zeros",
+              "status": "verified",
+              "citations": [
+                {
+                  "file": "src/climate_indices/compute.py",
+                  "lines": "2557"
+                },
+                {
+                  "file": "src/climate_indices/drought/indices.py",
+                  "lines": "531"
+                }
+              ],
+              "options": [
+                {
+                  "value": "Zero scores Phi^-1(p0/2)",
+                  "how": "zero_handling='center_of_mass'",
+                  "citations": [
+                    {
+                      "file": "src/climate_indices/drought/indices.py",
+                      "lines": "1022"
+                    }
+                  ]
+                },
+                {
+                  "value": "Zero scores -phi(Phi^-1(p0))/p0",
+                  "how": "zero_handling='mean_zero'",
+                  "citations": [
+                    {
+                      "file": "src/climate_indices/drought/indices.py",
+                      "lines": "1023"
+                    }
+                  ]
+                }
+              ]
+            },
+            "plotting_position": {
+              "value": "Parametric fit; the empirical path is in the non-parametric family",
+              "status": "not_applicable"
+            },
+            "inverse_normal": {
+              "value": "Exact: scipy.stats.norm.ppf (or the Rust norm_ppf kernel)",
+              "status": "verified",
+              "citations": [
+                {
+                  "file": "src/climate_indices/compute.py",
+                  "lines": "2580"
+                }
+              ]
+            },
+            "output_bound": {
+              "value": "Clipped to [-3.09, 3.09] on the normal scale; output_scale='probability' is unclipped, 'bounded' is 2p-1",
+              "status": "verified",
+              "citations": [
+                {
+                  "file": "src/climate_indices/drought/indices.py",
+                  "lines": "50"
+                },
+                {
+                  "file": "src/climate_indices/drought/indices.py",
+                  "lines": "186-190"
+                }
+              ]
+            },
+            "missing_data_minimum_sample": {
+              "value": "NaN in a window gives NaN; fit uses the non-missing calibration values; Pearson L-moments need at least 4 non-zero values; no explicit minimum for gamma",
+              "status": "verified",
+              "citations": [
+                {
+                  "file": "src/climate_indices/lmoments.py",
+                  "lines": "19"
+                },
+                {
+                  "file": "src/climate_indices/_calibration_period.py",
+                  "lines": "23"
+                }
+              ]
+            },
+            "fit_failure": {
+              "value": "Pearson falls back to gamma with a warning. Gamma: a step with no fittable sample has NaN parameters and its non-zero values score NaN with no fit warning (the goodness-of-fit check skips invalid parameters); an all-zero calibration step scores its zeros -inf, clipped to -3.09; a step with no calibration data has undefined zero mass and its zeros are NaN",
+              "status": "verified",
+              "citations": [
+                {
+                  "file": "src/climate_indices/drought/indices.py",
+                  "lines": "534"
+                },
+                {
+                  "file": "src/climate_indices/compute.py",
+                  "lines": "2511"
+                },
+                {
+                  "file": "src/climate_indices/compute.py",
+                  "lines": "1420"
+                },
+                {
+                  "file": "src/climate_indices/compute.py",
+                  "lines": "2524"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "implementation": "xclim",
+          "entry_point": "standardized_precipitation_index (xclim.compute._agro)",
+          "cells": {
+            "accumulation": {
+              "value": "Input resampled to `freq` by mean only when its frequency differs (so daily to monthly gives a mean daily rate, not a total), then rolling MEAN over `window` (default 1, no rolling) with skipna=False; NaN propagates; first window-1 steps NaN",
+              "status": "verified",
+              "citations": [
+                {
+                  "file": "src/xclim/compute/stats.py",
+                  "lines": "828"
+                },
+                {
+                  "file": "src/xclim/compute/stats.py",
+                  "lines": "841"
+                }
+              ]
+            },
+            "calendar_grouping": {
+              "value": "Month (freq MS), ISO week (W) or day of year (D), by the input frequency. Day of year is the raw time.dayofyear (a leap year's dates after 28 February sit one later), and fitted parameters are re-mapped to the target calendar with resample_doy",
+              "status": "verified",
+              "citations": [
+                {
+                  "file": "src/xclim/compute/stats.py",
+                  "lines": "810-816"
+                },
+                {
+                  "file": "src/xclim/compute/stats.py",
+                  "lines": "1136"
+                }
+              ]
+            },
+            "calibration_period": {
+              "value": "cal_start/cal_end slice (default whole input); fit parameters from an earlier fit passed as `params` override it",
+              "status": "verified",
+              "citations": [
+                {
+                  "file": "src/xclim/compute/stats.py",
+                  "lines": "1113"
+                },
+                {
+                  "file": "src/xclim/compute/stats.py",
+                  "lines": "1079"
+                }
+              ]
+            },
+            "distribution": {
+              "value": "gamma by default",
+              "status": "verified",
+              "citations": [
+                {
+                  "file": "src/xclim/compute/_agro.py",
+                  "lines": "1025"
+                },
+                {
+                  "file": "src/xclim/compute/_agro.py",
+                  "lines": "1149-1154"
+                }
+              ],
+              "options": [
+                {
+                  "value": "fisk (log-logistic)",
+                  "how": "dist='fisk'; ML or APP"
+                },
+                {
+                  "value": "genextreme",
+                  "how": "dist='genextreme'; ML only"
+                },
+                {
+                  "value": "lognorm",
+                  "how": "dist='lognorm'; ML or APP"
+                },
+                {
+                  "value": "any scipy or lmoments3 distribution object",
+                  "how": "dist=<rv_continuous>; PWM with lmoments3"
+                }
+              ]
+            },
+            "estimator": {
+              "value": "method='ML': scipy maximum likelihood started from _fit_start values",
+              "status": "verified",
+              "citations": [
+                {
+                  "file": "src/xclim/compute/_agro.py",
+                  "lines": "1026"
+                },
+                {
+                  "file": "src/xclim/compute/stats.py",
+                  "lines": "56"
+                }
+              ],
+              "options": [
+                {
+                  "value": "APP: Thom closed form for gamma on the values with x - floc > 0 (others are dropped from the fit but still scored), requires floc",
+                  "how": "method='APP', fitkwargs={'floc': 0}",
+                  "citations": [
+                    {
+                      "file": "src/xclim/compute/stats.py",
+                      "lines": "652"
+                    },
+                    {
+                      "file": "src/xclim/compute/stats.py",
+                      "lines": "657"
+                    },
+                    {
+                      "file": "src/xclim/compute/stats.py",
+                      "lines": "921"
+                    }
+                  ]
+                },
+                {
+                  "value": "PWM: lmoments3 distribution object",
+                  "how": "method='PWM', dist=lmoments3 object",
+                  "citations": [
+                    {
+                      "file": "src/xclim/compute/stats.py",
+                      "lines": "67"
+                    }
+                  ]
+                }
+              ]
+            },
+            "location_offset": {
+              "value": "ML fits a free location unless `floc` is passed in fitkwargs; APP requires floc",
+              "status": "verified",
+              "citations": [
+                {
+                  "file": "src/xclim/compute/stats.py",
+                  "lines": "921"
+                }
+              ],
+              "options": [
+                {
+                  "value": "Location fixed",
+                  "how": "fitkwargs={'floc': 0}"
+                }
+              ]
+            },
+            "zero_handling": {
+              "value": "zero_inflated=True: zeros removed from the fit; p0 = zeros / non-NaN observations, zeros included ('ecdf'); zeros placed at the upper bound of the zero mass, as 'classic'",
+              "status": "verified",
+              "citations": [
+                {
+                  "file": "src/xclim/compute/_agro.py",
+                  "lines": "1163"
+                },
+                {
+                  "file": "src/xclim/compute/stats.py",
+                  "lines": "1162"
+                },
+                {
+                  "file": "src/xclim/compute/stats.py",
+                  "lines": "1096"
+                }
+              ],
+              "options": [
+                {
+                  "value": "Zero at the midpoint of its rank interval",
+                  "how": "prob_zero_interpolation='center' or a float in [0, 1]"
+                },
+                {
+                  "value": "p0 = zeros / (n + 1)",
+                  "how": "plotting_position_zero='weibull' or a (alpha, beta) tuple",
+                  "citations": [
+                    {
+                      "file": "src/xclim/compute/stats.py",
+                      "lines": "1103"
+                    }
+                  ]
+                }
+              ],
+              "note": "'center' is the midpoint of the zero ranks, not p0/2 as the library's center_of_mass."
+            },
+            "plotting_position": {
+              "value": "Parametric fit; the zero plotting position is under zero_handling",
+              "status": "not_applicable"
+            },
+            "inverse_normal": {
+              "value": "Exact: scipy norm ppf",
+              "status": "verified",
+              "citations": [
+                {
+                  "file": "src/xclim/compute/stats.py",
+                  "lines": "1176"
+                }
+              ]
+            },
+            "output_bound": {
+              "value": "Clipped to [-8.21, 8.21], the float64 limit of the inversion",
+              "status": "verified",
+              "citations": [
+                {
+                  "file": "src/xclim/compute/stats.py",
+                  "lines": "1184"
+                }
+              ]
+            },
+            "missing_data_minimum_sample": {
+              "value": "NaN propagates through the window; NaN dropped from the fit; ML and APP: fewer than 2 values gives NaN parameters; PWM: numargs + 3 values needed (4 for gamma), else NaN",
+              "status": "verified",
+              "citations": [
+                {
+                  "file": "src/xclim/compute/stats.py",
+                  "lines": "50"
+                },
+                {
+                  "file": "src/xclim/compute/stats.py",
+                  "lines": "69"
+                }
+              ]
+            },
+            "fit_failure": {
+              "value": "Any NaN parameter makes all parameters NaN, so the step is NaN, silently for ML and APP; the PWM branch warns when there are too few unique values",
+              "status": "verified",
+              "citations": [
+                {
+                  "file": "src/xclim/compute/stats.py",
+                  "lines": "109-110"
+                },
+                {
+                  "file": "src/xclim/compute/stats.py",
+                  "lines": "94-95"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "implementation": "spei",
+          "entry_point": "spei.spi (src/spei/si.py)",
+          "cells": {
+            "accumulation": {
+              "value": "timescale=0 by default: no accumulation. For timescale > 0: rolling SUM over that many series steps (not months), min_periods=timescale, then NaN rows dropped",
+              "status": "verified",
+              "citations": [
+                {
+                  "file": "src/spei/si.py",
+                  "lines": "26"
+                },
+                {
+                  "file": "src/spei/si.py",
+                  "lines": "408-411"
+                }
+              ],
+              "options": [
+                {
+                  "value": "Mean of the window",
+                  "how": "SI(agg_func='mean')",
+                  "citations": [
+                    {
+                      "file": "src/spei/si.py",
+                      "lines": "393"
+                    }
+                  ]
+                }
+              ]
+            },
+            "calendar_grouping": {
+              "value": "Series folded onto a year-2000 frame and grouped by pandas Grouper(freq=fit_freq): calendar month, or day with Feb 29 in its own bin; fit_freq inferred from the (rolled, NaN-dropped) index; if pandas cannot infer a frequency (for example gaps) it silently falls back to monthly even for daily data",
+              "status": "verified",
+              "citations": [
+                {
+                  "file": "src/spei/si.py",
+                  "lines": "477-478"
+                },
+                {
+                  "file": "src/spei/utils.py",
+                  "lines": "118"
+                },
+                {
+                  "file": "src/spei/utils.py",
+                  "lines": "84"
+                }
+              ],
+              "options": [
+                {
+                  "value": "Distribution fit over a window of neighbouring days (daily or weekly input only)",
+                  "how": "fit_window=<odd int>",
+                  "citations": [
+                    {
+                      "file": "src/spei/si.py",
+                      "lines": "449"
+                    }
+                  ]
+                }
+              ]
+            },
+            "calibration_period": {
+              "value": "None: the distribution is fit on the whole series. SI.predict applies fitted parameters to another series",
+              "status": "verified",
+              "citations": [
+                {
+                  "file": "src/spei/si.py",
+                  "lines": "589"
+                }
+              ]
+            },
+            "distribution": {
+              "value": "gamma by default; any scipy.stats continuous distribution",
+              "status": "verified",
+              "citations": [
+                {
+                  "file": "src/spei/si.py",
+                  "lines": "76"
+                }
+              ]
+            },
+            "estimator": {
+              "value": "scipy dist.fit with method 'MLE' (shape, loc and scale free), started at scale=std(data)",
+              "status": "verified",
+              "citations": [
+                {
+                  "file": "src/spei/dist.py",
+                  "lines": "95-99"
+                },
+                {
+                  "file": "src/spei/si.py",
+                  "lines": "66"
+                }
+              ],
+              "options": [
+                {
+                  "value": "Method of moments",
+                  "how": "SI(fit_method='MM')",
+                  "citations": [
+                    {
+                      "file": "src/spei/si.py",
+                      "lines": "390"
+                    }
+                  ]
+                }
+              ]
+            },
+            "location_offset": {
+              "value": "Location fitted (three-parameter fit); no offset",
+              "status": "verified",
+              "citations": [
+                {
+                  "file": "src/spei/dist.py",
+                  "lines": "104"
+                }
+              ]
+            },
+            "zero_handling": {
+              "value": "prob_zero=True: p0 = zeros / valid observations in the fit group mixes the CDF and sets zeros to p0 (classic placement), but zeros are NOT removed from the fit data",
+              "status": "verified",
+              "citations": [
+                {
+                  "file": "src/spei/dist.py",
+                  "lines": "70"
+                },
+                {
+                  "file": "src/spei/dist.py",
+                  "lines": "117"
+                },
+                {
+                  "file": "src/spei/dist.py",
+                  "lines": "61"
+                }
+              ],
+              "options": [
+                {
+                  "value": "No zero mass",
+                  "how": "prob_zero=False"
+                }
+              ]
+            },
+            "plotting_position": {
+              "value": "Parametric by default; the normal-scores option is in the non-parametric family",
+              "status": "not_applicable"
+            },
+            "inverse_normal": {
+              "value": "Exact: scipy norm.ppf",
+              "status": "verified",
+              "citations": [
+                {
+                  "file": "src/spei/si.py",
+                  "lines": "576"
+                }
+              ]
+            },
+            "output_bound": {
+              "value": "None; a CDF of 0 or 1 gives an infinite value",
+              "status": "verified",
+              "citations": [
+                {
+                  "file": "src/spei/si.py",
+                  "lines": "576"
+                }
+              ]
+            },
+            "missing_data_minimum_sample": {
+              "value": "NaN dropped before the fit; no minimum sample",
+              "status": "verified",
+              "citations": [
+                {
+                  "file": "src/spei/utils.py",
+                  "lines": "143"
+                }
+              ]
+            },
+            "fit_failure": {
+              "value": "Not handled: no try/except around the scipy fit, so its errors propagate and its result is used as returned",
+              "status": "verified",
+              "citations": [
+                {
+                  "file": "src/spei/dist.py",
+                  "lines": "95-99"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "implementation": "standard_precip",
+          "entry_point": "standard_precip.spi.SPI.calculate (base_sp.BaseStandardIndex)",
+          "cells": {
+            "accumulation": {
+              "value": "Rolling SUM over `scale` consecutive ROWS (positional, not time-aware; warns on irregular spacing); NaN in the window gives NaN",
+              "status": "verified",
+              "citations": [
+                {
+                  "file": "standard_precip/base_sp.py",
+                  "lines": "50"
+                },
+                {
+                  "file": "standard_precip/base_sp.py",
+                  "lines": "149"
+                }
+              ]
+            },
+            "calendar_grouping": {
+              "value": "freq 'M' month, 'W' ISO week, 'D' raw day of year (after Feb 28 a leap year's days sit one later than a common year's), None one group; or a caller integer column (freq_col)",
+              "status": "verified",
+              "citations": [
+                {
+                  "file": "standard_precip/base_sp.py",
+                  "lines": "308-314"
+                }
+              ]
+            },
+            "calibration_period": {
+              "value": "baseline_start/baseline_end (integer years inclusive, or dates); default whole record; all rows are standardized",
+              "status": "verified",
+              "citations": [
+                {
+                  "file": "standard_precip/base_sp.py",
+                  "lines": "330"
+                },
+                {
+                  "file": "standard_precip/base_sp.py",
+                  "lines": "165"
+                }
+              ]
+            },
+            "distribution": {
+              "value": "'gam' (gamma) by default",
+              "status": "verified",
+              "citations": [
+                {
+                  "file": "standard_precip/base_sp.py",
+                  "lines": "185"
+                },
+                {
+                  "file": "standard_precip/_distributions.py",
+                  "lines": "52-66"
+                }
+              ],
+              "options": [
+                {
+                  "value": "pe3, exp, gev, gpa, gum, nor, wei, glo, gno, kap, wak",
+                  "how": "dist_type=<code>"
+                }
+              ],
+              "note": "The docstring lists glo, gno and kap as MLE only and wak as L-moments only, but the registry maps glo, gno and kap to L-moment distributions too (and the SPEI docstring recommends glo with lmom)."
+            },
+            "estimator": {
+              "value": "fit_type='lmom' (default): lmoments3 L-moment fit; for gamma, Hosking's rational approximation from L1 and L2",
+              "status": "verified",
+              "citations": [
+                {
+                  "file": "standard_precip/base_sp.py",
+                  "lines": "73"
+                },
+                {
+                  "file": "lmoments3-1.0.8/src/lmoments3/distr.py",
+                  "lines": "1198"
+                },
+                {
+                  "file": "lmoments3-1.0.8/src/lmoments3/distr.py",
+                  "lines": "68"
+                }
+              ],
+              "options": [
+                {
+                  "value": "scipy maximum likelihood",
+                  "how": "fit_type='mle'; gamma with floc=0 unless the caller passes loc or floc",
+                  "citations": [
+                    {
+                      "file": "standard_precip/_distributions.py",
+                      "lines": "50"
+                    }
+                  ]
+                }
+              ]
+            },
+            "location_offset": {
+              "value": "Gamma: location fixed at 0 (L-moments, and MLE via the floc=0 default); other distributions fit a location",
+              "status": "verified",
+              "citations": [
+                {
+                  "file": "standard_precip/_distributions.py",
+                  "lines": "50"
+                },
+                {
+                  "file": "lmoments3-1.0.8/src/lmoments3/distr.py",
+                  "lines": "1218"
+                }
+              ]
+            },
+            "zero_handling": {
+              "value": "gam and pe3: zeros removed from the fit, p0 = zeros / observations, mixed CDF p0 + (1-p0)F(x); zeros get p0 (classic). Other distributions: no zero mass",
+              "status": "verified",
+              "citations": [
+                {
+                  "file": "standard_precip/base_sp.py",
+                  "lines": "103"
+                },
+                {
+                  "file": "standard_precip/base_sp.py",
+                  "lines": "138"
+                },
+                {
+                  "file": "standard_precip/_distributions.py",
+                  "lines": "53-55"
+                }
+              ]
+            },
+            "plotting_position": {
+              "value": "Parametric fit only",
+              "status": "not_applicable"
+            },
+            "inverse_normal": {
+              "value": "Exact: scipy norm.ppf",
+              "status": "verified",
+              "citations": [
+                {
+                  "file": "standard_precip/base_sp.py",
+                  "lines": "146"
+                }
+              ]
+            },
+            "output_bound": {
+              "value": "CDF clipped to [1e-16, 1-1e-16], so about +-8.2",
+              "status": "verified",
+              "citations": [
+                {
+                  "file": "standard_precip/base_sp.py",
+                  "lines": "144"
+                }
+              ]
+            },
+            "missing_data_minimum_sample": {
+              "value": "Rows with NaN dropped per group before the fit; L-moment fits need max(4, numargs + 3) values, MLE 4, counted after zeros are stripped for gam and pe3; a group of all zeros is not fit",
+              "status": "verified",
+              "citations": [
+                {
+                  "file": "standard_precip/_distributions.py",
+                  "lines": "103-109"
+                },
+                {
+                  "file": "standard_precip/base_sp.py",
+                  "lines": "345"
+                }
+              ]
+            },
+            "fit_failure": {
+              "value": "Params None, index NaN for that group, one UserWarning per column; TypeError from bad fit arguments propagates",
+              "status": "verified",
+              "citations": [
+                {
+                  "file": "standard_precip/base_sp.py",
+                  "lines": "382-386"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "implementation": "r_spei",
+          "entry_point": "SPEI::spi (calls spei())",
+          "cells": {
+            "accumulation": {
+              "value": "Kernel-weighted rolling sum, align right, first scale-1 NA; the default rectangular kernel is a plain sum",
+              "status": "verified",
+              "citations": [
+                {
+                  "file": "R/spei.R",
+                  "lines": "597"
+                },
+                {
+                  "file": "R/spei.R",
+                  "lines": "598-601"
+                },
+                {
+                  "file": "R/kern.R",
+                  "lines": "93"
+                },
+                {
+                  "file": "R/kern.R",
+                  "lines": "101"
+                }
+              ],
+              "options": [
+                {
+                  "value": "triangular, circular or gaussian kernel, with shift",
+                  "how": "kernel=list(type=..., shift=...)",
+                  "citations": [
+                    {
+                      "file": "R/kern.R",
+                      "lines": "74"
+                    }
+                  ]
+                }
+              ]
+            },
+            "calendar_grouping": {
+              "value": "cycle() of the ts frequency; non-ts input is assumed monthly (12)",
+              "status": "verified",
+              "citations": [
+                {
+                  "file": "R/spei.R",
+                  "lines": "627"
+                },
+                {
+                  "file": "R/spei.R",
+                  "lines": "523"
+                }
+              ]
+            },
+            "calibration_period": {
+              "value": "ref.start/ref.end as c(year, period); default whole series; parameters can be passed in `params`",
+              "status": "verified",
+              "citations": [
+                {
+                  "file": "R/spei.R",
+                  "lines": "611"
+                }
+              ]
+            },
+            "distribution": {
+              "value": "spi(): Gamma by default",
+              "status": "verified",
+              "citations": [
+                {
+                  "file": "R/spi.R",
+                  "lines": "9"
+                }
+              ],
+              "options": [
+                {
+                  "value": "PearsonIII",
+                  "how": "distribution='PearsonIII'"
+                },
+                {
+                  "value": "log-Logistic",
+                  "how": "distribution='log-Logistic'"
+                }
+              ]
+            },
+            "estimator": {
+              "value": "fit='ub-pwm': unbiased PWM to L-moments, then lmom::pelgam, with lmomco::pargam as the fallback when pelgam errors",
+              "status": "verified",
+              "citations": [
+                {
+                  "file": "R/spei.R",
+                  "lines": "667"
+                },
+                {
+                  "file": "R/spei.R",
+                  "lines": "688-691"
+                }
+              ],
+              "options": [
+                {
+                  "value": "Plotting-position PWM, a = -0.35",
+                  "how": "fit='pp-pwm'",
+                  "citations": [
+                    {
+                      "file": "R/spei.R",
+                      "lines": "666"
+                    }
+                  ]
+                },
+                {
+                  "value": "Maximum likelihood, log-Logistic only",
+                  "how": "fit='max-lik'",
+                  "citations": [
+                    {
+                      "file": "R/spei.R",
+                      "lines": "701"
+                    }
+                  ]
+                }
+              ]
+            },
+            "location_offset": {
+              "value": "Gamma: two parameters, no location; PearsonIII and log-Logistic: three",
+              "status": "verified",
+              "citations": [
+                {
+                  "file": "R/spei.R",
+                  "lines": "557"
+                }
+              ]
+            },
+            "zero_handling": {
+              "value": "Gamma and PearsonIII: p0 = zeros / n is computed and non-positive values are removed from the fit, but the p0 adjustment is applied to spei[ff, s] (still NA, initialised as acu * NA) and overwritten by qnorm(cdf_res), the CDF of the positive-only fit, on the next statement, so p0 never reaches the output. For Gamma a zero accumulation (CDF 0) becomes -Inf; for PearsonIII a zero gets the fitted CDF at 0",
+              "status": "verified",
+              "citations": [
+                {
+                  "file": "R/spei.R",
+                  "lines": "641"
+                },
+                {
+                  "file": "R/spei.R",
+                  "lines": "642"
+                },
+                {
+                  "file": "R/spei.R",
+                  "lines": "617"
+                },
+                {
+                  "file": "R/spei.R",
+                  "lines": "723"
+                },
+                {
+                  "file": "R/spei.R",
+                  "lines": "727"
+                }
+              ],
+              "note": "Read from source at the pin, not executed. NEWS.md says zero-precipitation handling was fixed in 1.6. The adapter ticket (#1615) should confirm by running it; logged in the discrepancy ledger."
+            },
+            "plotting_position": {
+              "value": "Parametric fit only (plotting positions appear only in the pp-pwm estimator)",
+              "status": "not_applicable"
+            },
+            "inverse_normal": {
+              "value": "Exact: qnorm",
+              "status": "verified",
+              "citations": [
+                {
+                  "file": "R/spei.R",
+                  "lines": "727"
+                }
+              ]
+            },
+            "output_bound": {
+              "value": "None; a CDF of 0 or 1 gives -Inf or Inf",
+              "status": "verified",
+              "citations": [
+                {
+                  "file": "R/spei.R",
+                  "lines": "727"
+                }
+              ]
+            },
+            "missing_data_minimum_sample": {
+              "value": "na.rm=FALSE: any NA in the input is an error; na.rm=TRUE: NA dropped from the fit and the window sum stays NA. A fit needs at least 4 values (after zero removal for Gamma and PearsonIII) and a non-zero standard deviation",
+              "status": "verified",
+              "citations": [
+                {
+                  "file": "R/spei.R",
+                  "lines": "467"
+                },
+                {
+                  "file": "R/spei.R",
+                  "lines": "657"
+                }
+              ]
+            },
+            "fit_failure": {
+              "value": "Invalid L-moments or a constant series leave that period NA, silently",
+              "status": "verified",
+              "citations": [
+                {
+                  "file": "R/spei.R",
+                  "lines": "672-674"
+                },
+                {
+                  "file": "R/spei.R",
+                  "lines": "653"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "implementation": "r_sci",
+          "entry_point": "SCI::fitSCI + transformSCI",
+          "cells": {
+            "accumulation": {
+              "value": "MEAN over time.scale (backward convolution filter); NA propagates",
+              "status": "verified",
+              "citations": [
+                {
+                  "file": "R/sci.r",
+                  "lines": "44"
+                }
+              ]
+            },
+            "calendar_grouping": {
+              "value": "Calendar month, from first.mon",
+              "status": "verified",
+              "citations": [
+                {
+                  "file": "R/sci.r",
+                  "lines": "41"
+                }
+              ]
+            },
+            "calibration_period": {
+              "value": "No window argument: fitSCI fits the series it is given, transformSCI standardizes any series with that fit",
+              "status": "verified",
+              "citations": [
+                {
+                  "file": "R/sci.r",
+                  "lines": "166"
+                }
+              ]
+            },
+            "distribution": {
+              "value": "`distr` is required: gamma, genlog, gev, gumbel, lnorm, norm, pe3 or weibull by L-moment start values, others by moment start values",
+              "status": "verified",
+              "citations": [
+                {
+                  "file": "R/distrstart.r",
+                  "lines": "1-2"
+                }
+              ]
+            },
+            "estimator": {
+              "value": "Maximum likelihood by fitdistrplus::mledist from L-moment or moment start values",
+              "status": "verified",
+              "citations": [
+                {
+                  "file": "R/sci.r",
+                  "lines": "117"
+                }
+              ]
+            },
+            "location_offset": {
+              "value": "Set by the chosen distribution (pe3 and genlog carry a location)",
+              "status": "verified",
+              "citations": [
+                {
+                  "file": "R/sci_distributions.r",
+                  "lines": "65"
+                }
+              ]
+            },
+            "zero_handling": {
+              "value": "`p0` is a required logical. With p0=TRUE and the default p0.center.mass=FALSE, p0 = zeros / n; when p0 > 0 the zeros are removed and one pseudo-observation 0.01 x min(positive) is added before the fit; mixed CDF p0 + (1-p0)F(x), zero at the top of the mass. With p0=FALSE zeros stay in the fit",
+              "status": "verified",
+              "citations": [
+                {
+                  "file": "R/sci.r",
+                  "lines": "88"
+                },
+                {
+                  "file": "R/sci.r",
+                  "lines": "97"
+                },
+                {
+                  "file": "R/sci.r",
+                  "lines": "210"
+                }
+              ],
+              "options": [
+                {
+                  "value": "p0 = zeros / (n + 1); zeros scored (n0 + 1) / (2(n + 1))",
+                  "how": "p0.center.mass=TRUE",
+                  "citations": [
+                    {
+                      "file": "R/sci.r",
+                      "lines": "90"
+                    },
+                    {
+                      "file": "R/sci.r",
+                      "lines": "212"
+                    }
+                  ]
+                }
+              ],
+              "note": "p0 has no default; the Weibull form n0/(n+1) and centre-of-mass scoring apply only with p0.center.mass=TRUE."
+            },
+            "plotting_position": {
+              "value": "Parametric fit only",
+              "status": "not_applicable"
+            },
+            "inverse_normal": {
+              "value": "Exact: qnorm",
+              "status": "verified",
+              "citations": [
+                {
+                  "file": "R/sci.r",
+                  "lines": "228"
+                }
+              ]
+            },
+            "output_bound": {
+              "value": "None by default (sci.limit = Inf); optional truncation at +-sci.limit",
+              "status": "verified",
+              "citations": [
+                {
+                  "file": "R/sci.r",
+                  "lines": "230"
+                }
+              ]
+            },
+            "missing_data_minimum_sample": {
+              "value": "Non-finite values dropped from the fit; an empty or constant month has NA parameters with a warning; a window containing NA is NA",
+              "status": "verified",
+              "citations": [
+                {
+                  "file": "R/sci.r",
+                  "lines": "69"
+                },
+                {
+                  "file": "R/sci.r",
+                  "lines": "80"
+                }
+              ]
+            },
+            "fit_failure": {
+              "value": "Month parameters NA, with a warning, unless start.fun.fix=TRUE, which keeps the start values",
+              "status": "verified",
+              "citations": [
+                {
+                  "file": "R/sci.r",
+                  "lines": "103-105"
+                }
+              ],
+              "options": [
+                {
+                  "value": "Start values used on failure",
+                  "how": "start.fun.fix=TRUE"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "implementation": "r_sei",
+          "entry_point": "SEI::std_index (dist='gamma' or other parametric)",
+          "cells": {
+            "accumulation": {
+              "value": "None unless agg_period is set (default NULL). With agg_period, agg_fun 'sum' by default over a time-based window; a window with more than na_thres (10) percent NA is NA, otherwise NAs are dropped and the function applies to the rest without rescaling, so a sum is biased low",
+              "status": "verified",
+              "citations": [
+                {
+                  "file": "R/std_index.R",
+                  "lines": "249"
+                },
+                {
+                  "file": "R/std_index.R",
+                  "lines": "251"
+                },
+                {
+                  "file": "R/aggregate_xts.R",
+                  "lines": "128-130"
+                }
+              ]
+            },
+            "calendar_grouping": {
+              "value": "None built in: the caller passes a grouping factor gr_new (for example month) and one distribution is fit per group. The per-group call forwards only some arguments (method, n_thres, moving_window and rescale_fun are dropped, so method reverts to 'mle'), and aggregation then runs inside each group, so aggregate beforehand",
+              "status": "verified",
+              "citations": [
+                {
+                  "file": "R/std_index.R",
+                  "lines": "267-271"
+                }
+              ]
+            },
+            "calibration_period": {
+              "value": "x_ref fits the distribution (default x_new); x_new is standardized; moving_window uses the preceding values only",
+              "status": "verified",
+              "citations": [
+                {
+                  "file": "R/std_index.R",
+                  "lines": "237"
+                },
+                {
+                  "file": "R/std_index.R",
+                  "lines": "338"
+                }
+              ]
+            },
+            "distribution": {
+              "value": "Default is 'empirical' (see the non-parametric family); parametric: norm, lnorm, logis, llogis, exp, gamma, weibull, or kde",
+              "status": "verified",
+              "citations": [
+                {
+                  "file": "R/std_index.R",
+                  "lines": "238"
+                },
+                {
+                  "file": "R/fit_dist.R",
+                  "lines": "374-375"
+                }
+              ]
+            },
+            "estimator": {
+              "value": "method 'mle' (fitdistrplus::fitdist)",
+              "status": "verified",
+              "citations": [
+                {
+                  "file": "R/std_index.R",
+                  "lines": "241"
+                },
+                {
+                  "file": "R/fit_dist.R",
+                  "lines": "267"
+                }
+              ],
+              "options": [
+                {
+                  "value": "mme, qme, mge, mse (fitdistrplus)",
+                  "how": "method=..."
+                },
+                {
+                  "value": "L-moments via lmom, not for llogis",
+                  "how": "method='lmme'",
+                  "citations": [
+                    {
+                      "file": "R/fit_dist.R",
+                      "lines": "290"
+                    },
+                    {
+                      "file": "R/fit_dist.R",
+                      "lines": "303"
+                    }
+                  ]
+                }
+              ]
+            },
+            "location_offset": {
+              "value": "Two-parameter families, no location",
+              "status": "verified",
+              "citations": [
+                {
+                  "file": "R/fit_dist.R",
+                  "lines": "269"
+                }
+              ]
+            },
+            "zero_handling": {
+              "value": "Positive-support families stop on zeros; zeros are handled only by censoring, which needs lower=0 (default -Inf), with p_l = share at or below it, and censored values are excluded from the fit with no pseudo-observation. cens 'normal' (default) places them at pnorm(-dnorm(qnorm(p_l))/p_l), the conditional mean; 'prob' at p_l/2; 'none' at p_l",
+              "status": "verified",
+              "citations": [
+                {
+                  "file": "R/fit_dist.R",
+                  "lines": "387"
+                },
+                {
+                  "file": "R/get_pit.R",
+                  "lines": "297-305"
+                },
+                {
+                  "file": "R/std_index.R",
+                  "lines": "259"
+                }
+              ]
+            },
+            "plotting_position": {
+              "value": "Parametric fit; the empirical option is in the non-parametric family",
+              "status": "not_applicable"
+            },
+            "inverse_normal": {
+              "value": "Exact: qnorm, for index_type='normal' (the default)",
+              "status": "verified",
+              "citations": [
+                {
+                  "file": "R/std_index.R",
+                  "lines": "395"
+                }
+              ],
+              "options": [
+                {
+                  "value": "The probability itself, or 2p - 1, instead of a z-score",
+                  "how": "index_type='prob01' | 'prob11'",
+                  "citations": [
+                    {
+                      "file": "R/std_index.R",
+                      "lines": "397"
+                    }
+                  ]
+                }
+              ]
+            },
+            "output_bound": {
+              "value": "None; a parametric CDF of 0 or 1 gives an infinite value",
+              "status": "verified",
+              "citations": [
+                {
+                  "file": "R/std_index.R",
+                  "lines": "395"
+                }
+              ]
+            },
+            "missing_data_minimum_sample": {
+              "value": "NA removed; fewer than n_thres (10) values gives NA with a warning",
+              "status": "verified",
+              "citations": [
+                {
+                  "file": "R/fit_dist.R",
+                  "lines": "232-235"
+                }
+              ]
+            },
+            "fit_failure": {
+              "value": "try() failure gives a warning and NA",
+              "status": "verified",
+              "citations": [
+                {
+                  "file": "R/fit_dist.R",
+                  "lines": "263"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "implementation": "r_climatekit",
+          "entry_point": "climatekit::ck_spi (daily precipitation and dates)",
+          "cells": {
+            "accumulation": {
+              "value": "Daily values summed to the months present in `dates` with sum(na.rm=TRUE) (a missing day counts as 0, a month of all-NA days sums to 0, absent months are not filled), then a trailing sum over `scale` rows of those totals, so the window spans calendar months only if the dates have no gaps",
+              "status": "verified",
+              "citations": [
+                {
+                  "file": "R/drought.R",
+                  "lines": "432"
+                },
+                {
+                  "file": "R/drought.R",
+                  "lines": "52"
+                }
+              ]
+            },
+            "calendar_grouping": {
+              "value": "Calendar month",
+              "status": "verified",
+              "citations": [
+                {
+                  "file": "R/drought.R",
+                  "lines": "55"
+                }
+              ]
+            },
+            "calibration_period": {
+              "value": "No argument: the whole record",
+              "status": "verified",
+              "citations": [
+                {
+                  "file": "R/drought.R",
+                  "lines": "33"
+                }
+              ]
+            },
+            "distribution": {
+              "value": "gamma by default",
+              "status": "verified",
+              "citations": [
+                {
+                  "file": "R/drought.R",
+                  "lines": "34"
+                }
+              ],
+              "options": [
+                {
+                  "value": "Pearson III",
+                  "how": "distribution='pearsonIII'"
+                }
+              ]
+            },
+            "estimator": {
+              "value": "Gamma: Thom closed form on the positive accumulations (documented as MLE); Pearson III: method of moments (mean, sd, skewness)",
+              "status": "verified",
+              "citations": [
+                {
+                  "file": "R/drought.R",
+                  "lines": "466"
+                },
+                {
+                  "file": "R/drought.R",
+                  "lines": "505"
+                }
+              ]
+            },
+            "location_offset": {
+              "value": "Gamma: none; Pearson III: location xi = mu - alpha * sign(skew) * beta",
+              "status": "verified",
+              "citations": [
+                {
+                  "file": "R/drought.R",
+                  "lines": "513"
+                }
+              ]
+            },
+            "zero_handling": {
+              "value": "Gamma: q = zeros / n; zeros score the CDF q and positives q + (1-q)F (classic). Pearson III: no zero mass",
+              "status": "verified",
+              "citations": [
+                {
+                  "file": "R/drought.R",
+                  "lines": "456"
+                },
+                {
+                  "file": "R/drought.R",
+                  "lines": "475"
+                }
+              ]
+            },
+            "plotting_position": {
+              "value": "Parametric fit only",
+              "status": "not_applicable"
+            },
+            "inverse_normal": {
+              "value": "Exact: stats::qnorm",
+              "status": "verified",
+              "citations": [
+                {
+                  "file": "R/drought.R",
+                  "lines": "482"
+                }
+              ]
+            },
+            "output_bound": {
+              "value": "A CDF of exactly 0 or below becomes 0.001 and of 1 or above becomes 0.999 (z = -3.09, +3.09); values in between are not clamped, so |z| can exceed 3.09",
+              "status": "verified",
+              "citations": [
+                {
+                  "file": "R/drought.R",
+                  "lines": "479-480"
+                }
+              ]
+            },
+            "missing_data_minimum_sample": {
+              "value": "At least 3 accumulations per calendar month, and 2 positive values for gamma",
+              "status": "verified",
+              "citations": [
+                {
+                  "file": "R/drought.R",
+                  "lines": "63"
+                },
+                {
+                  "file": "R/drought.R",
+                  "lines": "459"
+                }
+              ]
+            },
+            "fit_failure": {
+              "value": "Gamma: A <= 0 returns NA without a warning. Pearson III: invalid sd or shape returns NA without a warning, and an out-of-support point (NA CDF) scores z = 0",
+              "status": "verified",
+              "citations": [
+                {
+                  "file": "R/drought.R",
+                  "lines": "464"
+                },
+                {
+                  "file": "R/drought.R",
+                  "lines": "502"
+                },
+                {
+                  "file": "R/drought.R",
+                  "lines": "526"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "implementation": "ndmc_spi",
+          "entry_point": "SPIGenerator.exe (VB.NET) calling StandardPrecipitationIndex.dll (C#)",
+          "cells": {
+            "accumulation": {
+              "value": "Sum of `timescale` consecutive monthly (or weekly) values; any missing value makes the sum missing (-99); first timescale-1 values missing. Daily input is aggregated first in the front end: a month is missing when more than MaxMissingDays (8) days are absent, missing days are skipped without rescaling, and a week is missing only when all 7 days are",
+              "status": "verified",
+              "citations": [
+                {
+                  "file": "code/spi_standalone/spi.vb",
+                  "lines": "215-237"
+                },
+                {
+                  "file": "code/spi_standalone/spicollection.vb",
+                  "lines": "898"
+                }
+              ]
+            },
+            "calendar_grouping": {
+              "value": "Calendar month (12 groups) for monthly input; day of year groups for weekly input, with timescale x 4 aggregation",
+              "status": "verified",
+              "citations": [
+                {
+                  "file": "code/spi_standalone/spi.vb",
+                  "lines": "108"
+                },
+                {
+                  "file": "code/spi_standalone/spi.vb",
+                  "lines": "152"
+                }
+              ]
+            },
+            "calibration_period": {
+              "value": "No argument: every non-missing value of the series enters the fit",
+              "status": "verified",
+              "citations": [
+                {
+                  "file": "code/spi_dll/standardprecipitationindex.cs",
+                  "lines": "34"
+                }
+              ]
+            },
+            "distribution": {
+              "value": "Gamma only",
+              "status": "verified",
+              "citations": [
+                {
+                  "file": "code/spi_dll/gammadistributionestimatedprobabilities.cs",
+                  "lines": "76"
+                }
+              ]
+            },
+            "estimator": {
+              "value": "Thom (1958) closed form on the positive values",
+              "status": "verified",
+              "citations": [
+                {
+                  "file": "code/spi_dll/gammadistributionestimatedprobabilities.cs",
+                  "lines": "142"
+                }
+              ]
+            },
+            "location_offset": {
+              "value": "None (two-parameter gamma)",
+              "status": "verified",
+              "citations": [
+                {
+                  "file": "code/spi_dll/gammadistributionestimatedprobabilities.cs",
+                  "lines": "143"
+                }
+              ]
+            },
+            "zero_handling": {
+              "value": "pzero = zeros / n; zeros score pzero, positives pzero + (1-pzero)P (classic)",
+              "status": "verified",
+              "citations": [
+                {
+                  "file": "code/spi_dll/gammadistributionestimatedprobabilities.cs",
+                  "lines": "121"
+                },
+                {
+                  "file": "code/spi_dll/gammadistributionestimatedprobabilities.cs",
+                  "lines": "170"
+                }
+              ]
+            },
+            "plotting_position": {
+              "value": "Parametric fit only",
+              "status": "not_applicable"
+            },
+            "inverse_normal": {
+              "value": "Abramowitz and Stegun 26.2.23 rational approximation (c0 = 2.515517); A&S give a maximum error of 4.5e-4, a bound not stated in the source",
+              "status": "verified",
+              "citations": [
+                {
+                  "file": "code/spi_dll/gammadistributionestimatedprobabilities.cs",
+                  "lines": "41"
+                }
+              ]
+            },
+            "output_bound": {
+              "value": "No clip; a CDF of 0 or 1 returns the sentinel +-9999.0, which equals the missing code. Output is rounded to two decimals in the writer",
+              "status": "verified",
+              "citations": [
+                {
+                  "file": "code/spi_dll/gammadistributionestimatedprobabilities.cs",
+                  "lines": "66"
+                },
+                {
+                  "file": "code/spi_standalone/spicollection.vb",
+                  "lines": "328"
+                }
+              ]
+            },
+            "missing_data_minimum_sample": {
+              "value": "Missing codes -99 and -9999 are excluded from the fit and propagate through the window sum; no minimum sample",
+              "status": "verified",
+              "citations": [
+                {
+                  "file": "code/spi_dll/standardprecipitationindex.cs",
+                  "lines": "15"
+                }
+              ]
+            },
+            "fit_failure": {
+              "value": "One positive value: degenerate parameters (alpha 0, gamma 1, beta the mean), no error. All zeros: pzero = 1, a CDF of 1, and an output of +9999",
+              "status": "verified",
+              "citations": [
+                {
+                  "file": "code/spi_dll/gammadistributionestimatedprobabilities.cs",
+                  "lines": "124-138"
+                },
+                {
+                  "file": "code/spi_dll/gammadistributionestimatedprobabilities.cs",
+                  "lines": "132-138"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "implementation": "ncl",
+          "entry_point": "dim_spi_n(p, nrun, opt, dim): spi_type 0 gamma (spid.f), 3 Pearson III (spi3.f)",
+          "cells": {
+            "accumulation": {
+              "value": "Sum of nrun consecutive values; any missing value makes the sum missing; first nrun-1 missing",
+              "status": "verified",
+              "citations": [
+                {
+                  "file": "ni/src/lib/nfpfort/spid.f",
+                  "lines": "57"
+                }
+              ]
+            },
+            "calendar_grouping": {
+              "value": "Twelve calendar months, one fit per month",
+              "status": "verified",
+              "citations": [
+                {
+                  "file": "ni/src/lib/nfpfort/spid.f",
+                  "lines": "72"
+                }
+              ]
+            },
+            "calibration_period": {
+              "value": "None: the whole input record (the Pearson routine's comments say to edit the loop limits to use another period)",
+              "status": "verified",
+              "citations": [
+                {
+                  "file": "ni/src/lib/nfpfort/spi3.f",
+                  "lines": "132"
+                }
+              ]
+            },
+            "distribution": {
+              "value": "spi_type 0: gamma (default); spi_type 3: Pearson III; others are an error",
+              "status": "verified",
+              "citations": [
+                {
+                  "file": "ni/src/lib/nfp/spiW.c",
+                  "lines": "164"
+                }
+              ]
+            },
+            "estimator": {
+              "value": "Gamma: Thom closed form on the positive values. Pearson III (spi_type=3): Hosking SAMLMR L-moments of the non-zero values; for nrun above 12, the fit and pzero use every nstep-th accumulation (nstep = nrun rounded up to a multiple of 12, at least 24, undefined above 72) and all values are then scored",
+              "status": "verified",
+              "citations": [
+                {
+                  "file": "ni/src/lib/nfpfort/spid.f",
+                  "lines": "219"
+                },
+                {
+                  "file": "ni/src/lib/nfpfort/spi3.f",
+                  "lines": "208"
+                },
+                {
+                  "file": "ni/src/lib/nfpfort/spi3.f",
+                  "lines": "160"
+                }
+              ]
+            },
+            "location_offset": {
+              "value": "Gamma: none; Pearson III: fitted",
+              "status": "verified",
+              "citations": [
+                {
+                  "file": "ni/src/lib/nfpfort/spid.f",
+                  "lines": "220"
+                }
+              ]
+            },
+            "zero_handling": {
+              "value": "pzero = zeros / n; zeros score pzero, positives pzero + (1-pzero)P (classic)",
+              "status": "verified",
+              "citations": [
+                {
+                  "file": "ni/src/lib/nfpfort/spid.f",
+                  "lines": "194"
+                },
+                {
+                  "file": "ni/src/lib/nfpfort/spid.f",
+                  "lines": "245"
+                }
+              ]
+            },
+            "plotting_position": {
+              "value": "Parametric fit only",
+              "status": "not_applicable"
+            },
+            "inverse_normal": {
+              "value": "Gamma path: Abramowitz and Stegun 26.2.23 rational approximation (anvnrmd); A&S give a maximum error of 4.5e-4, a bound not stated in the source",
+              "status": "verified",
+              "citations": [
+                {
+                  "file": "ni/src/lib/nfpfort/spid.f",
+                  "lines": "131"
+                }
+              ],
+              "options": [
+                {
+                  "value": "Hosking QUASTN, algorithm AS241 (exact to about 1e-16)",
+                  "how": "spi_type=3 (Pearson III)",
+                  "citations": [
+                    {
+                      "file": "ni/src/lib/nfpfort/spi3.f",
+                      "lines": "843"
+                    }
+                  ]
+                }
+              ]
+            },
+            "output_bound": {
+              "value": "Gamma path: none; a probability of 0 returns the sentinel +-1e37",
+              "status": "verified",
+              "citations": [
+                {
+                  "file": "ni/src/lib/nfpfort/spid.f",
+                  "lines": "146"
+                }
+              ],
+              "options": [
+                {
+                  "value": "Probability clamped to [0.001, 0.999], so +-3.09",
+                  "how": "spi_type=3 (Pearson III)",
+                  "citations": [
+                    {
+                      "file": "ni/src/lib/nfpfort/spi3.f",
+                      "lines": "261-262"
+                    }
+                  ]
+                }
+              ]
+            },
+            "missing_data_minimum_sample": {
+              "value": "A calendar month whose accumulations are all equal is not fit and stays missing; any missing value in a window makes it missing. Pearson III requires the series length to be a multiple of 12",
+              "status": "verified",
+              "citations": [
+                {
+                  "file": "ni/src/lib/nfpfort/spid.f",
+                  "lines": "90"
+                },
+                {
+                  "file": "ni/src/lib/nfpfort/spi3.f",
+                  "lines": "27"
+                }
+              ]
+            },
+            "fit_failure": {
+              "value": "Gamma: exactly one positive value gives degenerate parameters (alpha 0, gamma 1, beta the mean), no error; an all-equal month, all-zero included, is skipped before the fit. Pearson III: fewer than 3 non-zero values or l2 = 0 leaves the value missing",
+              "status": "verified",
+              "citations": [
+                {
+                  "file": "ni/src/lib/nfpfort/spid.f",
+                  "lines": "205"
+                },
+                {
+                  "file": "ni/src/lib/nfpfort/spid.f",
+                  "lines": "198"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "implementation": "climate_engine",
+          "entry_point": "Climate Engine API standard_index, distribution=nonparametric",
+          "cells": {
+            "accumulation": {
+              "value": "Fixed trailing days (30, 90, 180, 365), not calendar months",
+              "status": "unverified",
+              "basis": "docs/research/earthengine-climate-engine-pilot.md method-alignment table; the product source is not available and the pilot records its exact methods as unconfirmed",
+              "citations": [
+                {
+                  "file": "docs/research/earthengine-climate-engine-pilot.md",
+                  "lines": "58"
+                }
+              ]
+            },
+            "calendar_grouping": {
+              "value": "Unresolved",
+              "status": "unverified",
+              "basis": "docs/research/earthengine-climate-engine-pilot.md method-alignment table; the product source is not available and the pilot records its exact methods as unconfirmed",
+              "citations": [
+                {
+                  "file": "docs/research/earthengine-climate-engine-pilot.md",
+                  "lines": "57"
+                }
+              ]
+            },
+            "calibration_period": {
+              "value": "1981-2016 set in the request",
+              "status": "unverified",
+              "basis": "pilot request configuration, docs/research/earthengine-climate-engine-pilot.md",
+              "citations": [
+                {
+                  "file": "docs/research/earthengine-climate-engine-pilot.md",
+                  "lines": "32"
+                }
+              ]
+            },
+            "distribution": {
+              "value": "Non-parametric (rank based)",
+              "status": "unverified",
+              "basis": "docs/research/earthengine-climate-engine-pilot.md method-alignment table; the product source is not available and the pilot records its exact methods as unconfirmed",
+              "citations": [
+                {
+                  "file": "docs/research/earthengine-climate-engine-pilot.md",
+                  "lines": "53"
+                }
+              ]
+            },
+            "estimator": {
+              "value": "Non-parametric: no parameters are fit",
+              "status": "not_applicable"
+            },
+            "location_offset": {
+              "value": "Non-parametric",
+              "status": "not_applicable"
+            },
+            "zero_handling": {
+              "value": "Not documented; ordinary ranks presumed",
+              "status": "unverified",
+              "basis": "docs/research/earthengine-climate-engine-pilot.md method-alignment table; the product source is not available and the pilot records its exact methods as unconfirmed"
+            },
+            "plotting_position": {
+              "value": "Tukey family documented or inferred; formula and tie rule unconfirmed",
+              "status": "unverified",
+              "basis": "docs/research/earthengine-climate-engine-pilot.md method-alignment table; the product source is not available and the pilot records its exact methods as unconfirmed",
+              "citations": [
+                {
+                  "file": "docs/research/earthengine-climate-engine-pilot.md",
+                  "lines": "54"
+                }
+              ]
+            },
+            "inverse_normal": {
+              "value": "Not documented",
+              "status": "unverified",
+              "basis": "docs/research/earthengine-climate-engine-pilot.md method-alignment table; the product source is not available and the pilot records its exact methods as unconfirmed"
+            },
+            "output_bound": {
+              "value": "Not documented",
+              "status": "unverified",
+              "basis": "docs/research/earthengine-climate-engine-pilot.md method-alignment table; the product source is not available and the pilot records its exact methods as unconfirmed"
+            },
+            "missing_data_minimum_sample": {
+              "value": "Not documented",
+              "status": "unverified",
+              "basis": "docs/research/earthengine-climate-engine-pilot.md method-alignment table; the product source is not available and the pilot records its exact methods as unconfirmed"
+            },
+            "fit_failure": {
+              "value": "Not documented",
+              "status": "unverified",
+              "basis": "docs/research/earthengine-climate-engine-pilot.md method-alignment table; the product source is not available and the pilot records its exact methods as unconfirmed"
+            }
+          }
+        },
+        {
+          "implementation": "gridmet_drought",
+          "entry_point": "Earth Engine GRIDMET/DROUGHT spi30d..spi1y bands",
+          "cells": {
+            "accumulation": {
+              "value": "Fixed trailing days (30, 90, 180, 365), not calendar months",
+              "status": "unverified",
+              "basis": "docs/research/earthengine-climate-engine-pilot.md method-alignment table; the product source is not available and the pilot records its exact methods as unconfirmed",
+              "citations": [
+                {
+                  "file": "docs/research/earthengine-climate-engine-pilot.md",
+                  "lines": "58"
+                }
+              ]
+            },
+            "calendar_grouping": {
+              "value": "Unresolved",
+              "status": "unverified",
+              "basis": "docs/research/earthengine-climate-engine-pilot.md method-alignment table; the product source is not available and the pilot records its exact methods as unconfirmed",
+              "citations": [
+                {
+                  "file": "docs/research/earthengine-climate-engine-pilot.md",
+                  "lines": "57"
+                }
+              ]
+            },
+            "calibration_period": {
+              "value": "1981-2016 documented by the catalog",
+              "status": "unverified",
+              "basis": "Earth Engine catalog as quoted in the pilot",
+              "citations": [
+                {
+                  "file": "docs/research/earthengine-climate-engine-pilot.md",
+                  "lines": "32"
+                }
+              ]
+            },
+            "distribution": {
+              "value": "Non-parametric (rank based)",
+              "status": "unverified",
+              "basis": "docs/research/earthengine-climate-engine-pilot.md method-alignment table; the product source is not available and the pilot records its exact methods as unconfirmed",
+              "citations": [
+                {
+                  "file": "docs/research/earthengine-climate-engine-pilot.md",
+                  "lines": "53"
+                }
+              ]
+            },
+            "estimator": {
+              "value": "Non-parametric: no parameters are fit",
+              "status": "not_applicable"
+            },
+            "location_offset": {
+              "value": "Non-parametric",
+              "status": "not_applicable"
+            },
+            "zero_handling": {
+              "value": "Not documented; ordinary ranks presumed",
+              "status": "unverified",
+              "basis": "docs/research/earthengine-climate-engine-pilot.md method-alignment table; the product source is not available and the pilot records its exact methods as unconfirmed"
+            },
+            "plotting_position": {
+              "value": "Tukey family documented or inferred; formula and tie rule unconfirmed",
+              "status": "unverified",
+              "basis": "docs/research/earthengine-climate-engine-pilot.md method-alignment table; the product source is not available and the pilot records its exact methods as unconfirmed",
+              "citations": [
+                {
+                  "file": "docs/research/earthengine-climate-engine-pilot.md",
+                  "lines": "54"
+                }
+              ]
+            },
+            "inverse_normal": {
+              "value": "Not documented",
+              "status": "unverified",
+              "basis": "docs/research/earthengine-climate-engine-pilot.md method-alignment table; the product source is not available and the pilot records its exact methods as unconfirmed"
+            },
+            "output_bound": {
+              "value": "Not documented",
+              "status": "unverified",
+              "basis": "docs/research/earthengine-climate-engine-pilot.md method-alignment table; the product source is not available and the pilot records its exact methods as unconfirmed"
+            },
+            "missing_data_minimum_sample": {
+              "value": "Not documented",
+              "status": "unverified",
+              "basis": "docs/research/earthengine-climate-engine-pilot.md method-alignment table; the product source is not available and the pilot records its exact methods as unconfirmed"
+            },
+            "fit_failure": {
+              "value": "Not documented",
+              "status": "unverified",
+              "basis": "docs/research/earthengine-climate-engine-pilot.md method-alignment table; the product source is not available and the pilot records its exact methods as unconfirmed"
+            }
+          }
+        },
+        {
+          "implementation": "ncei_climdiv_spi",
+          "entry_point": "NCEI nClimDiv climdiv-sp*dv product (344 divisions)",
+          "cells": {
+            "distribution": {
+              "value": "Pearson Type III, the product's documented choice",
+              "status": "unverified",
+              "basis": "tests/fixture/ncei_spi/provenance.json notes and Baldwin and Chen (2020) as cited there; operational code is not public",
+              "citations": [
+                {
+                  "file": "tests/fixture/ncei_spi/provenance.json",
+                  "lines": "70"
+                }
+              ]
+            },
+            "calibration_period": {
+              "value": "Documented 1931-1990; observed behaviour reproduced by the full period of record (1895-2022), as Baldwin and Chen report",
+              "status": "unverified",
+              "basis": "tests/fixture/ncei_spi/provenance.json notes and Baldwin and Chen (2020) as cited there; operational code is not public",
+              "citations": [
+                {
+                  "file": "tests/fixture/ncei_spi/provenance.json",
+                  "lines": "70"
+                }
+              ]
+            },
+            "plotting_position": {
+              "value": "Parametric fit",
+              "status": "not_applicable"
+            },
+            "accumulation": {
+              "value": "Not established",
+              "status": "unverified",
+              "basis": "tests/fixture/ncei_spi/provenance.json notes and Baldwin and Chen (2020) as cited there; operational code is not public"
+            },
+            "calendar_grouping": {
+              "value": "Not established",
+              "status": "unverified",
+              "basis": "tests/fixture/ncei_spi/provenance.json notes and Baldwin and Chen (2020) as cited there; operational code is not public"
+            },
+            "zero_handling": {
+              "value": "Not established",
+              "status": "unverified",
+              "basis": "tests/fixture/ncei_spi/provenance.json notes and Baldwin and Chen (2020) as cited there; operational code is not public"
+            },
+            "inverse_normal": {
+              "value": "Not established",
+              "status": "unverified",
+              "basis": "tests/fixture/ncei_spi/provenance.json notes and Baldwin and Chen (2020) as cited there; operational code is not public"
+            },
+            "output_bound": {
+              "value": "Not established",
+              "status": "unverified",
+              "basis": "tests/fixture/ncei_spi/provenance.json notes and Baldwin and Chen (2020) as cited there; operational code is not public"
+            },
+            "missing_data_minimum_sample": {
+              "value": "Not established",
+              "status": "unverified",
+              "basis": "tests/fixture/ncei_spi/provenance.json notes and Baldwin and Chen (2020) as cited there; operational code is not public"
+            },
+            "fit_failure": {
+              "value": "Not established",
+              "status": "unverified",
+              "basis": "tests/fixture/ncei_spi/provenance.json notes and Baldwin and Chen (2020) as cited there; operational code is not public"
+            },
+            "location_offset": {
+              "value": "Not established",
+              "status": "unverified",
+              "basis": "tests/fixture/ncei_spi/provenance.json notes and Baldwin and Chen (2020) as cited there; operational code is not public"
+            },
+            "estimator": {
+              "value": "Not established",
+              "status": "unverified",
+              "basis": "tests/fixture/ncei_spi/provenance.json notes and Baldwin and Chen (2020) as cited there; operational code is not public"
+            }
+          }
+        }
+      ]
+    },
+    "spei": {
+      "title": "SPEI",
+      "entries": [
+        {
+          "implementation": "climate_indices",
+          "entry_point": "drought.indices.spei (distribution required)",
+          "cells": {
+            "accumulation": {
+              "value": "Water balance (P - PET + 1000) formed per step, then summed over `scale` steps; NaN in a window gives NaN",
+              "status": "verified",
+              "citations": [
+                {
+                  "file": "src/climate_indices/drought/indices.py",
+                  "lines": "617"
+                },
+                {
+                  "file": "src/climate_indices/drought/indices.py",
+                  "lines": "1091"
+                },
+                {
+                  "file": "src/climate_indices/compute.py",
+                  "lines": "309"
+                }
+              ]
+            },
+            "calendar_grouping": {
+              "value": "Calendar month (12) or day of year on a 366-column calendar, every year a leap year; Feb 29 interpolated in non-leap years",
+              "status": "verified",
+              "citations": [
+                {
+                  "file": "src/climate_indices/CONTEXT.md",
+                  "lines": "27-28"
+                },
+                {
+                  "file": "src/climate_indices/compute.py",
+                  "lines": "724-725"
+                }
+              ]
+            },
+            "calibration_period": {
+              "value": "Required calibration_year_initial/final; parameters fit on that window, every year standardized against it; a window the record does not cover is clamped to the record (a window ending one year past it keeps its start) with CalibrationPeriodClampedWarning. The 30-year minimum raises InsufficientDataError only in the xarray adapter, for an in-memory single series containing NaN; the NumPy functions only warn (ShortCalibrationWarning)",
+              "status": "verified",
+              "citations": [
+                {
+                  "file": "src/climate_indices/compute.py",
+                  "lines": "699"
+                },
+                {
+                  "file": "src/climate_indices/_calibration_period.py",
+                  "lines": "24"
+                },
+                {
+                  "file": "src/climate_indices/xarray_adapter.py",
+                  "lines": "2056"
+                },
+                {
+                  "file": "src/climate_indices/compute.py",
+                  "lines": "1249"
+                }
+              ]
+            },
+            "distribution": {
+              "value": "Required `distribution`: gamma, Pearson Type III, loglogistic (the generalized logistic SPEIbase uses, ADR-0016) or gev; no fallback to gamma",
+              "status": "verified",
+              "citations": [
+                {
+                  "file": "src/climate_indices/drought/indices.py",
+                  "lines": "1135"
+                },
+                {
+                  "file": "src/climate_indices/drought/indices.py",
+                  "lines": "1199"
+                },
+                {
+                  "file": "src/climate_indices/drought/indices.py",
+                  "lines": "1192"
+                }
+              ],
+              "options": [
+                {
+                  "value": "loglogistic (generalized logistic)",
+                  "how": "distribution=Distribution.loglogistic"
+                },
+                {
+                  "value": "gev",
+                  "how": "distribution=Distribution.gev"
+                },
+                {
+                  "value": "gamma or Pearson Type III",
+                  "how": "distribution=Distribution.gamma | pearson"
+                }
+              ]
+            },
+            "estimator": {
+              "value": "Log-logistic: Hosking PELGLO on unbiased-PWM sample L-moments. GEV: Hosking L-moment estimator. Gamma and Pearson as for SPI",
+              "status": "verified",
+              "citations": [
+                {
+                  "file": "src/climate_indices/lmoments.py",
+                  "lines": "364"
+                },
+                {
+                  "file": "src/climate_indices/compute.py",
+                  "lines": "2980"
+                }
+              ]
+            },
+            "location_offset": {
+              "value": "A constant 1000 is added to P - PET at each step before accumulation (so 1000 x scale after summing); the log-logistic fit has its own location; negative precipitation clipped to zero",
+              "status": "verified",
+              "citations": [
+                {
+                  "file": "src/climate_indices/drought/indices.py",
+                  "lines": "1091"
+                },
+                {
+                  "file": "src/climate_indices/drought/indices.py",
+                  "lines": "1086"
+                }
+              ],
+              "note": "The fit is translation-equivariant in location, so the offset does not change the log-logistic or GEV result."
+            },
+            "zero_handling": {
+              "value": "spei() takes no zero_handling. Log-logistic and GEV use every value, zeros included, with no zero mass; the gamma and Pearson options apply the classic p0 mixture and exclude exact zeros from the fit",
+              "status": "verified",
+              "citations": [
+                {
+                  "file": "src/climate_indices/compute.py",
+                  "lines": "2982-2984"
+                },
+                {
+                  "file": "docs/adr/0015-zero-handling-in-standardized-indices.md",
+                  "lines": "75"
+                }
+              ]
+            },
+            "plotting_position": {
+              "value": "Parametric fit; the empirical path is in the non-parametric family",
+              "status": "not_applicable"
+            },
+            "inverse_normal": {
+              "value": "Exact: scipy.stats.norm.ppf (or the Rust norm_ppf kernel)",
+              "status": "verified",
+              "citations": [
+                {
+                  "file": "src/climate_indices/compute.py",
+                  "lines": "2580"
+                }
+              ]
+            },
+            "output_bound": {
+              "value": "Clipped to [-3.09, 3.09] on the normal scale; output_scale='probability' is unclipped, 'bounded' is 2p-1",
+              "status": "verified",
+              "citations": [
+                {
+                  "file": "src/climate_indices/drought/indices.py",
+                  "lines": "50"
+                },
+                {
+                  "file": "src/climate_indices/drought/indices.py",
+                  "lines": "186-190"
+                }
+              ]
+            },
+            "missing_data_minimum_sample": {
+              "value": "NaN in a window gives NaN; log-logistic and GEV need at least 4 non-NaN calibration values per step, fewer gives a failed step (NaN); gamma and Pearson as for SPI",
+              "status": "verified",
+              "citations": [
+                {
+                  "file": "src/climate_indices/lmoments.py",
+                  "lines": "19"
+                },
+                {
+                  "file": "src/climate_indices/lmoments.py",
+                  "lines": "297"
+                }
+              ]
+            },
+            "fit_failure": {
+              "value": "A step that cannot be fit has its scale zeroed and transforms to NaN, with a warning; no fallback to another family",
+              "status": "verified",
+              "citations": [
+                {
+                  "file": "src/climate_indices/compute.py",
+                  "lines": "2840"
+                },
+                {
+                  "file": "src/climate_indices/drought/indices.py",
+                  "lines": "1192"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "implementation": "xclim",
+          "entry_point": "standardized_precipitation_evapotranspiration_index (xclim.compute._agro)",
+          "cells": {
+            "accumulation": {
+              "value": "The caller supplies the water budget (precipitation minus PET); resampled to `freq` by mean, then rolling MEAN over `window`, skipna=False",
+              "status": "verified",
+              "citations": [
+                {
+                  "file": "src/xclim/compute/_agro.py",
+                  "lines": "1188"
+                },
+                {
+                  "file": "src/xclim/compute/stats.py",
+                  "lines": "841"
+                }
+              ]
+            },
+            "calendar_grouping": {
+              "value": "Month (freq MS), ISO week (W) or day of year (D), by the input frequency. Day of year is the raw time.dayofyear (a leap year's dates after 28 February sit one later), and fitted parameters are re-mapped to the target calendar with resample_doy",
+              "status": "verified",
+              "citations": [
+                {
+                  "file": "src/xclim/compute/stats.py",
+                  "lines": "810-816"
+                },
+                {
+                  "file": "src/xclim/compute/stats.py",
+                  "lines": "1136"
+                }
+              ]
+            },
+            "calibration_period": {
+              "value": "cal_start/cal_end slice (default whole input); fit parameters from an earlier fit passed as `params` override it",
+              "status": "verified",
+              "citations": [
+                {
+                  "file": "src/xclim/compute/stats.py",
+                  "lines": "1113"
+                },
+                {
+                  "file": "src/xclim/compute/stats.py",
+                  "lines": "1079"
+                }
+              ]
+            },
+            "distribution": {
+              "value": "gamma by default (not log-logistic)",
+              "status": "verified",
+              "citations": [
+                {
+                  "file": "src/xclim/compute/_agro.py",
+                  "lines": "1191"
+                }
+              ],
+              "options": [
+                {
+                  "value": "fisk (log-logistic)",
+                  "how": "dist='fisk'; ML or APP"
+                },
+                {
+                  "value": "genextreme, lognorm, or a distribution object",
+                  "how": "dist=..."
+                }
+              ]
+            },
+            "estimator": {
+              "value": "method='ML': scipy maximum likelihood started from _fit_start values",
+              "status": "verified",
+              "citations": [
+                {
+                  "file": "src/xclim/compute/_agro.py",
+                  "lines": "1026"
+                },
+                {
+                  "file": "src/xclim/compute/stats.py",
+                  "lines": "56"
+                }
+              ],
+              "options": [
+                {
+                  "value": "APP: Thom closed form for gamma on the values with x - floc > 0 (others are dropped from the fit but still scored), requires floc",
+                  "how": "method='APP', fitkwargs={'floc': 0}",
+                  "citations": [
+                    {
+                      "file": "src/xclim/compute/stats.py",
+                      "lines": "652"
+                    },
+                    {
+                      "file": "src/xclim/compute/stats.py",
+                      "lines": "657"
+                    },
+                    {
+                      "file": "src/xclim/compute/stats.py",
+                      "lines": "921"
+                    }
+                  ]
+                },
+                {
+                  "value": "PWM: lmoments3 distribution object",
+                  "how": "method='PWM', dist=lmoments3 object",
+                  "citations": [
+                    {
+                      "file": "src/xclim/compute/stats.py",
+                      "lines": "67"
+                    }
+                  ]
+                }
+              ]
+            },
+            "location_offset": {
+              "value": "No offset parameter in 1.0.0; ML fits a free location unless floc is passed; APP requires floc",
+              "status": "verified",
+              "citations": [
+                {
+                  "file": "src/xclim/compute/_agro.py",
+                  "lines": "1187-1198"
+                },
+                {
+                  "file": "src/xclim/compute/stats.py",
+                  "lines": "921"
+                }
+              ]
+            },
+            "zero_handling": {
+              "value": "None: zero_inflated=False, so zeros are ordinary values",
+              "status": "verified",
+              "citations": [
+                {
+                  "file": "src/xclim/compute/_agro.py",
+                  "lines": "1269"
+                }
+              ]
+            },
+            "plotting_position": {
+              "value": "Parametric fit; the zero plotting position is under zero_handling",
+              "status": "not_applicable"
+            },
+            "inverse_normal": {
+              "value": "Exact: scipy norm ppf",
+              "status": "verified",
+              "citations": [
+                {
+                  "file": "src/xclim/compute/stats.py",
+                  "lines": "1176"
+                }
+              ]
+            },
+            "output_bound": {
+              "value": "Clipped to [-8.21, 8.21], the float64 limit of the inversion",
+              "status": "verified",
+              "citations": [
+                {
+                  "file": "src/xclim/compute/stats.py",
+                  "lines": "1184"
+                }
+              ]
+            },
+            "missing_data_minimum_sample": {
+              "value": "NaN propagates through the window; NaN dropped from the fit; ML and APP: fewer than 2 values gives NaN parameters; PWM: numargs + 3 values needed (4 for gamma), else NaN",
+              "status": "verified",
+              "citations": [
+                {
+                  "file": "src/xclim/compute/stats.py",
+                  "lines": "50"
+                },
+                {
+                  "file": "src/xclim/compute/stats.py",
+                  "lines": "69"
+                }
+              ]
+            },
+            "fit_failure": {
+              "value": "Any NaN parameter makes all parameters NaN, so the step is NaN, silently for ML and APP; the PWM branch warns when there are too few unique values",
+              "status": "verified",
+              "citations": [
+                {
+                  "file": "src/xclim/compute/stats.py",
+                  "lines": "109-110"
+                },
+                {
+                  "file": "src/xclim/compute/stats.py",
+                  "lines": "94-95"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "implementation": "spei",
+          "entry_point": "spei.spei (src/spei/si.py); the input series is P - PET",
+          "cells": {
+            "accumulation": {
+              "value": "timescale=0 by default: no accumulation. For timescale > 0: rolling SUM over that many series steps (not months), min_periods=timescale, then NaN rows dropped",
+              "status": "verified",
+              "citations": [
+                {
+                  "file": "src/spei/si.py",
+                  "lines": "26"
+                },
+                {
+                  "file": "src/spei/si.py",
+                  "lines": "408-411"
+                }
+              ],
+              "options": [
+                {
+                  "value": "Mean of the window",
+                  "how": "SI(agg_func='mean')",
+                  "citations": [
+                    {
+                      "file": "src/spei/si.py",
+                      "lines": "393"
+                    }
+                  ]
+                }
+              ]
+            },
+            "calendar_grouping": {
+              "value": "Series folded onto a year-2000 frame and grouped by pandas Grouper(freq=fit_freq): calendar month, or day with Feb 29 in its own bin; fit_freq inferred from the (rolled, NaN-dropped) index; if pandas cannot infer a frequency (for example gaps) it silently falls back to monthly even for daily data",
+              "status": "verified",
+              "citations": [
+                {
+                  "file": "src/spei/si.py",
+                  "lines": "477-478"
+                },
+                {
+                  "file": "src/spei/utils.py",
+                  "lines": "118"
+                },
+                {
+                  "file": "src/spei/utils.py",
+                  "lines": "84"
+                }
+              ],
+              "options": [
+                {
+                  "value": "Distribution fit over a window of neighbouring days (daily or weekly input only)",
+                  "how": "fit_window=<odd int>",
+                  "citations": [
+                    {
+                      "file": "src/spei/si.py",
+                      "lines": "449"
+                    }
+                  ]
+                }
+              ]
+            },
+            "calibration_period": {
+              "value": "None: the distribution is fit on the whole series. SI.predict applies fitted parameters to another series",
+              "status": "verified",
+              "citations": [
+                {
+                  "file": "src/spei/si.py",
+                  "lines": "589"
+                }
+              ]
+            },
+            "distribution": {
+              "value": "fisk (scipy log-logistic) by default; any scipy continuous distribution",
+              "status": "verified",
+              "citations": [
+                {
+                  "file": "src/spei/si.py",
+                  "lines": "142"
+                }
+              ]
+            },
+            "estimator": {
+              "value": "scipy dist.fit with method 'MLE' (shape, loc and scale free), started at scale=std(data)",
+              "status": "verified",
+              "citations": [
+                {
+                  "file": "src/spei/dist.py",
+                  "lines": "95-99"
+                },
+                {
+                  "file": "src/spei/si.py",
+                  "lines": "66"
+                }
+              ],
+              "options": [
+                {
+                  "value": "Method of moments",
+                  "how": "SI(fit_method='MM')",
+                  "citations": [
+                    {
+                      "file": "src/spei/si.py",
+                      "lines": "390"
+                    }
+                  ]
+                }
+              ]
+            },
+            "location_offset": {
+              "value": "Location fitted (three-parameter fit); no offset",
+              "status": "verified",
+              "citations": [
+                {
+                  "file": "src/spei/dist.py",
+                  "lines": "104"
+                }
+              ]
+            },
+            "zero_handling": {
+              "value": "None by default: prob_zero=False",
+              "status": "verified",
+              "citations": [
+                {
+                  "file": "src/spei/si.py",
+                  "lines": "146"
+                }
+              ],
+              "options": [
+                {
+                  "value": "p0 = zeros / window length",
+                  "how": "prob_zero=True",
+                  "citations": [
+                    {
+                      "file": "src/spei/dist.py",
+                      "lines": "70"
+                    }
+                  ]
+                }
+              ]
+            },
+            "plotting_position": {
+              "value": "Parametric by default; the normal-scores option is in the non-parametric family",
+              "status": "not_applicable"
+            },
+            "inverse_normal": {
+              "value": "Exact: scipy norm.ppf",
+              "status": "verified",
+              "citations": [
+                {
+                  "file": "src/spei/si.py",
+                  "lines": "576"
+                }
+              ]
+            },
+            "output_bound": {
+              "value": "None; a CDF of 0 or 1 gives an infinite value",
+              "status": "verified",
+              "citations": [
+                {
+                  "file": "src/spei/si.py",
+                  "lines": "576"
+                }
+              ]
+            },
+            "missing_data_minimum_sample": {
+              "value": "NaN dropped before the fit; no minimum sample",
+              "status": "verified",
+              "citations": [
+                {
+                  "file": "src/spei/utils.py",
+                  "lines": "143"
+                }
+              ]
+            },
+            "fit_failure": {
+              "value": "Not handled: no try/except around the scipy fit, so its errors propagate and its result is used as returned",
+              "status": "verified",
+              "citations": [
+                {
+                  "file": "src/spei/dist.py",
+                  "lines": "95-99"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "implementation": "standard_precip",
+          "entry_point": "standard_precip.spei.SPEI.calculate",
+          "cells": {
+            "accumulation": {
+              "value": "The caller supplies the water balance as the precipitation column; rolling SUM over `scale` rows",
+              "status": "verified",
+              "citations": [
+                {
+                  "file": "standard_precip/spei.py",
+                  "lines": "11"
+                },
+                {
+                  "file": "standard_precip/base_sp.py",
+                  "lines": "50"
+                }
+              ]
+            },
+            "calendar_grouping": {
+              "value": "freq 'M' month, 'W' ISO week, 'D' raw day of year (after Feb 28 a leap year's days sit one later than a common year's), None one group; or a caller integer column (freq_col)",
+              "status": "verified",
+              "citations": [
+                {
+                  "file": "standard_precip/base_sp.py",
+                  "lines": "308-314"
+                }
+              ]
+            },
+            "calibration_period": {
+              "value": "baseline_start/baseline_end (integer years inclusive, or dates); default whole record; all rows are standardized",
+              "status": "verified",
+              "citations": [
+                {
+                  "file": "standard_precip/base_sp.py",
+                  "lines": "330"
+                },
+                {
+                  "file": "standard_precip/base_sp.py",
+                  "lines": "165"
+                }
+              ]
+            },
+            "distribution": {
+              "value": "Inherits the SPI default dist_type='gam' with fit_type='lmom', which strips zeros, applies p0 and fits a gamma, and the docstring calls inappropriate for a signed balance; it recommends dist_type='glo' with fit_type='lmom'",
+              "status": "verified",
+              "citations": [
+                {
+                  "file": "standard_precip/spei.py",
+                  "lines": "22"
+                },
+                {
+                  "file": "standard_precip/base_sp.py",
+                  "lines": "185"
+                }
+              ]
+            },
+            "estimator": {
+              "value": "'glo' with fit_type='lmom': lmoments3 Hosking generalized logistic L-moment fit; with 'mle': scipy genlogistic, a different family implementation",
+              "status": "verified",
+              "citations": [
+                {
+                  "file": "lmoments3-1.0.8/src/lmoments3/distr.py",
+                  "lines": "153"
+                },
+                {
+                  "file": "standard_precip/_distributions.py",
+                  "lines": "64"
+                }
+              ]
+            },
+            "location_offset": {
+              "value": "glo: location fitted (Hosking GLO has a location); gam: fixed at 0",
+              "status": "verified",
+              "citations": [
+                {
+                  "file": "lmoments3-1.0.8/src/lmoments3/distr.py",
+                  "lines": "153"
+                },
+                {
+                  "file": "standard_precip/_distributions.py",
+                  "lines": "50"
+                }
+              ]
+            },
+            "zero_handling": {
+              "value": "Zeros stripped and a p0 mass added (the inherited gam default); no stripping with dist_type='glo', and pe3 would strip zeros",
+              "status": "verified",
+              "citations": [
+                {
+                  "file": "standard_precip/_distributions.py",
+                  "lines": "64"
+                }
+              ]
+            },
+            "plotting_position": {
+              "value": "Parametric fit only",
+              "status": "not_applicable"
+            },
+            "inverse_normal": {
+              "value": "Exact: scipy norm.ppf",
+              "status": "verified",
+              "citations": [
+                {
+                  "file": "standard_precip/base_sp.py",
+                  "lines": "146"
+                }
+              ]
+            },
+            "output_bound": {
+              "value": "CDF clipped to [1e-16, 1-1e-16], so about +-8.2",
+              "status": "verified",
+              "citations": [
+                {
+                  "file": "standard_precip/base_sp.py",
+                  "lines": "144"
+                }
+              ]
+            },
+            "missing_data_minimum_sample": {
+              "value": "Rows with NaN dropped per group before the fit; L-moment fits need max(4, numargs + 3) values, MLE 4, counted after zeros are stripped for gam and pe3; a group of all zeros is not fit",
+              "status": "verified",
+              "citations": [
+                {
+                  "file": "standard_precip/_distributions.py",
+                  "lines": "103-109"
+                },
+                {
+                  "file": "standard_precip/base_sp.py",
+                  "lines": "345"
+                }
+              ]
+            },
+            "fit_failure": {
+              "value": "Params None, index NaN for that group, one UserWarning per column; TypeError from bad fit arguments propagates",
+              "status": "verified",
+              "citations": [
+                {
+                  "file": "standard_precip/base_sp.py",
+                  "lines": "382-386"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "implementation": "r_spei",
+          "entry_point": "SPEI::spei (input is P - PET)",
+          "cells": {
+            "accumulation": {
+              "value": "Kernel-weighted rolling sum, align right, first scale-1 NA; the default rectangular kernel is a plain sum",
+              "status": "verified",
+              "citations": [
+                {
+                  "file": "R/spei.R",
+                  "lines": "597"
+                },
+                {
+                  "file": "R/spei.R",
+                  "lines": "598-601"
+                },
+                {
+                  "file": "R/kern.R",
+                  "lines": "93"
+                },
+                {
+                  "file": "R/kern.R",
+                  "lines": "101"
+                }
+              ],
+              "options": [
+                {
+                  "value": "triangular, circular or gaussian kernel, with shift",
+                  "how": "kernel=list(type=..., shift=...)",
+                  "citations": [
+                    {
+                      "file": "R/kern.R",
+                      "lines": "74"
+                    }
+                  ]
+                }
+              ]
+            },
+            "calendar_grouping": {
+              "value": "cycle() of the ts frequency; non-ts input is assumed monthly (12)",
+              "status": "verified",
+              "citations": [
+                {
+                  "file": "R/spei.R",
+                  "lines": "627"
+                },
+                {
+                  "file": "R/spei.R",
+                  "lines": "523"
+                }
+              ]
+            },
+            "calibration_period": {
+              "value": "ref.start/ref.end as c(year, period); default whole series; parameters can be passed in `params`",
+              "status": "verified",
+              "citations": [
+                {
+                  "file": "R/spei.R",
+                  "lines": "611"
+                }
+              ]
+            },
+            "distribution": {
+              "value": "log-Logistic by default",
+              "status": "verified",
+              "citations": [
+                {
+                  "file": "R/spei.R",
+                  "lines": "336"
+                }
+              ],
+              "options": [
+                {
+                  "value": "Gamma, PearsonIII",
+                  "how": "distribution=..."
+                }
+              ]
+            },
+            "estimator": {
+              "value": "fit='ub-pwm': unbiased PWM to L-moments, then lmom::pelglo, with lmomco::parglo as the fallback when pelglo errors",
+              "status": "verified",
+              "citations": [
+                {
+                  "file": "R/spei.R",
+                  "lines": "667"
+                },
+                {
+                  "file": "R/spei.R",
+                  "lines": "683-686"
+                }
+              ],
+              "options": [
+                {
+                  "value": "Plotting-position PWM, a = -0.35",
+                  "how": "fit='pp-pwm'",
+                  "citations": [
+                    {
+                      "file": "R/spei.R",
+                      "lines": "666"
+                    }
+                  ]
+                },
+                {
+                  "value": "Maximum likelihood refinement of the L-moment fit",
+                  "how": "fit='max-lik'",
+                  "citations": [
+                    {
+                      "file": "R/spei.R",
+                      "lines": "702"
+                    }
+                  ]
+                }
+              ]
+            },
+            "location_offset": {
+              "value": "Three-parameter log-logistic (xi, alpha, kappa): a fitted location; no offset",
+              "status": "verified",
+              "citations": [
+                {
+                  "file": "R/spei.R",
+                  "lines": "571"
+                }
+              ]
+            },
+            "zero_handling": {
+              "value": "None for log-Logistic: the zero-probability branch applies only to the other distributions",
+              "status": "verified",
+              "citations": [
+                {
+                  "file": "R/spei.R",
+                  "lines": "640"
+                }
+              ]
+            },
+            "plotting_position": {
+              "value": "Parametric fit only (plotting positions appear only in the pp-pwm estimator)",
+              "status": "not_applicable"
+            },
+            "inverse_normal": {
+              "value": "Exact: qnorm",
+              "status": "verified",
+              "citations": [
+                {
+                  "file": "R/spei.R",
+                  "lines": "727"
+                }
+              ]
+            },
+            "output_bound": {
+              "value": "None; a CDF of 0 or 1 gives -Inf or Inf",
+              "status": "verified",
+              "citations": [
+                {
+                  "file": "R/spei.R",
+                  "lines": "727"
+                }
+              ]
+            },
+            "missing_data_minimum_sample": {
+              "value": "na.rm=FALSE: any NA in the input is an error; na.rm=TRUE: NA dropped from the fit and the window sum stays NA. A fit needs at least 4 values (after zero removal for Gamma and PearsonIII) and a non-zero standard deviation",
+              "status": "verified",
+              "citations": [
+                {
+                  "file": "R/spei.R",
+                  "lines": "467"
+                },
+                {
+                  "file": "R/spei.R",
+                  "lines": "657"
+                }
+              ]
+            },
+            "fit_failure": {
+              "value": "Invalid L-moments or a constant series leave that period NA, silently",
+              "status": "verified",
+              "citations": [
+                {
+                  "file": "R/spei.R",
+                  "lines": "672-674"
+                },
+                {
+                  "file": "R/spei.R",
+                  "lines": "653"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "implementation": "r_sei",
+          "entry_point": "SEI::std_index (input is P - PET)",
+          "cells": {
+            "accumulation": {
+              "value": "None unless agg_period is set (default NULL). With agg_period, agg_fun 'sum' by default over a time-based window; a window with more than na_thres (10) percent NA is NA, otherwise NAs are dropped and the function applies to the rest without rescaling, so the error has no fixed direction and depends on the omitted values",
+              "status": "verified",
+              "citations": [
+                {
+                  "file": "R/std_index.R",
+                  "lines": "249"
+                },
+                {
+                  "file": "R/std_index.R",
+                  "lines": "251"
+                },
+                {
+                  "file": "R/aggregate_xts.R",
+                  "lines": "128-130"
+                }
+              ]
+            },
+            "calendar_grouping": {
+              "value": "None built in: the caller passes a grouping factor gr_new (for example month) and one distribution is fit per group. The per-group call forwards only some arguments (method, n_thres, moving_window and rescale_fun are dropped, so method reverts to 'mle'), and aggregation then runs inside each group, so aggregate beforehand",
+              "status": "verified",
+              "citations": [
+                {
+                  "file": "R/std_index.R",
+                  "lines": "267-271"
+                }
+              ]
+            },
+            "calibration_period": {
+              "value": "x_ref fits the distribution (default x_new); x_new is standardized; moving_window uses the preceding values only",
+              "status": "verified",
+              "citations": [
+                {
+                  "file": "R/std_index.R",
+                  "lines": "237"
+                },
+                {
+                  "file": "R/std_index.R",
+                  "lines": "338"
+                }
+              ]
+            },
+            "distribution": {
+              "value": "Default 'empirical'; 'llogis' is the two-parameter log-logistic, and every positive-support family stops on negative values, so a signed P - PET cannot be fit by it",
+              "status": "verified",
+              "citations": [
+                {
+                  "file": "R/std_index.R",
+                  "lines": "238"
+                },
+                {
+                  "file": "R/fit_dist.R",
+                  "lines": "385"
+                }
+              ],
+              "options": [
+                {
+                  "value": "norm, logis, kde",
+                  "how": "dist=... (families that accept a signed series)"
+                }
+              ]
+            },
+            "estimator": {
+              "value": "method 'mle' (fitdistrplus::fitdist)",
+              "status": "verified",
+              "citations": [
+                {
+                  "file": "R/std_index.R",
+                  "lines": "241"
+                },
+                {
+                  "file": "R/fit_dist.R",
+                  "lines": "267"
+                }
+              ],
+              "options": [
+                {
+                  "value": "mme, qme, mge, mse (fitdistrplus)",
+                  "how": "method=..."
+                },
+                {
+                  "value": "L-moments via lmom, not for llogis",
+                  "how": "method='lmme'",
+                  "citations": [
+                    {
+                      "file": "R/fit_dist.R",
+                      "lines": "290"
+                    },
+                    {
+                      "file": "R/fit_dist.R",
+                      "lines": "303"
+                    }
+                  ]
+                }
+              ]
+            },
+            "location_offset": {
+              "value": "Two-parameter families, no location",
+              "status": "verified",
+              "citations": [
+                {
+                  "file": "R/fit_dist.R",
+                  "lines": "269"
+                }
+              ]
+            },
+            "zero_handling": {
+              "value": "Not applicable to a signed series; censoring at lower/upper remains available",
+              "status": "verified",
+              "citations": [
+                {
+                  "file": "R/std_index.R",
+                  "lines": "257-258"
+                }
+              ]
+            },
+            "plotting_position": {
+              "value": "Parametric fit; the empirical option is in the non-parametric family",
+              "status": "not_applicable"
+            },
+            "inverse_normal": {
+              "value": "Exact: qnorm, for index_type='normal' (the default)",
+              "status": "verified",
+              "citations": [
+                {
+                  "file": "R/std_index.R",
+                  "lines": "395"
+                }
+              ],
+              "options": [
+                {
+                  "value": "The probability itself, or 2p - 1, instead of a z-score",
+                  "how": "index_type='prob01' | 'prob11'",
+                  "citations": [
+                    {
+                      "file": "R/std_index.R",
+                      "lines": "397"
+                    }
+                  ]
+                }
+              ]
+            },
+            "output_bound": {
+              "value": "None; a parametric CDF of 0 or 1 gives an infinite value",
+              "status": "verified",
+              "citations": [
+                {
+                  "file": "R/std_index.R",
+                  "lines": "395"
+                }
+              ]
+            },
+            "missing_data_minimum_sample": {
+              "value": "NA removed; fewer than n_thres (10) values gives NA with a warning",
+              "status": "verified",
+              "citations": [
+                {
+                  "file": "R/fit_dist.R",
+                  "lines": "232-235"
+                }
+              ]
+            },
+            "fit_failure": {
+              "value": "try() failure gives a warning and NA",
+              "status": "verified",
+              "citations": [
+                {
+                  "file": "R/fit_dist.R",
+                  "lines": "263"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "implementation": "r_climatekit",
+          "entry_point": "climatekit::ck_spei (daily precipitation and PET; provisional, not in the lineage SPEI table)",
+          "cells": {
+            "accumulation": {
+              "value": "Daily P - PET summed to the months present in `dates` with na.rm=TRUE (a missing day counts as 0, absent months are not filled), then a trailing sum over `scale` rows of those totals",
+              "status": "verified",
+              "citations": [
+                {
+                  "file": "R/drought.R",
+                  "lines": "129"
+                },
+                {
+                  "file": "R/drought.R",
+                  "lines": "139"
+                }
+              ]
+            },
+            "calendar_grouping": {
+              "value": "Calendar month",
+              "status": "verified",
+              "citations": [
+                {
+                  "file": "R/drought.R",
+                  "lines": "55"
+                }
+              ]
+            },
+            "calibration_period": {
+              "value": "No argument: the whole record",
+              "status": "verified",
+              "citations": [
+                {
+                  "file": "R/drought.R",
+                  "lines": "33"
+                }
+              ]
+            },
+            "distribution": {
+              "value": "log-logistic by default",
+              "status": "verified",
+              "citations": [
+                {
+                  "file": "R/drought.R",
+                  "lines": "116"
+                }
+              ],
+              "options": [
+                {
+                  "value": "GEV",
+                  "how": "distribution='gev'"
+                }
+              ]
+            },
+            "estimator": {
+              "value": "Unbiased PWM sample L-moments, then the generalized logistic form (covers -1 < tau3 < 1); GEV by Hosking's approximation",
+              "status": "verified",
+              "citations": [
+                {
+                  "file": "R/drought.R",
+                  "lines": "617"
+                },
+                {
+                  "file": "R/drought.R",
+                  "lines": "644"
+                },
+                {
+                  "file": "R/drought.R",
+                  "lines": "571"
+                }
+              ]
+            },
+            "location_offset": {
+              "value": "Data are shifted by -min + 1 before the PWM fit (a data-dependent offset); the fit has its own location",
+              "status": "verified",
+              "citations": [
+                {
+                  "file": "R/drought.R",
+                  "lines": "612"
+                }
+              ]
+            },
+            "zero_handling": {
+              "value": "None: zeros are ordinary values",
+              "status": "verified",
+              "citations": [
+                {
+                  "file": "R/drought.R",
+                  "lines": "612"
+                }
+              ]
+            },
+            "plotting_position": {
+              "value": "Parametric fit only",
+              "status": "not_applicable"
+            },
+            "inverse_normal": {
+              "value": "Exact: stats::qnorm",
+              "status": "verified",
+              "citations": [
+                {
+                  "file": "R/drought.R",
+                  "lines": "662"
+                }
+              ]
+            },
+            "output_bound": {
+              "value": "A CDF of exactly 0 or below becomes 0.001 and of 1 or above becomes 0.999 (z = -3.09, +3.09); values in between are not clamped, so |z| can exceed 3.09. GEV: an out-of-support point scores z = 0",
+              "status": "verified",
+              "citations": [
+                {
+                  "file": "R/drought.R",
+                  "lines": "660-661"
+                },
+                {
+                  "file": "R/drought.R",
+                  "lines": "590"
+                }
+              ]
+            },
+            "missing_data_minimum_sample": {
+              "value": "At least 3 accumulations per calendar month for log-logistic (4 for GEV)",
+              "status": "verified",
+              "citations": [
+                {
+                  "file": "R/drought.R",
+                  "lines": "150"
+                },
+                {
+                  "file": "R/drought.R",
+                  "lines": "546"
+                }
+              ]
+            },
+            "fit_failure": {
+              "value": "L-moment l2 <= 0 or |tau3| >= 1: NA with a cli warning",
+              "status": "verified",
+              "citations": [
+                {
+                  "file": "R/drought.R",
+                  "lines": "629"
+                },
+                {
+                  "file": "R/drought.R",
+                  "lines": "641"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "implementation": "climate_engine",
+          "entry_point": "Climate Engine API standard_index, distribution=nonparametric (SPEI)",
+          "cells": {
+            "accumulation": {
+              "value": "Fixed trailing days (30, 90, 180, 365), not calendar months",
+              "status": "unverified",
+              "basis": "docs/research/earthengine-climate-engine-pilot.md method-alignment table; the product source is not available and the pilot records its exact methods as unconfirmed",
+              "citations": [
+                {
+                  "file": "docs/research/earthengine-climate-engine-pilot.md",
+                  "lines": "58"
+                }
+              ]
+            },
+            "calendar_grouping": {
+              "value": "Unresolved",
+              "status": "unverified",
+              "basis": "docs/research/earthengine-climate-engine-pilot.md method-alignment table; the product source is not available and the pilot records its exact methods as unconfirmed",
+              "citations": [
+                {
+                  "file": "docs/research/earthengine-climate-engine-pilot.md",
+                  "lines": "57"
+                }
+              ]
+            },
+            "calibration_period": {
+              "value": "1981-2016 set in the request",
+              "status": "unverified",
+              "basis": "pilot request configuration, docs/research/earthengine-climate-engine-pilot.md",
+              "citations": [
+                {
+                  "file": "docs/research/earthengine-climate-engine-pilot.md",
+                  "lines": "32"
+                }
+              ]
+            },
+            "distribution": {
+              "value": "Non-parametric (rank based)",
+              "status": "unverified",
+              "basis": "docs/research/earthengine-climate-engine-pilot.md method-alignment table; the product source is not available and the pilot records its exact methods as unconfirmed",
+              "citations": [
+                {
+                  "file": "docs/research/earthengine-climate-engine-pilot.md",
+                  "lines": "53"
+                }
+              ]
+            },
+            "estimator": {
+              "value": "Non-parametric: no parameters are fit",
+              "status": "not_applicable"
+            },
+            "location_offset": {
+              "value": "Non-parametric",
+              "status": "not_applicable"
+            },
+            "zero_handling": {
+              "value": "Not documented; ordinary ranks presumed",
+              "status": "unverified",
+              "basis": "docs/research/earthengine-climate-engine-pilot.md method-alignment table; the product source is not available and the pilot records its exact methods as unconfirmed"
+            },
+            "plotting_position": {
+              "value": "Tukey family documented or inferred; formula and tie rule unconfirmed",
+              "status": "unverified",
+              "basis": "docs/research/earthengine-climate-engine-pilot.md method-alignment table; the product source is not available and the pilot records its exact methods as unconfirmed",
+              "citations": [
+                {
+                  "file": "docs/research/earthengine-climate-engine-pilot.md",
+                  "lines": "54"
+                }
+              ]
+            },
+            "inverse_normal": {
+              "value": "Not documented",
+              "status": "unverified",
+              "basis": "docs/research/earthengine-climate-engine-pilot.md method-alignment table; the product source is not available and the pilot records its exact methods as unconfirmed"
+            },
+            "output_bound": {
+              "value": "Not documented",
+              "status": "unverified",
+              "basis": "docs/research/earthengine-climate-engine-pilot.md method-alignment table; the product source is not available and the pilot records its exact methods as unconfirmed"
+            },
+            "missing_data_minimum_sample": {
+              "value": "Not documented",
+              "status": "unverified",
+              "basis": "docs/research/earthengine-climate-engine-pilot.md method-alignment table; the product source is not available and the pilot records its exact methods as unconfirmed"
+            },
+            "fit_failure": {
+              "value": "Not documented",
+              "status": "unverified",
+              "basis": "docs/research/earthengine-climate-engine-pilot.md method-alignment table; the product source is not available and the pilot records its exact methods as unconfirmed"
+            }
+          }
+        },
+        {
+          "implementation": "gridmet_drought",
+          "entry_point": "Earth Engine GRIDMET/DROUGHT spei30d..spei1y bands (SPEI)",
+          "cells": {
+            "accumulation": {
+              "value": "Fixed trailing days (30, 90, 180, 365), not calendar months",
+              "status": "unverified",
+              "basis": "docs/research/earthengine-climate-engine-pilot.md method-alignment table; the product source is not available and the pilot records its exact methods as unconfirmed",
+              "citations": [
+                {
+                  "file": "docs/research/earthengine-climate-engine-pilot.md",
+                  "lines": "58"
+                }
+              ]
+            },
+            "calendar_grouping": {
+              "value": "Unresolved",
+              "status": "unverified",
+              "basis": "docs/research/earthengine-climate-engine-pilot.md method-alignment table; the product source is not available and the pilot records its exact methods as unconfirmed",
+              "citations": [
+                {
+                  "file": "docs/research/earthengine-climate-engine-pilot.md",
+                  "lines": "57"
+                }
+              ]
+            },
+            "calibration_period": {
+              "value": "1981-2016 documented by the catalog",
+              "status": "unverified",
+              "basis": "Earth Engine catalog as quoted in the pilot",
+              "citations": [
+                {
+                  "file": "docs/research/earthengine-climate-engine-pilot.md",
+                  "lines": "32"
+                }
+              ]
+            },
+            "distribution": {
+              "value": "Non-parametric (rank based)",
+              "status": "unverified",
+              "basis": "docs/research/earthengine-climate-engine-pilot.md method-alignment table; the product source is not available and the pilot records its exact methods as unconfirmed",
+              "citations": [
+                {
+                  "file": "docs/research/earthengine-climate-engine-pilot.md",
+                  "lines": "53"
+                }
+              ]
+            },
+            "estimator": {
+              "value": "Non-parametric: no parameters are fit",
+              "status": "not_applicable"
+            },
+            "location_offset": {
+              "value": "Non-parametric",
+              "status": "not_applicable"
+            },
+            "zero_handling": {
+              "value": "Not documented; ordinary ranks presumed",
+              "status": "unverified",
+              "basis": "docs/research/earthengine-climate-engine-pilot.md method-alignment table; the product source is not available and the pilot records its exact methods as unconfirmed"
+            },
+            "plotting_position": {
+              "value": "Tukey family documented or inferred; formula and tie rule unconfirmed",
+              "status": "unverified",
+              "basis": "docs/research/earthengine-climate-engine-pilot.md method-alignment table; the product source is not available and the pilot records its exact methods as unconfirmed",
+              "citations": [
+                {
+                  "file": "docs/research/earthengine-climate-engine-pilot.md",
+                  "lines": "54"
+                }
+              ]
+            },
+            "inverse_normal": {
+              "value": "Not documented",
+              "status": "unverified",
+              "basis": "docs/research/earthengine-climate-engine-pilot.md method-alignment table; the product source is not available and the pilot records its exact methods as unconfirmed"
+            },
+            "output_bound": {
+              "value": "Not documented",
+              "status": "unverified",
+              "basis": "docs/research/earthengine-climate-engine-pilot.md method-alignment table; the product source is not available and the pilot records its exact methods as unconfirmed"
+            },
+            "missing_data_minimum_sample": {
+              "value": "Not documented",
+              "status": "unverified",
+              "basis": "docs/research/earthengine-climate-engine-pilot.md method-alignment table; the product source is not available and the pilot records its exact methods as unconfirmed"
+            },
+            "fit_failure": {
+              "value": "Not documented",
+              "status": "unverified",
+              "basis": "docs/research/earthengine-climate-engine-pilot.md method-alignment table; the product source is not available and the pilot records its exact methods as unconfirmed"
+            }
+          }
+        },
+        {
+          "implementation": "speibase",
+          "entry_point": "SPEIbase v2.11 (CRU TS 4.09 inputs, Penman-Monteith PET)",
+          "cells": {
+            "accumulation": {
+              "value": "Sum over scale months (R SPEI default), per the build version",
+              "status": "unverified",
+              "basis": "comparators.md and tests/fixture/speibase/provenance.json; the product's build is described on spei.csic.es and is not read here",
+              "citations": [
+                {
+                  "file": "docs/research/reference-papers/comparators.md",
+                  "lines": "186"
+                }
+              ]
+            },
+            "calendar_grouping": {
+              "value": "Calendar month",
+              "status": "unverified",
+              "basis": "comparators.md and tests/fixture/speibase/provenance.json; the product's build is described on spei.csic.es and is not read here",
+              "citations": [
+                {
+                  "file": "docs/research/reference-papers/comparators.md",
+                  "lines": "186"
+                }
+              ]
+            },
+            "calibration_period": {
+              "value": "Not established (whole record presumed)",
+              "status": "unverified",
+              "basis": "comparators.md and tests/fixture/speibase/provenance.json; the product's build is described on spei.csic.es and is not read here",
+              "citations": [
+                {
+                  "file": "docs/research/reference-papers/comparators.md",
+                  "lines": "186"
+                }
+              ]
+            },
+            "distribution": {
+              "value": "log-Logistic",
+              "status": "unverified",
+              "basis": "comparators.md and tests/fixture/speibase/provenance.json; the product's build is described on spei.csic.es and is not read here",
+              "citations": [
+                {
+                  "file": "docs/research/reference-papers/comparators.md",
+                  "lines": "186"
+                }
+              ]
+            },
+            "estimator": {
+              "value": "Unbiased PWM, per R SPEI 1.8.1 defaults",
+              "status": "unverified",
+              "basis": "comparators.md and tests/fixture/speibase/provenance.json; the product's build is described on spei.csic.es and is not read here",
+              "citations": [
+                {
+                  "file": "docs/research/reference-papers/comparators.md",
+                  "lines": "186"
+                }
+              ]
+            },
+            "location_offset": {
+              "value": "Fitted three-parameter location",
+              "status": "unverified",
+              "basis": "comparators.md and tests/fixture/speibase/provenance.json; the product's build is described on spei.csic.es and is not read here",
+              "citations": [
+                {
+                  "file": "docs/research/reference-papers/comparators.md",
+                  "lines": "186"
+                }
+              ]
+            },
+            "zero_handling": {
+              "value": "Signed water balance",
+              "status": "not_applicable"
+            },
+            "plotting_position": {
+              "value": "Parametric fit",
+              "status": "not_applicable"
+            },
+            "inverse_normal": {
+              "value": "Exact qnorm, per R SPEI 1.8.1",
+              "status": "unverified",
+              "basis": "comparators.md and tests/fixture/speibase/provenance.json; the product's build is described on spei.csic.es and is not read here",
+              "citations": [
+                {
+                  "file": "docs/research/reference-papers/comparators.md",
+                  "lines": "186"
+                }
+              ]
+            },
+            "output_bound": {
+              "value": "None, per R SPEI 1.8.1; the product may truncate",
+              "status": "unverified",
+              "basis": "comparators.md and tests/fixture/speibase/provenance.json; the product's build is described on spei.csic.es and is not read here",
+              "citations": [
+                {
+                  "file": "docs/research/reference-papers/comparators.md",
+                  "lines": "186"
+                }
+              ]
+            },
+            "missing_data_minimum_sample": {
+              "value": "Not established",
+              "status": "unverified",
+              "basis": "comparators.md and tests/fixture/speibase/provenance.json; the product's build is described on spei.csic.es and is not read here"
+            },
+            "fit_failure": {
+              "value": "Not established",
+              "status": "unverified",
+              "basis": "comparators.md and tests/fixture/speibase/provenance.json; the product's build is described on spei.csic.es and is not read here"
+            }
+          }
+        }
+      ]
+    },
+    "non_parametric": {
+      "title": "Non-parametric standardization (empirical SPI/SPEI, EDDI)",
+      "entries": [
+        {
+          "implementation": "climate_indices",
+          "entry_point": "drought.indices.standardized_index(distribution=empirical)",
+          "cells": {
+            "accumulation": {
+              "value": "Sum over `scale` steps; a window holding a NaN is NaN; first scale-1 steps NaN",
+              "status": "verified",
+              "citations": [
+                {
+                  "file": "src/climate_indices/compute.py",
+                  "lines": "243-245"
+                },
+                {
+                  "file": "src/climate_indices/compute.py",
+                  "lines": "309"
+                }
+              ],
+              "options": [
+                {
+                  "value": "Mean of the window",
+                  "how": "standardized_index(aggregation='mean')",
+                  "citations": [
+                    {
+                      "file": "src/climate_indices/CONTEXT.md",
+                      "lines": "50"
+                    }
+                  ]
+                }
+              ]
+            },
+            "calendar_grouping": {
+              "value": "Calendar month (12) or day of year on a 366-column calendar, every year a leap year; Feb 29 interpolated in non-leap years",
+              "status": "verified",
+              "citations": [
+                {
+                  "file": "src/climate_indices/CONTEXT.md",
+                  "lines": "27-28"
+                },
+                {
+                  "file": "src/climate_indices/compute.py",
+                  "lines": "724-725"
+                }
+              ]
+            },
+            "calibration_period": {
+              "value": "Required calibration_year_initial/final; parameters fit on that window, every year standardized against it; a window the record does not cover is clamped to the record (a window ending one year past it keeps its start) with CalibrationPeriodClampedWarning. The 30-year minimum raises InsufficientDataError only in the xarray adapter, for an in-memory single series containing NaN; the NumPy functions only warn (ShortCalibrationWarning)",
+              "status": "verified",
+              "citations": [
+                {
+                  "file": "src/climate_indices/compute.py",
+                  "lines": "699"
+                },
+                {
+                  "file": "src/climate_indices/_calibration_period.py",
+                  "lines": "24"
+                },
+                {
+                  "file": "src/climate_indices/xarray_adapter.py",
+                  "lines": "2056"
+                },
+                {
+                  "file": "src/climate_indices/compute.py",
+                  "lines": "1249"
+                }
+              ]
+            },
+            "distribution": {
+              "value": "Empirical (rank based); no distribution is fit",
+              "status": "verified",
+              "citations": [
+                {
+                  "file": "src/climate_indices/compute.py",
+                  "lines": "3255"
+                },
+                {
+                  "file": "src/climate_indices/compute.py",
+                  "lines": "3405-3409"
+                }
+              ]
+            },
+            "estimator": {
+              "value": "Non-parametric",
+              "status": "not_applicable"
+            },
+            "location_offset": {
+              "value": "Non-parametric; accepts a signed series with clip_negatives=False",
+              "status": "not_applicable"
+            },
+            "zero_handling": {
+              "value": "Zeros are ordinary ranks; no separate zero mass",
+              "status": "verified",
+              "citations": [
+                {
+                  "file": "src/climate_indices/compute.py",
+                  "lines": "3275-3277"
+                }
+              ]
+            },
+            "plotting_position": {
+              "value": "(1 + k) / (n + 2), k = calibration values at or below the value (ties take the maximum rank); n = valid calibration values at that calendar step",
+              "status": "verified",
+              "citations": [
+                {
+                  "file": "src/climate_indices/compute.py",
+                  "lines": "3277"
+                },
+                {
+                  "file": "src/climate_indices/compute.py",
+                  "lines": "3287"
+                }
+              ]
+            },
+            "inverse_normal": {
+              "value": "Exact: scipy.special.ndtri",
+              "status": "verified",
+              "citations": [
+                {
+                  "file": "src/climate_indices/compute.py",
+                  "lines": "3291"
+                }
+              ]
+            },
+            "output_bound": {
+              "value": "Positions lie in (0, 1); then clipped to [-3.09, 3.09] on the normal scale",
+              "status": "verified",
+              "citations": [
+                {
+                  "file": "src/climate_indices/drought/indices.py",
+                  "lines": "681"
+                }
+              ]
+            },
+            "missing_data_minimum_sample": {
+              "value": "Fewer than 10 valid calibration values at a step gives NaN",
+              "status": "verified",
+              "citations": [
+                {
+                  "file": "src/climate_indices/compute.py",
+                  "lines": "99"
+                }
+              ]
+            },
+            "fit_failure": {
+              "value": "Nothing is fit",
+              "status": "not_applicable"
+            }
+          }
+        },
+        {
+          "implementation": "climate_indices",
+          "entry_point": "drought.indices.eddi",
+          "cells": {
+            "accumulation": {
+              "value": "PET summed over `scale` steps; NaN in a window gives NaN",
+              "status": "verified",
+              "citations": [
+                {
+                  "file": "src/climate_indices/drought/indices.py",
+                  "lines": "407"
+                }
+              ]
+            },
+            "calendar_grouping": {
+              "value": "Calendar month (12) or day of year on a 366-column calendar, every year a leap year; Feb 29 interpolated in non-leap years",
+              "status": "verified",
+              "citations": [
+                {
+                  "file": "src/climate_indices/CONTEXT.md",
+                  "lines": "27-28"
+                },
+                {
+                  "file": "src/climate_indices/compute.py",
+                  "lines": "724-725"
+                }
+              ]
+            },
+            "calibration_period": {
+              "value": "calibration_year_initial/final, required; each calendar step ranked within that window; a window the record does not cover raises CalibrationPeriodError (rejected, not clamped as SPI, SPEI and the empirical path do)",
+              "status": "verified",
+              "citations": [
+                {
+                  "file": "src/climate_indices/drought/indices.py",
+                  "lines": "311"
+                },
+                {
+                  "file": "src/climate_indices/drought/indices.py",
+                  "lines": "396"
+                }
+              ]
+            },
+            "distribution": {
+              "value": "Empirical ranking (NOAA PSL method)",
+              "status": "verified",
+              "citations": [
+                {
+                  "file": "src/climate_indices/drought/indices.py",
+                  "lines": "319"
+                }
+              ]
+            },
+            "estimator": {
+              "value": "Non-parametric",
+              "status": "not_applicable"
+            },
+            "location_offset": {
+              "value": "Non-parametric",
+              "status": "not_applicable"
+            },
+            "zero_handling": {
+              "value": "Ordinary ranks after preparation",
+              "status": "verified",
+              "citations": [
+                {
+                  "file": "src/climate_indices/drought/indices.py",
+                  "lines": "450-456"
+                },
+                {
+                  "file": "src/climate_indices/compute.py",
+                  "lines": "2383-2385"
+                }
+              ]
+            },
+            "plotting_position": {
+              "value": "Tukey with NOAA's rounded constants: (pads + below + 0.66) / (n + pads + 0.33); below = strict count (ties take the minimum rank); leading scale pads count as lower than every value",
+              "status": "verified",
+              "citations": [
+                {
+                  "file": "src/climate_indices/drought/indices.py",
+                  "lines": "456"
+                }
+              ]
+            },
+            "inverse_normal": {
+              "value": "Hastings (Abramowitz and Stegun 26.2.23) approximation, as the NOAA PSL Fortran (that Fortran is not read here)",
+              "status": "verified",
+              "citations": [
+                {
+                  "file": "src/climate_indices/drought/indices.py",
+                  "lines": "62"
+                },
+                {
+                  "file": "src/climate_indices/drought/indices.py",
+                  "lines": "277"
+                }
+              ]
+            },
+            "output_bound": {
+              "value": "Probability clipped to [1e-10, 1-1e-10], z clipped to [-3.09, 3.09]",
+              "status": "verified",
+              "citations": [
+                {
+                  "file": "src/climate_indices/drought/indices.py",
+                  "lines": "472"
+                },
+                {
+                  "file": "src/climate_indices/drought/indices.py",
+                  "lines": "477"
+                }
+              ]
+            },
+            "missing_data_minimum_sample": {
+              "value": "Fewer than 2 valid climatology values gives NaN; a missing value stays missing",
+              "status": "verified",
+              "citations": [
+                {
+                  "file": "src/climate_indices/drought/indices.py",
+                  "lines": "461"
+                }
+              ]
+            },
+            "fit_failure": {
+              "value": "Nothing is fit",
+              "status": "not_applicable"
+            }
+          }
+        },
+        {
+          "implementation": "r_sei",
+          "entry_point": "SEI::std_index(dist='empirical')",
+          "cells": {
+            "accumulation": {
+              "value": "None unless agg_period is set (default NULL). With agg_period, agg_fun 'sum' by default over a time-based window; a window with more than na_thres (10) percent NA is NA, otherwise NAs are dropped and the function applies to the rest without rescaling, so the error has no fixed direction and depends on the omitted values",
+              "status": "verified",
+              "citations": [
+                {
+                  "file": "R/std_index.R",
+                  "lines": "249"
+                },
+                {
+                  "file": "R/std_index.R",
+                  "lines": "251"
+                },
+                {
+                  "file": "R/aggregate_xts.R",
+                  "lines": "128-130"
+                }
+              ]
+            },
+            "calendar_grouping": {
+              "value": "None built in: the caller passes a grouping factor gr_new (for example month) and one distribution is fit per group. The per-group call forwards only some arguments (method, n_thres, moving_window and rescale_fun are dropped, so method reverts to 'mle'), and aggregation then runs inside each group, so aggregate beforehand",
+              "status": "verified",
+              "citations": [
+                {
+                  "file": "R/std_index.R",
+                  "lines": "267-271"
+                }
+              ]
+            },
+            "calibration_period": {
+              "value": "x_ref fits the distribution (default x_new); x_new is standardized; moving_window uses the preceding values only",
+              "status": "verified",
+              "citations": [
+                {
+                  "file": "R/std_index.R",
+                  "lines": "237"
+                },
+                {
+                  "file": "R/std_index.R",
+                  "lines": "338"
+                }
+              ]
+            },
+            "distribution": {
+              "value": "'empirical' is the default",
+              "status": "verified",
+              "citations": [
+                {
+                  "file": "R/std_index.R",
+                  "lines": "238"
+                }
+              ]
+            },
+            "estimator": {
+              "value": "Non-parametric",
+              "status": "not_applicable"
+            },
+            "location_offset": {
+              "value": "Non-parametric; accepts a signed series",
+              "status": "not_applicable"
+            },
+            "zero_handling": {
+              "value": "Ordinary ranks; zeros can be censored with lower=0",
+              "status": "verified",
+              "citations": [
+                {
+                  "file": "R/std_index.R",
+                  "lines": "257-258"
+                }
+              ]
+            },
+            "plotting_position": {
+              "value": "(1 + ecdf(x) n) / (n + 2) = (1 + k) / (n + 2), k = values at or below (ties take the maximum rank)",
+              "status": "verified",
+              "citations": [
+                {
+                  "file": "R/fit_dist.R",
+                  "lines": "241"
+                }
+              ]
+            },
+            "inverse_normal": {
+              "value": "Exact: qnorm",
+              "status": "verified",
+              "citations": [
+                {
+                  "file": "R/std_index.R",
+                  "lines": "395"
+                }
+              ]
+            },
+            "output_bound": {
+              "value": "None; positions lie inside (0, 1), so values are finite",
+              "status": "verified",
+              "citations": [
+                {
+                  "file": "R/std_index.R",
+                  "lines": "395"
+                }
+              ]
+            },
+            "missing_data_minimum_sample": {
+              "value": "Fewer than n_thres (10) values gives NA with a warning; fewer than 100 warns that the empirical distribution is not recommended",
+              "status": "verified",
+              "citations": [
+                {
+                  "file": "R/fit_dist.R",
+                  "lines": "232-235"
+                },
+                {
+                  "file": "R/fit_dist.R",
+                  "lines": "379"
+                }
+              ]
+            },
+            "fit_failure": {
+              "value": "Nothing is fit",
+              "status": "not_applicable"
+            }
+          }
+        },
+        {
+          "implementation": "spei",
+          "entry_point": "spei.si.SI(normal_scores_transform=True)",
+          "cells": {
+            "accumulation": {
+              "value": "timescale=0 by default: no accumulation. For timescale > 0: rolling SUM over that many series steps (not months), min_periods=timescale, then NaN rows dropped",
+              "status": "verified",
+              "citations": [
+                {
+                  "file": "src/spei/si.py",
+                  "lines": "26"
+                },
+                {
+                  "file": "src/spei/si.py",
+                  "lines": "408-411"
+                }
+              ],
+              "options": [
+                {
+                  "value": "Mean of the window",
+                  "how": "SI(agg_func='mean')",
+                  "citations": [
+                    {
+                      "file": "src/spei/si.py",
+                      "lines": "393"
+                    }
+                  ]
+                }
+              ]
+            },
+            "calendar_grouping": {
+              "value": "Series folded onto a year-2000 frame and grouped by pandas Grouper(freq=fit_freq): calendar month, or day with Feb 29 in its own bin; fit_freq inferred from the (rolled, NaN-dropped) index; if pandas cannot infer a frequency (for example gaps) it silently falls back to monthly even for daily data",
+              "status": "verified",
+              "citations": [
+                {
+                  "file": "src/spei/si.py",
+                  "lines": "477-478"
+                },
+                {
+                  "file": "src/spei/utils.py",
+                  "lines": "118"
+                },
+                {
+                  "file": "src/spei/utils.py",
+                  "lines": "84"
+                }
+              ],
+              "options": [
+                {
+                  "value": "Distribution fit over a window of neighbouring days (daily or weekly input only)",
+                  "how": "fit_window=<odd int>",
+                  "citations": [
+                    {
+                      "file": "src/spei/si.py",
+                      "lines": "449"
+                    }
+                  ]
+                }
+              ]
+            },
+            "calibration_period": {
+              "value": "None: the distribution is fit on the whole series. SI.predict applies fitted parameters to another series",
+              "status": "verified",
+              "citations": [
+                {
+                  "file": "src/spei/si.py",
+                  "lines": "589"
+                }
+              ]
+            },
+            "distribution": {
+              "value": "Normal-scores transform: SI(normal_scores_transform=True), or the sgi() wrapper, which also sets agg_func='mean'. spi(), spei(), ssfi() and ssmi() hard-code False",
+              "status": "verified",
+              "citations": [
+                {
+                  "file": "src/spei/si.py",
+                  "lines": "133"
+                },
+                {
+                  "file": "src/spei/si.py",
+                  "lines": "68"
+                },
+                {
+                  "file": "src/spei/si.py",
+                  "lines": "513"
+                }
+              ]
+            },
+            "estimator": {
+              "value": "Non-parametric",
+              "status": "not_applicable"
+            },
+            "location_offset": {
+              "value": "Non-parametric",
+              "status": "not_applicable"
+            },
+            "zero_handling": {
+              "value": "Ordinary ranks",
+              "status": "verified",
+              "citations": [
+                {
+                  "file": "src/spei/si.py",
+                  "lines": "513"
+                }
+              ]
+            },
+            "plotting_position": {
+              "value": "(i - 1/2) / n for the i-th smallest value in each group (Hazen); ties get distinct positions by sort order",
+              "status": "verified",
+              "citations": [
+                {
+                  "file": "src/spei/si.py",
+                  "lines": "526"
+                }
+              ]
+            },
+            "inverse_normal": {
+              "value": "Exact: scipy norm.ppf",
+              "status": "verified",
+              "citations": [
+                {
+                  "file": "src/spei/si.py",
+                  "lines": "576"
+                }
+              ]
+            },
+            "output_bound": {
+              "value": "Positions lie inside (0, 1), so values are finite",
+              "status": "verified",
+              "citations": [
+                {
+                  "file": "src/spei/si.py",
+                  "lines": "526"
+                }
+              ]
+            },
+            "missing_data_minimum_sample": {
+              "value": "NaN dropped; no minimum sample",
+              "status": "verified",
+              "citations": [
+                {
+                  "file": "src/spei/utils.py",
+                  "lines": "143"
+                }
+              ]
+            },
+            "fit_failure": {
+              "value": "Nothing is fit",
+              "status": "not_applicable"
+            }
+          }
+        },
+        {
+          "implementation": "noaa_psl_eddi",
+          "entry_point": "NOAA PSL EDDI product and Fortran",
+          "cells": {
+            "accumulation": {
+              "value": "Not established from source",
+              "status": "unverified",
+              "basis": "src/climate_indices/drought/indices.py docstrings say the library follows the NOAA PSL Fortran; the Fortran is not read here (tests/test_noaa_eddi_reference.py compares to the fixtures)"
+            },
+            "calendar_grouping": {
+              "value": "Not established from source",
+              "status": "unverified",
+              "basis": "src/climate_indices/drought/indices.py docstrings say the library follows the NOAA PSL Fortran; the Fortran is not read here (tests/test_noaa_eddi_reference.py compares to the fixtures)"
+            },
+            "calibration_period": {
+              "value": "Not established from source",
+              "status": "unverified",
+              "basis": "src/climate_indices/drought/indices.py docstrings say the library follows the NOAA PSL Fortran; the Fortran is not read here (tests/test_noaa_eddi_reference.py compares to the fixtures)"
+            },
+            "zero_handling": {
+              "value": "Not established from source",
+              "status": "unverified",
+              "basis": "src/climate_indices/drought/indices.py docstrings say the library follows the NOAA PSL Fortran; the Fortran is not read here (tests/test_noaa_eddi_reference.py compares to the fixtures)"
+            },
+            "output_bound": {
+              "value": "Not established from source",
+              "status": "unverified",
+              "basis": "src/climate_indices/drought/indices.py docstrings say the library follows the NOAA PSL Fortran; the Fortran is not read here (tests/test_noaa_eddi_reference.py compares to the fixtures)"
+            },
+            "missing_data_minimum_sample": {
+              "value": "Not established from source",
+              "status": "unverified",
+              "basis": "src/climate_indices/drought/indices.py docstrings say the library follows the NOAA PSL Fortran; the Fortran is not read here (tests/test_noaa_eddi_reference.py compares to the fixtures)"
+            },
+            "distribution": {
+              "value": "Empirical ranking",
+              "status": "unverified",
+              "basis": "src/climate_indices/drought/indices.py docstrings say the library follows the NOAA PSL Fortran; the Fortran is not read here (tests/test_noaa_eddi_reference.py compares to the fixtures)",
+              "citations": [
+                {
+                  "file": "src/climate_indices/drought/indices.py",
+                  "lines": "319-321"
+                }
+              ]
+            },
+            "estimator": {
+              "value": "Non-parametric",
+              "status": "not_applicable"
+            },
+            "location_offset": {
+              "value": "Non-parametric",
+              "status": "not_applicable"
+            },
+            "plotting_position": {
+              "value": "Tukey with rounded constants 0.66 and 0.33, per the library's account of it",
+              "status": "unverified",
+              "basis": "src/climate_indices/drought/indices.py docstrings say the library follows the NOAA PSL Fortran; the Fortran is not read here (tests/test_noaa_eddi_reference.py compares to the fixtures)",
+              "citations": [
+                {
+                  "file": "src/climate_indices/drought/indices.py",
+                  "lines": "323"
+                },
+                {
+                  "file": "src/climate_indices/drought/indices.py",
+                  "lines": "455-456"
+                }
+              ]
+            },
+            "inverse_normal": {
+              "value": "Hastings approximation, per the library's account of it",
+              "status": "unverified",
+              "basis": "src/climate_indices/drought/indices.py docstrings say the library follows the NOAA PSL Fortran; the Fortran is not read here (tests/test_noaa_eddi_reference.py compares to the fixtures)",
+              "citations": [
+                {
+                  "file": "src/climate_indices/drought/indices.py",
+                  "lines": "277"
+                }
+              ]
+            },
+            "fit_failure": {
+              "value": "Nothing is fit",
+              "status": "not_applicable"
+            }
+          }
+        },
+        {
+          "implementation": "climate_engine",
+          "entry_point": "Climate Engine API standard_index, distribution=nonparametric",
+          "cells": {
+            "accumulation": {
+              "value": "Fixed trailing days (30, 90, 180, 365), not calendar months",
+              "status": "unverified",
+              "basis": "docs/research/earthengine-climate-engine-pilot.md method-alignment table; the product source is not available and the pilot records its exact methods as unconfirmed",
+              "citations": [
+                {
+                  "file": "docs/research/earthengine-climate-engine-pilot.md",
+                  "lines": "58"
+                }
+              ]
+            },
+            "calendar_grouping": {
+              "value": "Unresolved",
+              "status": "unverified",
+              "basis": "docs/research/earthengine-climate-engine-pilot.md method-alignment table; the product source is not available and the pilot records its exact methods as unconfirmed",
+              "citations": [
+                {
+                  "file": "docs/research/earthengine-climate-engine-pilot.md",
+                  "lines": "57"
+                }
+              ]
+            },
+            "calibration_period": {
+              "value": "1981-2016 set in the request",
+              "status": "unverified",
+              "basis": "pilot request configuration, docs/research/earthengine-climate-engine-pilot.md",
+              "citations": [
+                {
+                  "file": "docs/research/earthengine-climate-engine-pilot.md",
+                  "lines": "32"
+                }
+              ]
+            },
+            "distribution": {
+              "value": "Non-parametric (rank based)",
+              "status": "unverified",
+              "basis": "docs/research/earthengine-climate-engine-pilot.md method-alignment table; the product source is not available and the pilot records its exact methods as unconfirmed",
+              "citations": [
+                {
+                  "file": "docs/research/earthengine-climate-engine-pilot.md",
+                  "lines": "53"
+                }
+              ]
+            },
+            "estimator": {
+              "value": "Non-parametric: no parameters are fit",
+              "status": "not_applicable"
+            },
+            "location_offset": {
+              "value": "Non-parametric",
+              "status": "not_applicable"
+            },
+            "zero_handling": {
+              "value": "Not documented; ordinary ranks presumed",
+              "status": "unverified",
+              "basis": "docs/research/earthengine-climate-engine-pilot.md method-alignment table; the product source is not available and the pilot records its exact methods as unconfirmed"
+            },
+            "plotting_position": {
+              "value": "Tukey family documented or inferred; formula and tie rule unconfirmed",
+              "status": "unverified",
+              "basis": "docs/research/earthengine-climate-engine-pilot.md method-alignment table; the product source is not available and the pilot records its exact methods as unconfirmed",
+              "citations": [
+                {
+                  "file": "docs/research/earthengine-climate-engine-pilot.md",
+                  "lines": "54"
+                }
+              ]
+            },
+            "inverse_normal": {
+              "value": "Not documented",
+              "status": "unverified",
+              "basis": "docs/research/earthengine-climate-engine-pilot.md method-alignment table; the product source is not available and the pilot records its exact methods as unconfirmed"
+            },
+            "output_bound": {
+              "value": "Not documented",
+              "status": "unverified",
+              "basis": "docs/research/earthengine-climate-engine-pilot.md method-alignment table; the product source is not available and the pilot records its exact methods as unconfirmed"
+            },
+            "missing_data_minimum_sample": {
+              "value": "Not documented",
+              "status": "unverified",
+              "basis": "docs/research/earthengine-climate-engine-pilot.md method-alignment table; the product source is not available and the pilot records its exact methods as unconfirmed"
+            },
+            "fit_failure": {
+              "value": "Not documented",
+              "status": "unverified",
+              "basis": "docs/research/earthengine-climate-engine-pilot.md method-alignment table; the product source is not available and the pilot records its exact methods as unconfirmed"
+            }
+          }
+        },
+        {
+          "implementation": "gridmet_drought",
+          "entry_point": "Earth Engine GRIDMET/DROUGHT SPI, SPEI and EDDI bands",
+          "cells": {
+            "accumulation": {
+              "value": "Fixed trailing days (30, 90, 180, 365), not calendar months",
+              "status": "unverified",
+              "basis": "docs/research/earthengine-climate-engine-pilot.md method-alignment table; the product source is not available and the pilot records its exact methods as unconfirmed",
+              "citations": [
+                {
+                  "file": "docs/research/earthengine-climate-engine-pilot.md",
+                  "lines": "58"
+                }
+              ]
+            },
+            "calendar_grouping": {
+              "value": "Unresolved",
+              "status": "unverified",
+              "basis": "docs/research/earthengine-climate-engine-pilot.md method-alignment table; the product source is not available and the pilot records its exact methods as unconfirmed",
+              "citations": [
+                {
+                  "file": "docs/research/earthengine-climate-engine-pilot.md",
+                  "lines": "57"
+                }
+              ]
+            },
+            "calibration_period": {
+              "value": "1981-2016 documented by the catalog",
+              "status": "unverified",
+              "basis": "Earth Engine catalog as quoted in the pilot",
+              "citations": [
+                {
+                  "file": "docs/research/earthengine-climate-engine-pilot.md",
+                  "lines": "32"
+                }
+              ]
+            },
+            "distribution": {
+              "value": "Non-parametric (rank based)",
+              "status": "unverified",
+              "basis": "docs/research/earthengine-climate-engine-pilot.md method-alignment table; the product source is not available and the pilot records its exact methods as unconfirmed",
+              "citations": [
+                {
+                  "file": "docs/research/earthengine-climate-engine-pilot.md",
+                  "lines": "53"
+                }
+              ]
+            },
+            "estimator": {
+              "value": "Non-parametric: no parameters are fit",
+              "status": "not_applicable"
+            },
+            "location_offset": {
+              "value": "Non-parametric",
+              "status": "not_applicable"
+            },
+            "zero_handling": {
+              "value": "Not documented; ordinary ranks presumed",
+              "status": "unverified",
+              "basis": "docs/research/earthengine-climate-engine-pilot.md method-alignment table; the product source is not available and the pilot records its exact methods as unconfirmed"
+            },
+            "plotting_position": {
+              "value": "Tukey family documented or inferred; formula and tie rule unconfirmed",
+              "status": "unverified",
+              "basis": "docs/research/earthengine-climate-engine-pilot.md method-alignment table; the product source is not available and the pilot records its exact methods as unconfirmed",
+              "citations": [
+                {
+                  "file": "docs/research/earthengine-climate-engine-pilot.md",
+                  "lines": "54"
+                }
+              ]
+            },
+            "inverse_normal": {
+              "value": "Not documented",
+              "status": "unverified",
+              "basis": "docs/research/earthengine-climate-engine-pilot.md method-alignment table; the product source is not available and the pilot records its exact methods as unconfirmed"
+            },
+            "output_bound": {
+              "value": "Not documented",
+              "status": "unverified",
+              "basis": "docs/research/earthengine-climate-engine-pilot.md method-alignment table; the product source is not available and the pilot records its exact methods as unconfirmed"
+            },
+            "missing_data_minimum_sample": {
+              "value": "Not documented",
+              "status": "unverified",
+              "basis": "docs/research/earthengine-climate-engine-pilot.md method-alignment table; the product source is not available and the pilot records its exact methods as unconfirmed"
+            },
+            "fit_failure": {
+              "value": "Not documented",
+              "status": "unverified",
+              "basis": "docs/research/earthengine-climate-engine-pilot.md method-alignment table; the product source is not available and the pilot records its exact methods as unconfirmed"
+            }
+          }
+        }
+      ]
+    }
+  },
+  "aligned_configurations": [
+    {
+      "family": "spi",
+      "id": "spi-gamma-thom",
+      "title": "Gamma, Thom closed form, zeros as a mass of n0/n",
+      "positions": {
+        "distribution": "gamma",
+        "estimator": "Thom (1958) closed form on the non-zero values",
+        "zero_handling": "p0 = zeros / n; a zero scores Phi^-1(p0)",
+        "calendar_grouping": "calendar month",
+        "calibration_period": "whole record",
+        "accumulation": "sum over `scale` months (mean gives the same index for gamma)"
+      },
+      "implementations": [
+        {
+          "implementation": "climate_indices",
+          "how": "spi(distribution=gamma, zero_handling='classic', calibration years = the record)"
+        },
+        {
+          "implementation": "xclim",
+          "how": "standardized_precipitation_index(dist='gamma', method='APP', fitkwargs={'floc': 0})"
+        },
+        {
+          "implementation": "r_climatekit",
+          "how": "ck_spi(distribution='gamma'), fixed"
+        },
+        {
+          "implementation": "ndmc_spi",
+          "how": "fixed: gamma, Thom, whole record"
+        },
+        {
+          "implementation": "ncl",
+          "how": "dim_spi_n(spi_type=0), fixed"
+        }
+      ],
+      "independent_triples": [
+        [
+          "climate_indices",
+          "ndmc_spi",
+          "r_climatekit"
+        ],
+        [
+          "ndmc_spi",
+          "r_climatekit",
+          "xclim"
+        ]
+      ],
+      "residual_axes": [
+        "inverse_normal: NCL (gamma path) and NDMC use the A&S 26.2.23 approximation, the others exact (A&S bound 4.5e-4)",
+        "output_bound: the library clips at +-3.09; climatekit replaces a CDF of exactly 0 or 1 by 0.001 or 0.999; xclim clips at +-8.21; NCL (gamma) and NDMC do not clip (sentinels +-1e37 and +-9999); apply one common clip in the harness",
+        "NDMC prints two decimals, so a 1e-6 difference class cannot be resolved against it",
+        "climatekit takes daily input, treats a missing day as 0, and needs 3 accumulations per month; the library wants 30 calibration years"
+      ]
+    },
+    {
+      "family": "spi",
+      "id": "spi-gamma-ml",
+      "title": "Gamma, numerical maximum likelihood with location fixed at 0, zeros stripped",
+      "positions": {
+        "distribution": "gamma",
+        "estimator": "maximum likelihood, loc = 0",
+        "zero_handling": "p0 = zeros / n, zeros removed from the fit"
+      },
+      "implementations": [
+        {
+          "implementation": "xclim",
+          "how": "dist='gamma', method='ML', fitkwargs={'floc': 0}"
+        },
+        {
+          "implementation": "standard_precip",
+          "how": "calculate(dist_type='gam', fit_type='mle'), floc=0 is its default"
+        },
+        {
+          "implementation": "r_sci",
+          "how": "fitSCI(distr='gamma', p0=TRUE)"
+        }
+      ],
+      "independent_triples": [],
+      "residual_axes": [
+        "R SCI adds a 0.01 x min(positive) pseudo-observation when zeros are present",
+        "optimizer start values and tolerances differ (scipy versus fitdistrplus)"
+      ],
+      "absent": "xclim and standard_precip share a numerical routine (both call scipy's gamma fit), so the three are not mutually independent."
+    },
+    {
+      "family": "spi",
+      "id": "spi-pearson-lmoments",
+      "title": "Pearson Type III by L-moments on the non-zero values",
+      "positions": {
+        "distribution": "Pearson Type III",
+        "estimator": "unbiased-PWM L-moments (Hosking)",
+        "zero_handling": "p0 = zeros / n, zeros removed from the fit"
+      },
+      "implementations": [
+        {
+          "implementation": "climate_indices",
+          "how": "spi(distribution=pearson)"
+        },
+        {
+          "implementation": "ncl",
+          "how": "dim_spi_n(spi_type=3)"
+        },
+        {
+          "implementation": "standard_precip",
+          "how": "calculate(dist_type='pe3', fit_type='lmom')"
+        },
+        {
+          "implementation": "r_spei",
+          "how": "spi(distribution='PearsonIII', fit='ub-pwm'); its zero adjustment has no effect (see the matrix)"
+        }
+      ],
+      "independent_triples": [],
+      "residual_axes": [
+        "NCL's Pearson path thins the fit sample for nrun above 12, requires a series length that is a multiple of 12, clamps the probability to [0.001, 0.999], and inverts with AS241 (not the A&S approximation its gamma path uses)",
+        "R SPEI never applies p0"
+      ],
+      "absent": "All four descend from Hosking's L-moment Fortran or call it; lineage.json classes their pairs shared numerical routine."
+    },
+    {
+      "family": "spi",
+      "id": "spi-gamma-lmoments",
+      "title": "Gamma by L-moments (Hosking PELGAM)",
+      "positions": {
+        "distribution": "gamma",
+        "estimator": "L-moments (PELGAM)"
+      },
+      "implementations": [
+        {
+          "implementation": "standard_precip",
+          "how": "calculate(dist_type='gam', fit_type='lmom'), the default"
+        },
+        {
+          "implementation": "r_spei",
+          "how": "spi(distribution='Gamma', fit='ub-pwm'), the default"
+        },
+        {
+          "implementation": "r_sei",
+          "how": "std_index(dist='gamma', method='lmme'), without gr_new (the per-group call reverts method to 'mle')"
+        }
+      ],
+      "independent_triples": [],
+      "residual_axes": [
+        "R SPEI's zero adjustment has no effect; R SEI stops on zeros"
+      ],
+      "absent": "All three call Hosking's PELGAM (directly or through lmoments3 or lmom), so lineage.json classes their pairs shared numerical routine."
+    },
+    {
+      "family": "spei",
+      "id": "spei-glo-pwm",
+      "title": "Three-parameter log-logistic (generalized logistic) by unbiased-PWM L-moments",
+      "positions": {
+        "distribution": "log-logistic (generalized logistic)",
+        "estimator": "unbiased-PWM L-moments (Hosking PELGLO)",
+        "location_offset": "fitted",
+        "zero_handling": "none",
+        "calendar_grouping": "calendar month",
+        "calibration_period": "whole record"
+      },
+      "implementations": [
+        {
+          "implementation": "climate_indices",
+          "how": "spei(distribution=loglogistic)"
+        },
+        {
+          "implementation": "r_spei",
+          "how": "spei(distribution='log-Logistic', fit='ub-pwm'), the default"
+        },
+        {
+          "implementation": "r_climatekit",
+          "how": "ck_spei(distribution='log-logistic'), fixed"
+        },
+        {
+          "implementation": "standard_precip",
+          "how": "calculate(dist_type='glo', fit_type='lmom') on the balance"
+        },
+        {
+          "implementation": "xclim",
+          "how": "dist=<lmoments3 glo object>, method='PWM'; not exercised in this ticket"
+        }
+      ],
+      "independent_triples": [],
+      "residual_axes": [
+        "climatekit shifts the data by -min + 1 first (harmless for a location-equivariant fit) and is absent from the lineage SPEI table",
+        "the library adds 1000 per step before accumulating (also harmless)",
+        "inputs: the water balance and the PET behind it must be supplied identically"
+      ],
+      "absent": "The library is classed 'validated against' R SPEI, and every L-moment path descends from Hosking's code. climatekit, the one implementation here with its own estimator code, has no SPEI independence class yet."
+    },
+    {
+      "family": "spei",
+      "id": "spei-fisk-ml",
+      "title": "Three-parameter log-logistic (scipy fisk) by maximum likelihood",
+      "positions": {
+        "distribution": "log-logistic (scipy fisk)",
+        "estimator": "maximum likelihood",
+        "location_offset": "fitted"
+      },
+      "implementations": [
+        {
+          "implementation": "spei",
+          "how": "spei(dist=fisk), the default"
+        },
+        {
+          "implementation": "xclim",
+          "how": "dist='fisk', method='ML'"
+        }
+      ],
+      "independent_triples": [],
+      "residual_axes": [
+        "start values: xclim uses its own _fit_start, spei scale=std(data)"
+      ],
+      "absent": "Only two implementations; both call scipy's maximum-likelihood fit (lineage.json: shared numerical routine)."
+    },
+    {
+      "family": "non_parametric",
+      "id": "np-sei-position",
+      "title": "Empirical ranking with the SEI plotting position (1 + k) / (n + 2)",
+      "positions": {
+        "distribution": "empirical",
+        "plotting_position": "(1 + k) / (n + 2), ties at the maximum rank",
+        "inverse_normal": "exact"
+      },
+      "implementations": [
+        {
+          "implementation": "climate_indices",
+          "how": "standardized_index(distribution=empirical)"
+        },
+        {
+          "implementation": "r_sei",
+          "how": "std_index(dist='empirical')"
+        }
+      ],
+      "independent_triples": [],
+      "residual_axes": [
+        "calendar grouping: the library groups internally, SEI needs a factor",
+        "SEI has no calibration-window argument other than x_ref"
+      ],
+      "absent": "Only the library and SEI expose this position, and the library is validated against SEI (tests/test_energy_sei_reference.py). Vonk's spei uses (i - 1/2)/n, EDDI uses Tukey with rounded constants, and the providers' formulas are unconfirmed."
+    }
+  ]
+}

@@ -5,7 +5,9 @@ gathers relative-fit evidence without changing any index: :func:`compare_distrib
 scores every likelihood-based candidate on one shared calibration sample and returns
 log-likelihood, AIC, AICc, BIC and the best candidate for every calendar step (and cell).
 :func:`drought_category` and :func:`compare_categories` then show whether the choice changes
-the U.S. Drought Monitor class an index value falls in.
+the U.S. Drought Monitor class an index value falls in, and :func:`event_concordance` and
+:func:`category_agreement` measure the agreement of an index's events and classes with an
+independent reference.
 
 The criteria are **penalized likelihoods at the library's own estimates**: gamma by Thom's
 (1958) closed-form approximation, Pearson Type III, log-logistic and GEV by L-moments. They are
@@ -36,6 +38,9 @@ import xarray as xr
 
 from climate_indices import __version__, compute, provenance
 from climate_indices._calibration_period import MIN_CALIBRATION_YEARS, CalibrationPeriod, resolve_calibration_period
+from climate_indices.compound import compound_events
+from climate_indices.compound._events import _validated_runs
+from climate_indices.compound._harmonize import Cadence
 from climate_indices.drought import indices as _indices
 from climate_indices.exceptions import (
     BetaFeatureWarning,
@@ -45,6 +50,7 @@ from climate_indices.exceptions import (
     InvalidArgumentError,
     ShortCalibrationWarning,
 )
+from climate_indices.runs import RunSet
 from climate_indices.validation import (
     validate_dask_chunks,
     validate_time_dimension,
@@ -70,12 +76,15 @@ __all__ = [
     "CategoryComparison",
     "Criterion",
     "DistributionComparison",
+    "EventConcordance",
     "GofStatistic",
     "GoodnessOfFit",
     "IndexRoute",
+    "category_agreement",
     "compare_categories",
     "compare_distributions",
     "drought_category",
+    "event_concordance",
 ]
 
 Criterion = Literal["aicc", "aic", "bic"]
@@ -2447,3 +2456,200 @@ def compare_categories(
             "None for NumPy input",
         )
     return _compare_categories_numpy(reference, alternative)
+
+
+_CONCORDANCE_COUNTING = (
+    "Reference-centric, per ADR-0028 section 7: a reference event overlapped by at least one index event is one "
+    "hit, a reference event overlapped by none is one miss, and an index event overlapping no reference event is "
+    "one false alarm. An index event overlapping at least one reference event is counted once as a matched index "
+    "event, so hits count reference events while matched_index_events and false_alarms count index events."
+)
+
+
+@dataclasses.dataclass(frozen=True, eq=False)
+class EventConcordance:
+    """How an index's events agree with an independent reference, counted reference-centrically.
+
+    Both event sets come from :func:`climate_indices.runs.identify_runs` and are paired by
+    :func:`climate_indices.compound.compound_events` in concurrent mode. The counting is
+    reference-centric, so several index events may fall in one reference event: that is one hit but
+    several matched index events (ADR-0028 section 7). A ratio is NaN, never zero, only when its own
+    denominator is empty; with reference events but no index events, ``pod`` and ``csi`` are zero and
+    only ``far`` is NaN.
+
+    A censored run touches the record edge or an unknown step, so its physical onset or end is unknown.
+    Censored runs are counted here and take part in the counts like any other run.
+    """
+
+    #: Reference events overlapped by at least one index event.
+    hits: int
+    #: Reference events overlapped by no index event.
+    misses: int
+    #: Index events overlapping no reference event.
+    false_alarms: int
+    #: Index events overlapping at least one reference event, each counted once.
+    matched_index_events: int
+    #: ``hits / (hits + misses)``, the probability of detection; NaN with no reference event.
+    pod: float
+    #: ``false_alarms / (matched_index_events + false_alarms)``, the false-alarm ratio; NaN when the
+    #: index has no event, which empties the denominator.
+    far: float
+    #: ``hits / (hits + misses + false_alarms)``, the critical success index; NaN with no event on
+    #: either side.
+    csi: float
+    #: Index runs whose onset touches the record start or an unknown step.
+    index_left_censored: int
+    #: Index runs whose end touches the record end or an unknown step.
+    index_right_censored: int
+    #: Reference runs whose onset touches the record start or an unknown step.
+    reference_left_censored: int
+    #: Reference runs whose end touches the record end or an unknown step.
+    reference_right_censored: int
+    #: The counting rule, the event counts and the provenance record.
+    metadata: Mapping[str, str]
+
+
+def event_concordance(
+    index_runs: RunSet,
+    reference_runs: RunSet,
+    *,
+    time: Any,
+    valid: Any,
+    cadence: Cadence,
+) -> EventConcordance:
+    """Count hits, misses and false alarms of an index's events against an independent reference.
+
+    Events are paired by :func:`climate_indices.compound.compound_events` with ``mode="concurrent"``,
+    so a pair is reported wherever two inclusive intervals intersect; no minimum overlap is applied.
+    The counting is reference-centric: a hit is a reference event overlapped by at least one index
+    event, a miss is a reference event overlapped by none, and a false alarm is an index event
+    overlapping no reference event (ADR-0028 section 7). POD, FAR and CSI follow from those counts,
+    and each ratio is NaN only when its own denominator is empty.
+
+    The reference is an independent description of the same phenomenon on the same time axis, such as
+    a satellite index, a U.S. Drought Monitor class series or a soil-moisture percentile.
+
+    Args:
+        index_runs: The index's events, from :func:`climate_indices.runs.identify_runs` on the same
+            ``valid`` mask. A run that crosses an unknown step is rejected.
+        reference_runs: The reference's events, from the same function on the same mask, validated the
+            same way.
+        time: The shared time axis: one-dimensional ``datetime64`` labels on a complete cadence grid.
+        valid: Boolean array shaped like ``time``, ``True`` where both series were observed.
+        cadence: ``"daily"`` or ``"monthly"``, the step of ``time``.
+
+    Returns:
+        An :class:`EventConcordance`. Runs that touch the record edge or an unknown step are counted
+        as censored, because their physical onset or end is unknown.
+
+    Raises:
+        InvalidArgumentError: For a ``RunSet`` that is inconsistent or crosses an unknown observation,
+            or for an unsupported ``cadence``.
+        InputTypeError: If a source is not a ``RunSet``, ``valid`` is not a plain Boolean array, a
+            ``RunSet``'s index fields are not plain integer arrays, or the dates are not ``datetime64``.
+        DataShapeError: If ``time`` or ``valid`` has the wrong shape, or a ``RunSet``'s fields disagree
+            in length.
+        CoordinateValidationError: For an empty axis, NaT, repeated or unordered dates, or an
+            incomplete cadence grid.
+
+    Warns:
+        BetaFeatureWarning: Always; the module is Beta.
+    """
+    warnings.warn(_BETA_MESSAGE, BetaFeatureWarning, stacklevel=2)
+    matched = compound_events(index_runs, reference_runs, time=time, valid=valid, cadence=cadence, mode="concurrent")
+    # compound_events has validated the mask, the axis and both run sets, so this pass only reaches
+    # the boundary censoring that the per-pair rows cannot carry for an unmatched run
+    mask = np.asarray(valid)
+    valid_prefix = np.concatenate(([0], np.cumsum(mask, dtype=np.int64)))
+    index_source = _validated_runs("index_runs", index_runs, mask, valid_prefix, mask.size)
+    reference_source = _validated_runs("reference_runs", reference_runs, mask, valid_prefix, mask.size)
+    n_index, n_reference = int(index_source.start.size), int(reference_source.start.size)
+    hits = int(np.unique(matched.second_run_id).size)
+    misses = n_reference - hits
+    matched_index_events = int(np.unique(matched.first_run_id).size)
+    false_alarms = n_index - matched_index_events
+    metadata = {
+        "climate_indices_concordance_counting": _CONCORDANCE_COUNTING,
+        "climate_indices_n_index_events": str(n_index),
+        "climate_indices_n_reference_events": str(n_reference),
+        **provenance.provenance_attributes(
+            index="event concordance",
+            implementation="climate_indices.suitability.event_concordance",
+            interface="python",
+            parameters={
+                "mode": "concurrent",
+                "cadence": cadence,
+                "n_index_events": n_index,
+                "n_reference_events": n_reference,
+            },
+            inputs={"index_runs": index_runs.start_index, "reference_runs": reference_runs.start_index},
+        ),
+    }
+    return EventConcordance(
+        hits=hits,
+        misses=misses,
+        false_alarms=false_alarms,
+        matched_index_events=matched_index_events,
+        pod=_share(hits, hits + misses),
+        far=_share(false_alarms, matched_index_events + false_alarms),
+        csi=_share(hits, hits + misses + false_alarms),
+        index_left_censored=int(index_source.left_censored.sum()),
+        index_right_censored=int(index_source.right_censored.sum()),
+        reference_left_censored=int(reference_source.left_censored.sum()),
+        reference_right_censored=int(reference_source.right_censored.sum()),
+        metadata=metadata,
+    )
+
+
+def category_agreement(index_categories: Any, reference_categories: Any) -> tuple[float, float]:
+    """Share of pairs in the same drought category, and in the same or an adjacent one.
+
+    The definitions are those of the #1569 Earth Engine pilot's ``category_agreement`` and
+    ``category_within_one``: the exact share is the fraction of pairs whose two categories are the
+    same, and the within-one share is the fraction whose categories differ by at most one class. A
+    pair with a missing category on either side is dropped before the shares are taken, so a missing
+    value never counts as agreement.
+
+    Args:
+        index_categories: Integer category codes as a NumPy array, as :func:`drought_category` returns
+            them for NumPy input: -1 missing, 0 none, 1 to 5 for D0 to D4.
+        reference_categories: The reference's codes, with the same shape.
+
+    Returns:
+        ``(exact, within_one)`` shares of the pairs where both categories are present; both are NaN
+        when no such pair exists.
+
+    Raises:
+        InvalidArgumentError: The codes are not integers from -1 to 5, the inputs differ in shape, or
+            either input is an xarray ``DataArray``. There is no xarray route, so a ``DataArray`` is
+            rejected instead of being compared position by position, which would ignore its labels.
+
+    Warns:
+        BetaFeatureWarning: Always; the module is Beta.
+    """
+    warnings.warn(_BETA_MESSAGE, BetaFeatureWarning, stacklevel=2)
+    for name, values in (("index_categories", index_categories), ("reference_categories", reference_categories)):
+        if isinstance(values, xr.DataArray):
+            raise _invalid(
+                f"{name} must be a NumPy array; category_agreement has no xarray route, and comparing a "
+                "DataArray position by position would ignore its labels.",
+                name,
+                type(values).__name__,
+                "integer codes -1 to 5 as a NumPy array",
+            )
+    index_codes = _as_codes(index_categories, "index_categories")
+    reference_codes = _as_codes(reference_categories, "reference_categories")
+    if index_codes.shape != reference_codes.shape:
+        raise _invalid(
+            f"index_categories and reference_categories must have the same shape, got "
+            f"{index_codes.shape} and {reference_codes.shape}.",
+            "reference_categories",
+            reference_codes.shape,
+            str(index_codes.shape),
+        )
+    present = (index_codes >= 0) & (reference_codes >= 0)
+    if not present.any():
+        return float("nan"), float("nan")
+    # int64 because two unsigned codes would otherwise wrap below zero, and abs() would hide it
+    difference = np.abs(index_codes[present].astype(np.int64) - reference_codes[present].astype(np.int64))
+    return float(np.mean(difference == 0)), float(np.mean(difference <= 1))
