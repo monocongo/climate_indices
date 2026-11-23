@@ -69,19 +69,19 @@ updates this record's status line.
   the maximum PMDI difference falls from 5.5748 to 1.7026, the PDSI mean from 0.0432 to
   0.0428, and the PMDI median from 0.0191 to 0.0190; the PDSI median (0.0127) and the 86.2%
   within 0.05 are unchanged. `tests/test_nclimdiv_reference.py` records the new measurements.
-- **Default PMDI also changes for the months still pending at the end of every record.**
-  Measured on the 344 fixture divisions, 858 months in 262 divisions move by more than the
-  5e-5 comparison tolerance, by up to 5.54 in division 2010; PDSI and PHDI do not change
-  with decision 2. A pending month's PMDI no longer depends on December: it is the same
-  whether or not the record ends in that month.
-- **`pdsi()` no longer matches `pdi.f` on the months the stale flush rewrote.** Those months
-  differ from a compiled `pdi.f` by up to the amounts in the table above. Every other month
-  runs the same recursion as before. The provenance record (`palmer-provenance.md`, row 19 and
-  D9) states the departure, so nobody restores it as a "fix".
+- **Decision 2 changes PMDI for some months still pending at the end of a record.**
+  Compared with decision 1 alone, 606 months in 182 fixture divisions change by more
+  than 5e-5. The largest change is 4.34 in division 0207. Decision 2 does not change
+  PDSI or PHDI. With the same Z-Index and duration factors, extending the record does
+  not change a pending month's PMDI because spell resolution uses the same monthly state.
+- **The library deliberately differs from `pdi.f` in two cases.** It does not re-flush
+  resolved months, and it uses each pending month's own state for PMDI. The provenance
+  record (`palmer-provenance.md`, rows 19 and 22 and D9) describes both differences.
 - **The standard-Palmer fixtures were regenerated.** `tests/fixture/palmer/` holds this
   library's own PDSI, PHDI and PMDI output, so it now encodes both departures (fixture 1.2.0):
-  only the months that moved (PDSI 177 in 51 divisions, PHDI 24 in 14, PMDI 858 in 262) were
-  patched, and the fixture provenance records it. For decision 1 the mean absolute difference
+  compared with fixture 1.1.1, the combined changes affect 177 PDSI months in 51 divisions,
+  24 PHDI months in 14 divisions, and 858 PMDI months in 262 divisions. The largest combined
+  PMDI change is 5.54 in division 2010. For decision 1 the mean absolute difference
   from nClimDiv fell for PDSI (1.29 to 0.045) on the moved months; PHDI fell on average (0.42 to
   0.19) but rose in divisions 1108 and 1109.
 - **A truncation test replaces the `pdi.f` comparison** for this behavior: truncating division

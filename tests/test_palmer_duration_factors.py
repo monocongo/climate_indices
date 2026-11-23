@@ -491,7 +491,7 @@ def test_finish_up_gives_each_pending_month_its_own_pmdi():
     assert state.wplm[0, 4, 0] == pytest.approx(0.2 * 2.0 + 0.8 * -2.5, abs=1e-15)
 
 
-def test_pending_months_at_the_end_of_the_record_get_their_own_pmdi():
+def test_pending_months_at_the_end_of_the_record_get_their_own_pmdi() -> None:
     """Through the whole recursion: the last three months of this record are still
     pending when it ends, and each carries the PMDI of its own state (#1666)."""
     factors = _palmer_pdi.PdiDurationFactors.from_fitted(0.309, 2.691, 0.309, 2.691)
@@ -510,6 +510,12 @@ def test_pending_months_at_the_end_of_the_record_get_their_own_pmdi():
     # the old flush wrote December's CASE into all three
     assert len(set(own)) == 3
     assert not np.any(np.isnan(result.pmdi))
+
+    # The next month resolves the spell and changes PDSI, not PMDI.
+    extended_z = np.r_[z.ravel(), -3.0, np.zeros(11)].reshape(2, 12, 1)
+    extended = _palmer_pdi.calculate(extended_z, factors)
+    assert not np.array_equal(result.pdsi[0, 9:, 0], extended.pdsi[0, 9:, 0])
+    np.testing.assert_array_equal(result.pmdi[0, 9:, 0], extended.pmdi[0, 9:, 0])
 
 
 def test_finish_up_leaves_months_of_a_resolved_spell_alone():

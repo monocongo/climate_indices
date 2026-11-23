@@ -509,8 +509,8 @@ mod tests {
             drym: 0.309,
             dryb: 2.691,
         };
-        // months 9..12 are still pending when the record ends. Expected values
-        // are the Python `_palmer_pdi.calculate` output for the same Z series.
+        // The last three months are still pending when the record ends. Expected
+        // values come from Python `_palmer_pdi.calculate` for the same Z series.
         let z = ndarray::Array2::from_shape_vec(
             (12, 1),
             vec![

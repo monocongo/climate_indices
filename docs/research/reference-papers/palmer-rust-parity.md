@@ -92,7 +92,7 @@ For `pdsi()` and `scpdsi()`, all four index arrays had maximum absolute and rela
 
 | Corpus | Cases run on both paths | Triples with a numerical response to a one-ulp input change | Disagreements |
 | --- | --- | --- | --- |
-| Random Z with 60% boundary entries, one entry moved one ulp either way, `pdi.f` recursion | 1,500 triples | 28 (PDSI), 14 (PHDI), 0 (PMDI, measured at HEAD after the per-month flush fix) | 0 |
+| Random Z with 60% boundary entries, one entry moved one ulp either way, `pdi.f` recursion | 1,500 triples | 28 (PDSI), 14 (PHDI), 6 (PMDI) | 0 |
 | Same, Wells recursion | 600 triples | 4 | 0 |
 | Established spell, then a threshold value, one ulp either side, `pdi.f` | 384 triples | 26 | 0 |
 | Same, Wells | 384 triples | 30 | 0 |
@@ -103,6 +103,8 @@ For `pdsi()` and `scpdsi()`, all four index arrays had maximum absolute and rela
 The random corpora use -0.0 (equal to 0), +-0.15, +-0.5, +-1 and one ulp either side. The spell corpora add thresholds computed from the default duration factors (`wetm = drym = 0.309`, `wetb = dryb = 2.691`): `0.5 * wetm`, `0.5 * (m + b)` and their multiples, so the wet and dry sides of those corpora are not independent. The two spell-termination triples are exact negatives of each other for the same reason. No Palmer-fitted factors with `wetm != drym` are exercised.
 
 The outputs agreed within the test tolerance. In the Wells counts, all three runs of each counted triple returned results. These tests did not observe which branches ran, so H3 remains unverified.
+
+After both flush fixes, revision `632282e7` produced 27 PDSI, 13 PHDI, and 0 PMDI responses on the random corpus. The established-spell corpus produced 14 PMDI responses. The table above retains the results from `380aa01f`.
 
 **Which boundaries are live.** Injected Rust mutants, each built, run against the tests, and reverted:
 
