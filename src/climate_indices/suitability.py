@@ -684,6 +684,17 @@ def _draw_uniforms(
     return np.moveaxis(drawn.reshape(*cell_shape, size, years), -1, 0)
 
 
+def _round_to_lattice(values: np.ndarray | np.float64, resolution: float, origin: float) -> np.ndarray:
+    """Round ``values`` to the lattice ``origin + k * resolution``.
+
+    A unit far below the spacing of the floats overflows the quotient. Such a value is already its own nearest
+    lattice point, so it is kept rather than rounded to infinity.
+    """
+    quotient = (values - origin) / resolution
+    result: np.ndarray = np.where(np.isfinite(quotient), np.round(quotient) * resolution + origin, values)
+    return result
+
+
 def _simulate(
     distribution: Distribution,
     uniforms: np.ndarray,
@@ -709,8 +720,8 @@ def _simulate(
             conditional = np.clip((uniforms - p0) / (1.0 - p0), _PIT_MARGIN, 1.0 - _PIT_MARGIN)
             draws = np.where(positive, _continuous_ppf(distribution, conditional, p), 0.0)
             if resolution is not None:
-                lattice = np.round((draws - origin) / resolution) * resolution + origin
-                nearest_zero = np.rint(-origin / resolution) * resolution + origin
+                lattice = _round_to_lattice(draws, resolution, origin)
+                nearest_zero = _round_to_lattice(np.float64(0.0), resolution, origin)
                 smallest = nearest_zero if nearest_zero > 0.0 else nearest_zero + resolution
                 # Nonzero Pearson lattice points stay on the lattice, even when close to zero.
                 replace = lattice <= 0.0 if distribution is Distribution.gamma else np.equal(lattice, 0.0)
@@ -718,7 +729,7 @@ def _simulate(
         else:
             draws = _continuous_ppf(distribution, np.clip(uniforms, _PIT_MARGIN, 1.0 - _PIT_MARGIN), p)
             if resolution is not None:
-                draws = np.round((draws - origin) / resolution) * resolution + origin
+                draws = _round_to_lattice(draws, resolution, origin)
     result: np.ndarray = draws
     return result
 

@@ -480,6 +480,33 @@ class TestBootstrap:
         assert (shifted == 0).mean() == pytest.approx((uniforms <= 0.15).mean(), abs=1e-12)
         assert (shifted[shifted > 0] >= 1.0).all()  # 1000 % 3 = 1, the least positive point of 1000 + 3k
 
+    @pytest.mark.parametrize(
+        ("distribution", "p", "origin"),
+        [
+            (
+                Distribution.gamma,
+                {"alpha": np.array([2.0]), "beta": np.array([30.0]), "prob_zero": np.array([0.2])},
+                0.0,
+            ),
+            (
+                Distribution.gamma,
+                {"alpha": np.array([2.0]), "beta": np.array([30.0]), "prob_zero": np.array([0.2])},
+                1000.0,
+            ),
+            (
+                Distribution.loglogistic,
+                {"loc": np.array([100.0]), "scale": np.array([5.0]), "shape": np.array([0.0])},
+                0.0,
+            ),
+        ],
+    )
+    def test_a_unit_below_the_float_spacing_keeps_finite_draws_finite(self, distribution, p, origin) -> None:
+        # 1e-308 passes validation, but (100 - origin) / 1e-308 overflows: the draw is its own nearest lattice point
+        uniforms = np.random.default_rng(4).uniform(size=(200, 1))
+        draws = suitability._simulate(distribution, uniforms, p, 1e-308, origin)
+        assert np.isfinite(draws).all()
+        np.testing.assert_array_equal(draws, suitability._simulate(distribution, uniforms, p, None, origin))
+
     def test_a_refit_with_a_value_beyond_its_support_fails_by_the_rule_of_an_observed_fit(self, monkeypatch):
         # a GEV with shape 0.5 ends at loc + scale / shape = 2: the second replicate holds a 5, which the likelihood
         # would score as zero, so that refit is a failed one and the first, wholly inside, is not
