@@ -15,6 +15,10 @@ See the [release notes](docs/release-notes-3.3.0.md) and
 - The **Beta `climate_indices.suitability` module** compares fitted distributions for
   SPI and SPEI on NumPy and xarray inputs, reports goodness-of-fit statistics, classifies
   scores into drought categories, and compares categories and events (#1584–#1587, #1590).
+- **`suitability.pit_uniformity()`** reports probability-scale uniformity by calendar
+  step for SPAI, SPI, SPEI and other standardized indices. It returns K–S and
+  Anderson–Darling statistics with a naive K–S p-value over the Calibration Period,
+  and supports NumPy and xarray/Dask inputs (#1588, #1692).
 - SPEI accepts **GEV** as `Distribution.gev` in the Python API. The SPEI CLI now
   writes four outputs per Timescale by adding `spei_gev` (#1583).
 - The package supports **Python 3.15** on Linux (#1579).

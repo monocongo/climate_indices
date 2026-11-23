@@ -25,6 +25,12 @@ U.S. Drought Monitor classes, and `compare_categories()` to measure how often
 two classifications differ. The module also offers event and category agreement
 metrics. See [the suitability reference](reference.md#climate_indicessuitability).
 
+Use `pit_uniformity()` to check probability-scale outputs from SPAI, SPI, SPEI or
+any standardized index. It reports K–S and Anderson–Darling statistics for each
+calendar step and a naive K–S p-value over the Calibration Period. The p-value is
+in-sample evidence, not a formal test. See
+{doc}`checking distribution fit <checking-distribution-fit>`.
+
 SPEI accepts the generalized extreme value distribution with `Distribution.gev`.
 The SPEI CLI adds a fourth output per Timescale alongside gamma, Pearson Type III
 and log-logistic. Update scripts that expect exactly three SPEI files.
