@@ -15,6 +15,7 @@ import contextlib
 import datetime
 import hashlib
 import io
+import re
 import shutil
 import subprocess  # nosec B404 # runs the fixed adapter commands and git
 import sys
@@ -222,17 +223,51 @@ def build_manifest(
     }
 
 
+def prepare_study_directory(study_dir: Path) -> Path:
+    """Claim an empty directory or reopen a directory with harness output."""
+    work = study_dir / "work"
+    manifest = study_dir / "manifest.json"
+    marker = work / ".intercomparison"
+    artifacts = (work, manifest, study_dir / "store.zarr", marker, work / "precip.csv", work / "request.json")
+    for path in artifacts:
+        if path.is_symlink():
+            raise contract.ContractError(f"{path}: study artifacts must not be symbolic links")
+    study_dir.mkdir(parents=True, exist_ok=True)
+    if manifest.exists() or (any(study_dir.iterdir()) and not marker.is_file()):
+        import jsonschema  # type: ignore[import-untyped]
+
+        message = f"{study_dir}: use an empty directory or an existing intercomparison study"
+        if not manifest.is_file():
+            raise contract.ContractError(message)
+        try:
+            previous = contract.read_json(manifest)
+            schema = contract.read_json(Path(__file__).with_name("manifest.schema.json"))
+            jsonschema.validate(previous, schema)
+        except (contract.ContractError, jsonschema.ValidationError) as error:
+            raise contract.ContractError(message) from error
+        if previous["study"] != study_dir.name:
+            raise contract.ContractError(message)
+    work.mkdir(exist_ok=True)
+    marker.touch(exist_ok=True)
+    return work
+
+
 def run_study(study_dir: Path, division: str, scale: int, adapters: dict[str, list[str]]) -> dict[str, Any]:
-    source = FIXTURE_DIR / division / "precips.npy"
-    harness = harness_state()  # before the old manifest goes: it is tracked, and its absence would read as dirty
-    # first thing after that, so no failure (a bad division included) can leave the old manifest standing
+    harness = harness_state()  # record the checkout before modifying the study
+    work = prepare_study_directory(study_dir)
     (study_dir / "manifest.json").unlink(missing_ok=True)
+    if not re.fullmatch(r"[0-9]{4}", division):
+        raise contract.ContractError("division must be a four-digit climate division ID")
+    source = FIXTURE_DIR / division / "precips.npy"
+    if not source.resolve().is_relative_to(FIXTURE_DIR.resolve()):
+        raise contract.ContractError(f"{source}: outside the Palmer fixture directory")
     data = source.read_bytes()  # one read: the bytes hashed are the bytes that become the run's inputs
     source_sha256 = hashlib.sha256(data).hexdigest()
     values = np.load(io.BytesIO(data))
+    if values.ndim != 1 or not values.size:
+        raise contract.ContractError(f"{source}: expected a nonempty one-dimensional precipitation series")
     times = monthly_times(1895, len(values))
     positions = positions_for(scale, 1895, int(times[-1][:4]))
-    work = study_dir / "work"
     request = write_request(
         work, study=study_dir.name, unit=division, times=times, values=values, units="inch", positions=positions
     )
@@ -265,7 +300,6 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--study", type=contract.path_arg, required=True, help="study directory (created if absent)")
     parser.add_argument("--scale", type=int, default=3)
     args = parser.parse_args(argv)
-    args.study.mkdir(parents=True, exist_ok=True)
     manifest = run_study(args.study, args.division, args.scale, ADAPTER_COMMANDS)
     for array in manifest["arrays"]:
         print(array["implementation"], array["version"], array["output_sha256"][:12], *array["warnings"], sep="  ")

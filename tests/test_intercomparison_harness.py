@@ -26,7 +26,7 @@ import pytest
 ROOT = Path(__file__).parent.parent
 HARNESS = ROOT / "intercomparison"
 sys.path.insert(0, str(HARNESS))  # the adapters import `contract` the same way
-import contract  # noqa: E402
+import contract  # type: ignore[import-not-found]  # pyright: ignore[reportMissingImports]  # noqa: E402
 
 
 def _load(name: str, path: Path) -> ModuleType:
@@ -104,6 +104,7 @@ def test_series_read_with_the_wrong_hash_is_rejected(tmp_path: Path) -> None:
     [
         ("", "header"),
         ("t,v\n2000-01,1.0\n", "header"),
+        ("time,value\n", "at least one data row"),
         ("time,value\n2000-01\n", "exactly"),
         ("time,value\n\n", "exactly"),
         ("time,value\n2000-01,one\n", "could not convert"),
@@ -188,6 +189,14 @@ def _boolean_wall_time(result: dict[str, Any]) -> None:
     result["wall_time_s"] = True
 
 
+def _boolean_schema_version(result: dict[str, Any]) -> None:
+    result["schema_version"] = True
+
+
+def _empty_method(result: dict[str, Any]) -> None:
+    result["effective_method"] = {}
+
+
 def _software_version_not_a_string(result: dict[str, Any]) -> None:
     result["software"] = {"numpy": 2}
 
@@ -206,7 +215,9 @@ def _software_version_not_a_string(result: dict[str, Any]) -> None:
         (_missing_file, "does not exist"),
         (_drop_key, "missing"),
         (_schema_version, "schema_version"),
+        (_boolean_schema_version, "schema_version"),
         (_method_not_an_object, "must be an object"),
+        (_empty_method, "must not be empty"),
     ],
 )
 def test_malformed_result_raises_contract_error(
@@ -220,6 +231,42 @@ def test_malformed_result_raises_contract_error(
 
     with pytest.raises(contract.ContractError, match=match):
         contract.read_result(out / "result.json")
+
+
+def test_result_with_an_overflowed_wall_time_is_rejected(tmp_path: Path) -> None:
+    path = _result_dir(tmp_path) / "result.json"
+    path.write_text(path.read_text().replace('"wall_time_s": 0.0', '"wall_time_s": 1e400'))
+
+    with pytest.raises(contract.ContractError, match="finite"):
+        contract.read_result(path)
+
+
+def test_json_write_keeps_old_document_when_serialization_fails(tmp_path: Path) -> None:
+    path = tmp_path / "document.json"
+    contract.write_json(path, {"value": 1})
+
+    with pytest.raises(ValueError, match="not JSON compliant"):
+        contract.write_json(path, {"value": math.inf})
+
+    assert contract.read_json(path) == {"value": 1}
+    assert list(tmp_path.iterdir()) == [path]
+
+
+@pytest.mark.parametrize("key", ["positions", "inputs"])
+def test_request_rejects_empty_required_objects(tmp_path: Path, key: str) -> None:
+    path = harness.write_request(
+        tmp_path,
+        study="t",
+        unit="u",
+        times=["2000-01"],
+        values=np.array([1.0]),
+        units="mm",
+        positions=harness.positions_for(1, 2000, 2000),
+    )
+    contract.write_json(path, contract.read_json(path) | {key: {}})
+
+    with pytest.raises(contract.ContractError, match=f"{key!r} must not be empty"):
+        contract.read_request(path)
 
 
 def test_request_missing_a_required_key_is_rejected(tmp_path: Path) -> None:
@@ -260,6 +307,43 @@ def test_consecutive_months_are_checked() -> None:
 
 def test_adapter_command_line_rejects_bad_usage() -> None:
     assert contract.run_adapter("x", lambda r, i: {}, ["run", "only-one-argument"]) == 2
+
+
+def test_adapter_rejects_an_unsupported_index(tmp_path: Path) -> None:
+    request = harness.write_request(
+        tmp_path,
+        study="t",
+        unit="u",
+        times=["2000-01"],
+        values=np.array([1.0]),
+        units="mm",
+        positions=harness.positions_for(1, 2000, 2000),
+    )
+    contract.write_json(request, contract.read_json(request) | {"index": "spei"})
+    out = tmp_path / "out"
+
+    with pytest.raises(contract.ContractError, match="only 'spi' is supported"):
+        contract.run_adapter("c", lambda r, i: {}, ["run", str(request), str(out)])
+
+    assert not out.exists()
+
+
+def test_adapter_rejects_a_path_as_a_series_name(tmp_path: Path) -> None:
+    request = harness.write_request(
+        tmp_path,
+        study="t",
+        unit="u",
+        times=["2000-01"],
+        values=np.array([1.0]),
+        units="mm",
+        positions=harness.positions_for(1, 2000, 2000),
+    )
+
+    def compute(request: dict[str, Any], inputs: dict[str, Any]) -> dict[str, Any]:
+        return {"series": {"nested/spi": inputs["precip"]}}
+
+    with pytest.raises(contract.ContractError, match="expected a series name"):
+        contract.run_adapter("c", compute, ["run", str(request), str(tmp_path / "out")])
 
 
 def test_zero_handling_is_judged_on_accumulations_not_on_raw_months() -> None:
@@ -304,6 +388,8 @@ def test_warnings_raised_inside_compute_are_recorded_in_the_result(tmp_path: Pat
 
 @needs_git
 def test_slice_runs_end_to_end_and_the_store_matches_the_library(tmp_path: Path) -> None:
+    import scipy
+
     from climate_indices import spi
     from climate_indices.compute import Periodicity
     from climate_indices.vocabulary import Distribution
@@ -314,6 +400,7 @@ def test_slice_runs_end_to_end_and_the_store_matches_the_library(tmp_path: Path)
     assert manifest == json.loads((tmp_path / "slice" / "manifest.json").read_text())
     (array,) = manifest["arrays"]
     assert array["implementation"] == "climate_indices"
+    assert array["software"]["scipy"] == scipy.__version__
     assert array["warnings"] == []
     assert manifest["inputs"]["precip"]["length"] == 1536
     assert (manifest["inputs"]["precip"]["first"], manifest["inputs"]["precip"]["last"]) == ("1895-01", "2022-12")
@@ -508,6 +595,30 @@ def test_the_manifest_hashes_the_fixture_bytes_the_run_used_even_if_the_file_cha
     assert manifest["inputs"]["precip"]["source_sha256"] == used
 
 
+def test_study_refuses_an_unrelated_manifest(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(harness, "harness_state", lambda: {})
+    previous = tmp_path / "manifest.json"
+    document = {"study": tmp_path.name, "schema_version": 1, "harness": {}, "positions": {}, "arrays": [], "store": {}}
+    contract.write_json(previous, document)
+
+    with pytest.raises(contract.ContractError, match="use an empty directory"):
+        harness.run_study(tmp_path, "0101", 3, {})
+
+    assert contract.read_json(previous) == document
+    assert list(tmp_path.iterdir()) == [previous]
+
+
+@needs_git
+def test_invalid_division_id_leaves_no_stale_manifest(tmp_path: Path) -> None:
+    study = tmp_path / "s"
+    _run_study(study)
+
+    with pytest.raises(contract.ContractError, match="four-digit climate division ID"):
+        harness.run_study(study, "0101/", 3, ADAPTERS)
+
+    assert not (study / "manifest.json").exists()
+
+
 @needs_git
 def test_a_rerun_that_fails_leaves_no_stale_manifest(tmp_path: Path) -> None:
     study = tmp_path / "s"
@@ -518,6 +629,7 @@ def test_a_rerun_that_fails_leaves_no_stale_manifest(tmp_path: Path) -> None:
         harness.run_study(study, "0101", 3, {"broken": [sys.executable, "-c", "raise SystemExit(1)"]})
 
     assert not (study / "manifest.json").exists()
+    assert _run_study(study)["study"] == "s"
 
 
 @needs_git

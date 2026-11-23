@@ -25,14 +25,18 @@ import csv
 import hashlib
 import io
 import json
+import math
 import os
 import platform
+import re
 import sys
+import tempfile
 import time
 import warnings
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, Iterator, Mapping, Sequence
+from contextlib import contextmanager
 from pathlib import Path
-from typing import Any
+from typing import Any, TextIO
 
 SCHEMA_VERSION = 1
 
@@ -72,11 +76,26 @@ def sha256_file(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()  # NOSONAR (S8707)
 
 
+@contextmanager
+def _atomic_write(path: Path) -> Iterator[TextIO]:
+    # Replace the file only after a complete write in the same filesystem.
+    fd, filename = tempfile.mkstemp(dir=path.parent)
+    temporary = Path(filename)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8", newline="") as handle:
+            yield handle
+        temporary.replace(path)
+    finally:
+        temporary.unlink(missing_ok=True)
+
+
 def write_series(path: Path, times: Sequence[str], values: Sequence[float]) -> str:
     """Write ``time,value`` rows and return the file's SHA-256."""
     if len(times) != len(values):
         raise ContractError(f"{len(times)} times but {len(values)} values")
-    with path.open("w", newline="", encoding="utf-8") as handle:  # NOSONAR (S8707)
+    if not times:
+        raise ContractError(f"{path}: expected at least one data row")
+    with _atomic_write(path) as handle:
         writer = csv.writer(handle, lineterminator="\n")
         writer.writerow(("time", "value"))
         writer.writerows((t, repr(float(v))) for t, v in zip(times, values, strict=True))
@@ -92,6 +111,8 @@ def read_series(path: Path, sha256: str | None = None) -> tuple[list[str], list[
     if not rows or rows[0] != ["time", "value"]:
         raise ContractError(f"{path}: header is not 'time,value'")
     body = rows[1:]
+    if not body:
+        raise ContractError(f"{path}: expected at least one data row")
     if any(len(row) != 2 for row in body):
         raise ContractError(f"{path}: every row must be exactly 'time,value'")
     try:
@@ -101,29 +122,37 @@ def read_series(path: Path, sha256: str | None = None) -> tuple[list[str], list[
 
 
 def read_json(path: Path) -> dict[str, Any]:
-    loaded = json.loads(path.read_text(encoding="utf-8"))  # NOSONAR (S8707)
+    try:
+        loaded = json.loads(path.read_text(encoding="utf-8"))  # NOSONAR (S8707)
+    except ValueError as error:
+        raise ContractError(f"{path}: {error}") from error
     if not isinstance(loaded, dict):
         raise ContractError(f"{path}: expected a JSON object")
     return loaded
 
 
 def write_json(path: Path, document: Mapping[str, Any]) -> None:
-    # the paths are the operator's own: normalised by path_arg, or built by the harness
-    path.write_text(json.dumps(document, indent=2, sort_keys=True) + "\n", encoding="utf-8")  # NOSONAR (S2083, S8707)
+    with _atomic_write(path) as handle:
+        handle.write(json.dumps(document, indent=2, sort_keys=True, allow_nan=False) + "\n")
 
 
 def _require(document: Mapping[str, Any], keys: Sequence[str], what: str) -> None:
     missing = [k for k in keys if k not in document]
     if missing:
         raise ContractError(f"{what} is missing {missing}")
-    if document["schema_version"] != SCHEMA_VERSION:
-        raise ContractError(f"{what} has schema_version {document['schema_version']!r}, expected {SCHEMA_VERSION}")
+    version = document["schema_version"]
+    if type(version) is not int or version != SCHEMA_VERSION:
+        raise ContractError(f"{what} has schema_version {version!r}, expected {SCHEMA_VERSION}")
 
 
-def _require_mappings(document: Mapping[str, Any], keys: Sequence[str], what: str) -> None:
+def _require_mappings(
+    document: Mapping[str, Any], keys: Sequence[str], what: str, *, nonempty: Sequence[str] = ()
+) -> None:
     for key in keys:
         if not isinstance(document[key], Mapping):
             raise ContractError(f"{what}: {key!r} must be an object")
+        if key in nonempty and not document[key]:
+            raise ContractError(f"{what}: {key!r} must not be empty")
 
 
 def _require_metadata(result: Mapping[str, Any]) -> None:
@@ -132,8 +161,13 @@ def _require_metadata(result: Mapping[str, Any]) -> None:
         if not isinstance(result[key], str) or not result[key]:
             raise ContractError(f"result: {key!r} must be a non-empty string")
     wall = result["wall_time_s"]
-    if isinstance(wall, bool) or not isinstance(wall, int | float) or not wall >= 0:  # NaN fails `>= 0`
-        raise ContractError("result: 'wall_time_s' must be a number of at least 0")
+    if (
+        isinstance(wall, bool)
+        or not isinstance(wall, int | float)
+        or wall < 0
+        or (isinstance(wall, float) and not math.isfinite(wall))
+    ):
+        raise ContractError("result: 'wall_time_s' must be a finite number of at least 0")
     messages = result["warnings"]
     if not isinstance(messages, list) or not all(isinstance(m, str) for m in messages):
         raise ContractError("result: 'warnings' must be a list of strings")
@@ -174,7 +208,8 @@ def read_request(path: Path) -> dict[str, Any]:
     """Load a request and verify every input's SHA-256 against the file on disk."""
     request = read_json(path)
     _require(request, _REQUEST_KEYS, "request")
-    _require_mappings(request, ("positions", "inputs"), "request")
+    keys = ("positions", "inputs")
+    _require_mappings(request, keys, "request", nonempty=keys)
     for name, entry in request["inputs"].items():
         _verify(path.parent, entry, f"input {name!r}")
     return request
@@ -184,7 +219,7 @@ def read_result(path: Path) -> dict[str, Any]:
     """Load a result and verify every output's SHA-256 against the file on disk."""
     result = read_json(path)
     _require(result, _RESULT_KEYS, "result")
-    _require_mappings(result, ("effective_method", "software", "outputs"), "result")
+    _require_mappings(result, ("effective_method", "software", "outputs"), "result", nonempty=("effective_method",))
     _require_metadata(result)
     for name, entry in result["outputs"].items():
         _verify(path.parent, entry, f"output {name!r}")
@@ -237,6 +272,8 @@ def run_adapter(
     comparator: str,
     compute: Callable[[dict[str, Any], dict[str, tuple[list[str], list[float]]]], dict[str, Any]],
     argv: Sequence[str],
+    *,
+    index: str = "spi",
 ) -> int:
     """Shared command line: ``run <request.json> <out_dir>``.
 
@@ -245,12 +282,15 @@ def run_adapter(
     ``series``: ``{output name: (times, values)}``. Only ``compute`` is timed, so import time is
     not in ``wall_time_s`` as long as the adapter imports its comparator at module level.
     Python warnings raised inside ``compute`` are recorded after the ones it returns.
+    The adapter accepts requests for its declared ``index`` only.
     """
     if len(argv) != 3 or argv[0] != "run":
         print(f"usage: {comparator} run <request.json> <out_dir>", file=sys.stderr)
         return 2
     request_path, out_dir = path_arg(argv[1]), path_arg(argv[2])
     request = read_request(request_path)
+    if request["index"] != index:
+        raise ContractError(f"{comparator}: only {index!r} is supported, not {request['index']!r}")
     inputs = {
         name: read_entry_series(request_path.parent, entry, f"input {name!r}")
         for name, entry in request["inputs"].items()
@@ -265,7 +305,11 @@ def run_adapter(
     raised = [str(w.message) for w in caught]
     outputs = {}
     for name, (times, values) in computed["series"].items():
-        outputs[name] = {"path": f"{name}.csv", "sha256": write_series(out_dir / f"{name}.csv", times, values)}
+        filename = f"{name}.csv"
+        path = out_dir / filename
+        if not re.fullmatch(r"[a-zA-Z0-9_-]+", name) or path.is_symlink():
+            raise ContractError(f"output {name!r}: expected a series name, not a path")
+        outputs[name] = {"path": filename, "sha256": write_series(path, times, values)}
     write_json(
         out_dir / "result.json",
         {

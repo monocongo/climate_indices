@@ -15,12 +15,13 @@ from typing import Any
 
 import numpy as np
 import pandas as pd
+import scipy
 import xarray as xr
 import xclim
 from xclim.compute import standardized_precipitation_index
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
-import contract  # noqa: E402
+import contract  # type: ignore[import-not-found]  # pyright: ignore[reportMissingImports]  # noqa: E402
 
 DIST, METHOD, FITKWARGS = "gamma", "APP", {"floc": 0}
 
@@ -63,6 +64,7 @@ def compute(request: dict[str, Any], inputs: dict[str, tuple[list[str], list[flo
             "python": sys.version.split()[0],
             "numpy": np.__version__,
             "pandas": pd.__version__,
+            "scipy": scipy.__version__,
             "xarray": xr.__version__,
         },
         "series": {"spi": (times, [float(v) for v in spi.to_numpy()])},

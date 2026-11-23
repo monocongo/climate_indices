@@ -14,15 +14,16 @@ from pathlib import Path
 from typing import Any
 
 import numpy as np
+import scipy
 
 import climate_indices
 from climate_indices import spi
 from climate_indices._calibration_period import resolve_calibration_period
 from climate_indices.compute import Periodicity
-from climate_indices.vocabulary import Distribution
+from climate_indices.vocabulary import Distribution, ZeroHandling
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-import contract  # noqa: E402
+import contract  # type: ignore[import-not-found]  # pyright: ignore[reportMissingImports]  # noqa: E402
 
 
 def compute(request: dict[str, Any], inputs: dict[str, tuple[list[str], list[float]]]) -> dict[str, Any]:
@@ -35,7 +36,8 @@ def compute(request: dict[str, Any], inputs: dict[str, tuple[list[str], list[flo
     n_years = -(-len(values) // 12)
     applied = resolve_calibration_period(int(times[0][:4]), n_years, first, last, policy="clamp")
     scale = int(request["positions"]["scale"])
-    distribution, periodicity, zero_handling = Distribution.gamma, Periodicity.monthly, "classic"
+    distribution, periodicity = Distribution.gamma, Periodicity.monthly
+    zero_handling: ZeroHandling = "classic"
     result = spi(
         np.asarray(values, dtype=np.float64),
         scale=scale,
@@ -60,7 +62,7 @@ def compute(request: dict[str, Any], inputs: dict[str, tuple[list[str], list[flo
             "calendar_grouping": "calendar_month" if periodicity is Periodicity.monthly else periodicity.value,
             "calibration_period": f"{applied.start_year}/{applied.end_year}",
         },
-        "software": {"python": sys.version.split()[0], "numpy": np.__version__},
+        "software": {"python": sys.version.split()[0], "numpy": np.__version__, "scipy": scipy.__version__},
         "series": {"spi": (times, result.tolist())},
     }
 

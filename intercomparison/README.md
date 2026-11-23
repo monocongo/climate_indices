@@ -14,6 +14,9 @@ uv sync --extra test        # the repository environment: climate_indices, zarr,
 uv run python intercomparison/run.py --division 0101 --study intercomparison/studies/refimpl-08-slice
 ```
 
+Use an empty study directory or one with existing harness output. The driver replaces the previous
+manifest and bulk output. Do not use the same study directory for concurrent runs.
+
 One command per environment, as the driver runs them (each reads `<request.json>` and writes `<out_dir>/result.json`):
 
 | Environment | Command |
