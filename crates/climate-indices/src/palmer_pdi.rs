@@ -62,7 +62,7 @@ pub struct PdiResult {
 
 /// The preliminary (near-real-time) PDSI, PMDI. Python: `climate_indices.drought._palmer_pdi._case`.
 fn case(prob: f64, x1: f64, x2: f64, x3: f64) -> f64 {
-    let near_normal = if x1.abs() > x2.abs() { x1 } else { x2 };
+    let near_normal = if x2.abs() > x1.abs() { x2 } else { x1 };
     let pro = prob / 100.0;
     let interpolated = if x3 <= 0.0 {
         (1.0 - pro) * x3 + pro * x1
@@ -576,5 +576,15 @@ mod tests {
                 }
             }
         }
+    }
+
+    #[test]
+    fn an_exact_near_normal_tie_goes_to_x1() {
+        // pdi.f CASE (878-879) switches to X2 only if ABS(X2) .GT. ABS(X1).
+        assert_eq!(case(0.0, 0.5, -0.5, 0.0), 0.5);
+        assert_eq!(case(0.0, 0.3, -0.7, 0.0), -0.7);
+        assert_eq!(case(0.0, 0.7, -0.3, 0.0), 0.7);
+        // |+0.0| == |-0.0| is a tie too: X1 keeps its sign bit (assert_eq! alone treats 0.0 == -0.0).
+        assert!(!case(0.0, 0.0, -0.0, 0.0).is_sign_negative());
     }
 }

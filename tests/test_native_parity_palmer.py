@@ -568,3 +568,28 @@ def test_zero_precipitation_months_match(monkeypatch, palmer_division_inputs, in
     rust, python, calls = _rust_and_python(monkeypatch, index(precips, pet, awc))
     assert {"palmer_water_balance", "palmer_pdi" if index is _pdsi else "palmer_wells"} <= calls
     _assert_parity(rust, python)
+
+
+def test_pmdi_exact_tie_goes_to_x1_on_both_backends(monkeypatch) -> None:
+    """#1662: with Z = (0.5, -0.125) and unit factors, every month after the first has |X1| == |X2|.
+
+    pdi.f CASE and the Wells getWPLM give the tie to X1, so the PMDI stays positive. The dyadic
+    values keep each tie exact in floating point, so a one-sided revert of the comparison flips
+    the PMDI sign here. (The PDI lineage's tied values are the end-of-record flush of #1665.)
+    """
+    z = np.zeros(24)
+    z[:2] = (0.5, -0.125)
+
+    pdi_factors = PdiDurationFactors.from_fitted(1.0, 1.0, 1.0, 1.0)
+    rust, python, calls = _rust_and_python(monkeypatch, lambda: _pdi_run(z.reshape(2, 12, 1), pdi_factors))
+    assert calls == {"palmer_pdi"}
+    _same_outcome(rust, python)
+    assert np.all(python[2].reshape(24)[1:] > 0.0)
+
+    wells_factors = DurationFactors.from_fitted(1.0, 1.0, 1.0, 1.0)
+    rust, python, calls = _rust_and_python(monkeypatch, lambda: palmer._wells_recursion(z, wells_factors))
+    assert calls == {"palmer_wells"}
+    _same_outcome(rust, python)
+    pmdi = np.asarray(python[2])
+    assert pmdi[1] == 0.0625
+    assert np.all(pmdi[1:] > 0.0)
