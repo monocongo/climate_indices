@@ -532,6 +532,26 @@ def test_a_rerun_that_fails_before_any_adapter_runs_leaves_no_stale_manifest(tmp
     assert not (study / "manifest.json").exists()
 
 
+@pytest.mark.parametrize(
+    ("indices", "rows", "ok"),
+    [
+        ([0, 1], 2, True),
+        ([1, 0], 2, True),
+        ([0, 0], 2, False),
+        ([0, 2], 2, False),
+        ([0], 2, False),
+        ([0, 1, 2], 2, False),
+    ],
+)
+def test_store_index_must_address_each_row_of_the_store_once(indices: list[int], rows: int, ok: bool) -> None:
+    manifest = {"store": {"shape": [rows, 1, 5]}, "arrays": [{"store_index": i} for i in indices]}
+    if ok:
+        contract.check_store_index(manifest)
+    else:
+        with pytest.raises(contract.ContractError, match="store_index"):
+            contract.check_store_index(manifest)
+
+
 @needs_git
 def test_manifest_without_a_required_field_is_rejected(tmp_path: Path) -> None:
     jsonschema = pytest.importorskip("jsonschema")
@@ -549,6 +569,7 @@ def test_manifest_without_a_required_field_is_rejected(tmp_path: Path) -> None:
 def test_committed_slice_manifest_is_valid_and_describes_the_committed_fixture(tmp_path: Path) -> None:
     manifest = json.loads((HARNESS / "studies" / "refimpl-08-slice" / "manifest.json").read_text())
     _validate(manifest)
+    contract.check_store_index(manifest)
     assert {a["implementation"] for a in manifest["arrays"]} == {"climate_indices", "xclim"}
     for array in manifest["arrays"]:
         assert array["version"] and array["effective_method"] and array["output_sha256"]

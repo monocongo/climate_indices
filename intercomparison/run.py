@@ -254,6 +254,7 @@ def run_study(study_dir: Path, division: str, scale: int, adapters: dict[str, li
         zeros=zero_accumulations(values, scale),
         harness=harness,
     )
+    contract.check_store_index(manifest)
     contract.write_json(study_dir / "manifest.json", manifest)
     return manifest
 

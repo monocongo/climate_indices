@@ -187,6 +187,18 @@ def read_result(path: Path) -> dict[str, Any]:
     return result
 
 
+def check_store_index(manifest: Mapping[str, Any]) -> None:
+    """Require one array entry per row of the store, with ``store_index`` a permutation of the rows.
+
+    manifest.schema.json cannot say this: duplicate indices would alias one row and an
+    out-of-range index has no row, so the metadata could not be mapped to the Zarr store.
+    """
+    rows = manifest["store"]["shape"][0]
+    indices = sorted(entry["store_index"] for entry in manifest["arrays"])
+    if indices != list(range(rows)):
+        raise ContractError(f"manifest: store_index values {indices} are not the {rows} rows of the store")
+
+
 def diff_method(requested: Mapping[str, Any], effective: Mapping[str, Any]) -> list[str]:
     """Return one warning per requested position the comparator did not apply as requested.
 
