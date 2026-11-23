@@ -661,9 +661,10 @@ _SEPTEMBER_ENDING_MONTHS = 1521
 
 
 def _division_z(months: int) -> np.ndarray:
-    """The 344 fixture divisions' Z series as cells, shaped (months, 344)."""
-    series = [np.load(path / "zindex.npy")[:months] for path in sorted(_FIXTURE_PALMER.glob("[0-9]*"))]
-    return np.stack(series, axis=1)
+    """Load divisions 1102 and 1407, which reproduce the June and September errors."""
+    return np.stack(
+        [np.load(_FIXTURE_PALMER / division / "zindex.npy")[:months] for division in ("1102", "1407")], axis=1
+    )
 
 
 def _nan_padded(z: np.ndarray) -> np.ndarray:
@@ -677,10 +678,10 @@ def _nan_padded(z: np.ndarray) -> np.ndarray:
 def _zero_prefixed_reference(z: np.ndarray, factors: _palmer_pdi.PdiDurationFactors) -> _palmer_pdi.PdiResult:
     """The recursion over ``z`` with the record's start padded by Z = 0 until it ends in December.
 
-    A Z = 0 month in the zero state sets x1 = x2 = x3 = pro = v = 0 again, so the leading zeros
-    leave the recursion exactly where an unpadded start would; the prefixed record is a
-    December-ending one, the case that matches pdi.f to 1e-14. Its months after the prefix are
-    the reference for the same record ending in the middle of a year.
+    A Z = 0 month leaves x1, x2, x3, pro, and v at zero. Leading zeros therefore
+    preserve the initial state but let the run end in December without NaN padding.
+    The months after the prefix are an internal regression reference, not a new
+    comparison with ``pdi.f``. See ADR-0030 for the deliberate differences.
     """
     months, n_cells = z.shape
     prefix = -months % 12
@@ -696,7 +697,7 @@ def _zero_prefixed_reference(z: np.ndarray, factors: _palmer_pdi.PdiDurationFact
 @pytest.mark.parametrize(
     "months", [_JUNE_ENDING_MONTHS, _SEPTEMBER_ENDING_MONTHS], ids=["june-ending", "september-ending"]
 )
-def test_pdi_recursion_ends_at_the_last_real_month(months):
+def test_pdi_recursion_ends_at_the_last_real_month(months: int) -> None:
     """A record ending before December equals the same record run through a December end.
 
     The padded months must not drive the recursion: on the 344 fixture divisions
@@ -721,14 +722,14 @@ def test_pdi_recursion_ends_at_the_last_real_month(months):
         assert np.isnan(getattr(result, name).reshape(-1, n_cells)[months:]).all(), name
 
 
-def test_pdi_recursion_default_runs_every_month_like_the_explicit_full_length():
+def test_pdi_recursion_default_runs_every_month_like_the_explicit_full_length() -> None:
     """The default and the explicit full length agree, and are finite for a December-ending record.
 
     That December-ending output is unchanged by the fix is pinned against the committed
     fixtures by ``test_palmer.py`` (the ``validation`` marker), not here.
     """
-    z = _division_z(1536)
-    z = z.reshape(-1, 12, z.shape[1])
+    rng = np.random.default_rng(1663)
+    z = rng.normal(0.0, 1.5, size=(2, 12, 3))
 
     default = _palmer_pdi.calculate(z, _PDI_FIXTURE_FACTORS)
     explicit = _palmer_pdi.calculate(z, _PDI_FIXTURE_FACTORS, n_months=z.shape[0] * 12)

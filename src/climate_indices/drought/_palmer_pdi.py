@@ -578,8 +578,8 @@ def calculate(z_values: np.ndarray, factors: PdiDurationFactors, n_months: int |
         n_months: the number of real months, counted from the first month of ``z_values``.
             A record that ends before December is padded to whole years; the recursion
             stops at the last real month and flushes there, as ``pdi.f`` does at
-            ``nendmo``, so the padding never enters it. The padded months of the result
-            stay NaN. ``None`` (the default) runs every month.
+            ``nendmo``. The function ignores values after that month and returns NaN
+            for those positions. ``None`` (the default) runs every month.
 
     Returns:
         The final PDSI, PHDI, and PMDI series, each shaped like ``z_values``.
@@ -588,19 +588,21 @@ def calculate(z_values: np.ndarray, factors: PdiDurationFactors, n_months: int |
         ValueError: if ``z_values`` does not have shape ``(years, 12, n_cells)``, or
             ``n_months`` lies outside ``0 .. years * 12``.
         TypeError: if ``n_months`` is not an integer.
-        ConvergenceError: if a Z-index value is infinite.
+        ConvergenceError: if a Z-index value within the real months is infinite.
     """
     z = np.asarray(z_values, dtype=float)
     if z.ndim != 3 or z.shape[1] != 12:
         raise ValueError(f"z_values must have shape (years, 12, n_cells), got {z.shape}")
-    if np.any(np.isinf(z)):
+    total_months = z.shape[0] * 12
+    real_months = total_months if n_months is None else operator.index(n_months)
+    if not 0 <= real_months <= total_months:
+        raise ValueError(f"n_months must lie in 0..{total_months}, got {real_months}")
+    years, months = divmod(real_months, 12)
+    if np.isinf(z[:years]).any() or (months and np.isinf(z[years, :months]).any()):
         raise ConvergenceError(
             "PDSI spell recursion received non-finite Z-index values",
             algorithm="PDSI spell recursion",
         )
-    real_months = z.shape[0] * 12 if n_months is None else operator.index(n_months)
-    if not 0 <= real_months <= z.shape[0] * 12:
-        raise ValueError(f"n_months must lie in 0..{z.shape[0] * 12}, got {real_months}")
     state = _initialize_state(z)
     for t in range(real_months):
         _advance_month(factors, state, t // 12, t % 12)

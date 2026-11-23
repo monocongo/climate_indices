@@ -475,17 +475,23 @@ def _pdi_run_to(z: np.ndarray, n_months: int) -> tuple[np.ndarray, np.ndarray, n
 
 
 @pytest.mark.parametrize("n_months", [-1, _MONTHS + 1])
-def test_pdi_recursion_rejects_an_n_months_outside_the_record_on_both_paths(monkeypatch, n_months: int) -> None:
+def test_pdi_recursion_rejects_an_n_months_outside_the_record_on_both_paths(
+    monkeypatch: pytest.MonkeyPatch, n_months: int
+) -> None:
     z = np.zeros((_MONTHS // 12, 12, 2))
-    rust, python, _ = _rust_and_python(monkeypatch, lambda: _pdi_run_to(z, n_months))
+    z[0, 0, 0] = np.inf
+    rust, python, calls = _rust_and_python(monkeypatch, lambda: _pdi_run_to(z, n_months))
+    assert not calls
     _same_outcome(rust, python)
     assert python[0] is ValueError
 
 
-def test_pdi_recursion_ignores_a_finite_tail_beyond_n_months(monkeypatch) -> None:
+@pytest.mark.parametrize("tail", [1.5, np.inf], ids=["finite", "infinite"])
+def test_pdi_recursion_ignores_the_tail_beyond_n_months(monkeypatch: pytest.MonkeyPatch, tail: float) -> None:
     """``n_months`` is a month count, not a scan for a trailing NaN (#1663)."""
     corpus = _straddling_corpus(series=100)
-    z = corpus.reshape(_MONTHS // 12, 12, corpus.shape[1])
+    corpus[18:] = tail
+    z = corpus.reshape(_MONTHS // 12, 12, corpus.shape[1])[:, :, ::-1]
     rust, python, calls = _rust_and_python(monkeypatch, lambda: _pdi_run_to(z, 18))
     assert calls == {"palmer_pdi"}
     _same_outcome(rust, python)
