@@ -238,7 +238,7 @@ def _record_problems(key: str, entry: dict[str, str], record: dict[str, Any]) ->
     stated = str(record.get("record_states", "")).replace("--", "-")
     for name in ("pages", "number"):
         value = entry.get(name, "").replace("--", "-")
-        if value and not re.search(rf"(?<!\w){re.escape(value)}(?!\w)", stated):
+        if value and not re.search(rf"(?<![\w-]){re.escape(value)}(?![\w-])", stated):
             found.append(f"{key}: {name} {entry.get(name)!r} is not stated in the record")
     return found
 

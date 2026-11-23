@@ -134,6 +134,7 @@ def test_the_verification_file_names_its_source(verification: dict[str, Any]) ->
         ("guttman1999", "entry", "pages", "311--323", "pages"),
         ("mckee1993", "entry", "pages", "999--999", "pages"),
         ("mckee1993", "entry", "pages", "2", "pages"),
+        ("mckee1993", "entry", "pages", "179", "pages"),
         ("wmo1090", "entry", "number", "77", "number"),
         ("wmo1090", "entry", "number", "90", "number"),
         ("mckee1993", "entry", "author", "", "needs author"),
@@ -226,12 +227,14 @@ def test_a_dotless_i_spelling_matches(verifier: ModuleType) -> None:
 
 
 class _Opener:
-    """A stand-in for the module opener that returns one fixed reply."""
+    """A stand-in for the module opener that records each call and returns one fixed reply."""
 
     def __init__(self, payload: bytes) -> None:
         self.payload = payload
+        self.calls = 0
 
     def open(self, *args: Any, **kwargs: Any) -> io.BytesIO:
+        self.calls += 1
         return io.BytesIO(self.payload)
 
 
@@ -248,9 +251,11 @@ def test_a_malformed_crossref_response_is_a_lookup_failure(
     verifier: ModuleType, monkeypatch: pytest.MonkeyPatch, payload: bytes, reason: str
 ) -> None:
     """A response that is not a work record raises the error the retry path handles."""
-    monkeypatch.setattr(verifier, "OPENER", _Opener(payload))
+    opener = _Opener(payload)
+    monkeypatch.setattr(verifier, "OPENER", opener)
     with pytest.raises(RuntimeError, match=reason):
         cast(Any, verifier).fetch("10.1175/JAMC-D-19-0272.1")
+    assert opener.calls
 
 
 def test_a_response_larger_than_the_cap_is_a_lookup_failure(
@@ -258,14 +263,17 @@ def test_a_response_larger_than_the_cap_is_a_lookup_failure(
 ) -> None:
     """A reply body is read up to a bound, so a huge body cannot be held in memory."""
     payload = b'{"message": {"DOI": "' + b"x" * 200 + b'"}}'
-    monkeypatch.setattr(verifier, "OPENER", _Opener(payload))
+    opener = _Opener(payload)
+    monkeypatch.setattr(verifier, "OPENER", opener)
     monkeypatch.setattr(verifier, "MAX_RESPONSE", 64)
     with pytest.raises(RuntimeError, match="failed"):
         cast(Any, verifier).fetch("10.1175/JAMC-D-19-0272.1")
+    assert opener.calls
 
 
 def test_a_redirect_off_crossref_is_refused(verifier: ModuleType) -> None:
     """An off-endpoint redirect is refused before the request goes to the new host."""
+    assert any(isinstance(handler, verifier._CrossrefRedirect) for handler in verifier.OPENER.handlers)
     handler = cast(Any, verifier)._CrossrefRedirect()
     with pytest.raises(OSError, match="redirected a lookup"):
         handler.redirect_request(None, None, 302, "Found", {}, "https://example.invalid/works/10.1/x")
