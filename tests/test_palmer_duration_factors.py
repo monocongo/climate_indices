@@ -1,6 +1,7 @@
 import json
 import types
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 import pytest
@@ -27,7 +28,7 @@ def _state() -> _palmer_pdi._State:
     return _palmer_pdi._initialize_state(np.full((1, 12, 1), np.nan))
 
 
-def test_initialize_prepared_sets_default_duration_factors():
+def test_initialize_prepared_sets_default_duration_factors() -> None:
     prepared = _prepared()
 
     # standard Palmer PDSI has no wet/dry distinction in its duration factors
@@ -43,12 +44,12 @@ def test_initialize_prepared_sets_default_duration_factors():
     assert (prepared.wetm + prepared.wetb) == pytest.approx(3.0)
 
 
-def test_duration_factor_c_rejects_zero_factor_sum():
+def test_duration_factor_c_rejects_zero_factor_sum() -> None:
     with pytest.raises(ValueError, match="must not sum to zero"):
         _palmer_pdi._weighting_fraction(1.0, -1.0)
 
 
-def test_weighting_fraction_keeps_the_division_form():
+def test_weighting_fraction_keeps_the_division_form() -> None:
     """The pdi.f lineage divides, so its coefficient is ``b / (m + b)`` exactly.
 
     These constants make the division form differ bitwise from the complement
@@ -60,7 +61,7 @@ def test_weighting_fraction_keeps_the_division_form():
     assert _palmer_pdi._weighting_fraction(m, b) != 1.0 - m / (m + b)
 
 
-def test_pdi_validation_accepts_factors_the_wells_cross_coefficient_would_reject():
+def test_pdi_validation_accepts_factors_the_wells_cross_coefficient_would_reject() -> None:
     """The pdi.f recurrence never forms the Wells cross coefficient.
 
     ``c = b / (m + b)`` is -0.667 (wet) and 0.769 (dry), both contractions, so the
@@ -85,17 +86,17 @@ def test_pdi_validation_accepts_factors_the_wells_cross_coefficient_would_reject
     assert np.isfinite(overridden_pdsi).any()
 
 
-def test_pdi_validation_rejects_a_non_contracting_weighting_fraction():
+def test_pdi_validation_rejects_a_non_contracting_weighting_fraction() -> None:
     with pytest.raises(ConvergenceError, match="wetc"):
         _palmer_pdi.PdiDurationFactors.from_fitted(1.0, -0.5, 1.0, 1.0)
 
 
-def test_pdi_validation_rejects_a_zero_denominator():
+def test_pdi_validation_rejects_a_zero_denominator() -> None:
     with pytest.raises(ConvergenceError, match="standard PDSI recursion"):
         _palmer_pdi.PdiDurationFactors.from_fitted(1.0, -1.0, 1.0, 1.0)
 
 
-def test_select_duration_factors_follows_the_sign_of_x3():
+def test_select_duration_factors_follows_the_sign_of_x3() -> None:
     """No established spell (x3 == 0) takes the wet pair; the sign of x3 selects after that."""
     factors = _palmer_pdi.PdiDurationFactors.from_fitted(1.0, 2.0, 3.0, 4.0)
     state = _state()
@@ -116,7 +117,7 @@ def test_select_duration_factors_follows_the_sign_of_x3():
     np.testing.assert_array_equal(b, [2.0])
 
 
-def test_pdi_factors_are_not_interchangeable_between_wet_and_dry_spells():
+def test_pdi_factors_are_not_interchangeable_between_wet_and_dry_spells() -> None:
     """Swapping the wet and dry pairs changes the recursion, through its interface."""
     z = np.array([2.0, 3.0, -1.0, -4.0, 0.5, -0.75, -0.25, 1.5, -2.0, 0.0, 2.5, -3.0]).reshape(1, 12, 1)
 
@@ -126,7 +127,7 @@ def test_pdi_factors_are_not_interchangeable_between_wet_and_dry_spells():
     assert not np.allclose(wet_heavy.pdsi, dry_heavy.pdsi, equal_nan=True)
 
 
-def test_pdi_recursion_pins_a_z_sequence_through_its_interface():
+def test_pdi_recursion_pins_a_z_sequence_through_its_interface() -> None:
     """A Z sequence driven through the recursion interface locks its arithmetic.
 
     The values were captured from the lineage-preserving refactor, so this is a
@@ -186,7 +187,7 @@ def test_pdi_recursion_pins_a_z_sequence_through_its_interface():
     np.testing.assert_allclose(result.pmdi.reshape(-1), pmdi_expected, rtol=0, atol=1e-12)
 
 
-def test_pdi_recursion_rejects_infinite_z_values():
+def test_pdi_recursion_rejects_infinite_z_values() -> None:
     """The pdi.f entry point rejects infinite Z like its Wells sibling."""
     z = np.zeros((1, 12, 1))
     z[0, 0, 0] = np.inf
@@ -196,7 +197,7 @@ def test_pdi_recursion_rejects_infinite_z_values():
         _palmer_pdi.calculate(z, factors)
 
 
-def test_pdi_recursion_rejects_a_non_twelve_month_axis():
+def test_pdi_recursion_rejects_a_non_twelve_month_axis() -> None:
     """The documented (years, 12, n_cells) contract covers the month axis, not just ndim."""
     factors = _palmer_pdi.PdiDurationFactors.from_fitted(1.0, 1.0, 1.0, 1.0)
 
@@ -206,7 +207,7 @@ def test_pdi_recursion_rejects_a_non_twelve_month_axis():
         _palmer_pdi.calculate(np.zeros((1, 13, 1)), factors)
 
 
-def test_calc_cafec_zindex_writes_the_zindex():
+def test_calc_cafec_zindex_writes_the_zindex() -> None:
     """The shared CAFEC/Z-index step feeds both the PDSI and scPDSI recursions.
 
     The CAFEC value and the Z-index are recomputed with the pre-refactor
@@ -237,7 +238,7 @@ def test_calc_cafec_zindex_writes_the_zindex():
     assert z[0, 0] == prepared.ak[0] * (prepared.precips[0, 0] - expected_cafec)
 
 
-def test_custom_duration_factors_change_pdsi_output():
+def test_custom_duration_factors_change_pdsi_output() -> None:
     """pdsi() accepts duration-factor overrides through its fitting parameters."""
     rng = np.random.default_rng(42)
     precips = rng.uniform(0.0, 6.0, size=12 * 4)
@@ -252,7 +253,7 @@ def test_custom_duration_factors_change_pdsi_output():
     assert not np.allclose(default_pdsi, custom_pdsi, equal_nan=True)
 
 
-def test_duration_factor_override_distinguishes_wet_from_dry():
+def test_duration_factor_override_distinguishes_wet_from_dry() -> None:
     """Swapping the wet and dry pairs changes the recursion; wet and dry are not interchangeable."""
     rng = np.random.default_rng(42)
     precips = rng.uniform(0.0, 6.0, size=12 * 4)
@@ -266,7 +267,7 @@ def test_duration_factor_override_distinguishes_wet_from_dry():
     assert not np.allclose(wet_pdsi, dry_pdsi, equal_nan=True)
 
 
-def test_pdsi_returned_params_reproduce_a_duration_factor_override():
+def test_pdsi_returned_params_reproduce_a_duration_factor_override() -> None:
     """The returned parameters echo the effective duration factors, so reuse is lossless."""
     rng = np.random.default_rng(42)
     precips = rng.uniform(0.0, 6.0, size=12 * 4)
@@ -319,7 +320,7 @@ def test_pdsi_returned_params_reproduce_a_duration_factor_override():
         ),
     ],
 )
-def test_invalid_duration_factor_override_is_rejected(override, message):
+def test_invalid_duration_factor_override_is_rejected(override: dict[str, Any], message: str) -> None:
     """A malformed override is a caller error, not a silent default.
 
     A masked factor is missing data, not a number: ``np.asarray`` would drop the
@@ -333,7 +334,7 @@ def test_invalid_duration_factor_override_is_rejected(override, message):
         palmer.pdsi(precips, pet, 5.0, 2000, 2000, 2003, fitting_params=override)
 
 
-def test_palmer_default_factors_as_override_reproduce_the_default_run():
+def test_palmer_default_factors_as_override_reproduce_the_default_run() -> None:
     """Palmer's own factors, supplied as an override, must reproduce the default run.
 
     Pins that a run given Palmer's constants through the override is bit-identical
@@ -358,7 +359,7 @@ def test_palmer_default_factors_as_override_reproduce_the_default_run():
     np.testing.assert_array_equal(default_pdsi, overridden_pdsi)
 
 
-def test_duration_factor_override_does_not_preempt_input_validation():
+def test_duration_factor_override_does_not_preempt_input_validation() -> None:
     """An invalid override must not mask a data error the caller can act on."""
     rng = np.random.default_rng(42)
     precips = rng.uniform(0.0, 6.0, size=12 * 4)
@@ -379,7 +380,7 @@ def test_duration_factor_override_does_not_preempt_input_validation():
         palmer.pdsi(precips, pet, 5.0, 2000, 1990, 2003, fitting_params=override)
 
 
-def test_duration_factor_override_is_not_validated_for_all_missing_input():
+def test_duration_factor_override_is_not_validated_for_all_missing_input() -> None:
     """All-missing input keeps its documented NaN arrays and ``None`` parameters.
 
     The override is resolved after the all-missing fast path, as the CAFEC fitting
@@ -395,7 +396,7 @@ def test_duration_factor_override_is_not_validated_for_all_missing_input():
     assert np.all(np.isnan(pdsi_values))
 
 
-def test_cafec_ratio_substitutes_exact_zero_and_leaves_a_zero_denominator():
+def test_cafec_ratio_substitutes_exact_zero_and_leaves_a_zero_denominator() -> None:
     """A month with no accumulated water-balance term takes ``both_zero``.
 
     A zero denominator with a nonzero numerator is not undefined the same way:
@@ -416,7 +417,7 @@ def test_cafec_ratio_substitutes_exact_zero_and_leaves_a_zero_denominator():
     )
 
 
-def test_case_selects_near_normal_when_no_spell_is_established():
+def test_case_selects_near_normal_when_no_spell_is_established() -> None:
     """x3 is exactly 0.0 when no spell is established, and that exact zero --
     not a tolerance -- picks the larger-magnitude incipient index."""
     prob = np.array([50.0])
@@ -431,7 +432,7 @@ def test_case_selects_near_normal_when_no_spell_is_established():
     assert _palmer_pdi._case(prob, x1, x2, np.array([-np.finfo(float).tiny]))[0] == 0.75
 
 
-def test_record_index_values_falls_back_to_pdsi_when_no_spell_is_established():
+def test_record_index_values_falls_back_to_pdsi_when_no_spell_is_established() -> None:
     """PHDI has no severity of its own without an established spell (px3
     exactly 0.0), so it records the PDSI value; with a spell it keeps px3."""
     state = _state()
@@ -448,7 +449,7 @@ def test_record_index_values_falls_back_to_pdsi_when_no_spell_is_established():
     assert state.phdi[0, 2, 0] == -np.finfo(float).tiny  # sub-epsilon, still a spell
 
 
-def test_finish_up_falls_back_to_pdsi_when_no_spell_is_established():
+def test_finish_up_falls_back_to_pdsi_when_no_spell_is_established() -> None:
     """_finish_up repeats the no-established-spell fallback for the months left
     pending when the record ends, under the same exact-zero test."""
     state = _state()
@@ -470,7 +471,7 @@ def test_finish_up_falls_back_to_pdsi_when_no_spell_is_established():
     assert state.phdi[0, 1, 0] == -np.finfo(float).tiny
 
 
-def test_finish_up_gives_each_pending_month_its_own_pmdi():
+def test_finish_up_gives_each_pending_month_its_own_pmdi() -> None:
     """Each month flushed at the end of the record takes the CASE of its own
     ppr/px1/px2/px3, not the final month's (#1666)."""
     state = _state()
@@ -519,7 +520,7 @@ def test_pending_months_at_the_end_of_the_record_get_their_own_pmdi() -> None:
     np.testing.assert_array_equal(result.pmdi[0, 9:, 0], extended.pmdi[0, 9:, 0])
 
 
-def test_finish_up_leaves_months_of_a_resolved_spell_alone():
+def test_finish_up_leaves_months_of_a_resolved_spell_alone() -> None:
     """_finish_up flushes only the months still pending (#1665, ADR-0030).
 
     Slots at or beyond k8 hold months a closed spell already resolved; a second
@@ -540,7 +541,7 @@ def test_finish_up_leaves_months_of_a_resolved_spell_alone():
     assert (state.pdsi[0, 1, 0], state.phdi[0, 1, 0], state.wplm[0, 1, 0]) == (1.5, 2.5, 3.5)
 
 
-def test_finish_up_flushes_each_cell_up_to_its_own_pending_count():
+def test_finish_up_flushes_each_cell_up_to_its_own_pending_count() -> None:
     """_finish_up keeps the per-cell k8 mask when cells have different runs pending.
 
     A regression that flushed the longest cell's slot count for every cell would
@@ -563,7 +564,7 @@ def test_finish_up_flushes_each_cell_up_to_its_own_pending_count():
     assert state.pdsi[0, 1, 1] == 9.0
 
 
-def test_a_resolved_month_keeps_its_value_when_nothing_is_pending_at_the_end():
+def test_a_resolved_month_keeps_its_value_when_nothing_is_pending_at_the_end() -> None:
     """#1665: the REFIMPL-29 "F" sequence, where the stale ``k8max`` rewrote a resolved month.
 
     The spell resolves at the fifth month and the sixth resolves directly, so nothing is
@@ -586,7 +587,7 @@ def test_a_resolved_month_keeps_its_value_when_nothing_is_pending_at_the_end():
     assert result.pmdi.reshape(-1)[10] == pytest.approx(0.9003972913896878, abs=1e-12)
 
 
-def test_resolved_months_survive_truncating_the_record_division_0101():
+def test_resolved_months_survive_truncating_the_record_division_0101() -> None:
     """#1665: truncating division 0101 at December 2002 must not change resolved months.
 
     Before the fix the stale ``k8max`` re-flushed February-November 2002, replacing their
@@ -614,7 +615,7 @@ def test_resolved_months_survive_truncating_the_record_division_0101():
     assert not np.allclose(cut.pmdi.reshape(-1)[end - 11 : end - 1], 1.783, atol=1e-3)
 
 
-def test_non_contracting_duration_factor_override_is_attributed_to_pdsi():
+def test_non_contracting_duration_factor_override_is_attributed_to_pdsi() -> None:
     """The override's ConvergenceError names the pdsi path, not the scPDSI calibration."""
     rng = np.random.default_rng(42)
     precips = rng.uniform(0.0, 6.0, size=12 * 4)
@@ -636,14 +637,14 @@ def test_non_contracting_duration_factor_override_is_attributed_to_pdsi():
         (0.0, 0.0, 0.0),
     ],
 )
-def test_case_near_normal_selects_x2_only_when_strictly_larger(x1, x2, expected):
+def test_case_near_normal_selects_x2_only_when_strictly_larger(x1: float, x2: float, expected: float) -> None:
     result = _palmer_pdi._case(np.array([0.0]), np.array([x1]), np.array([x2]), np.array([0.0]))
 
     assert result[0] == expected
     assert np.signbit(result[0]) == np.signbit(expected)
 
 
-def test_case_zero_tie_keeps_x1_sign():
+def test_case_zero_tie_keeps_x1_sign() -> None:
     # |0.0| == |-0.0| is a tie; X1 (+0.0) wins, as in pdi.f.
     result = _palmer_pdi._case(np.array([0.0]), np.array([0.0]), np.array([-0.0]), np.array([0.0]))
 
@@ -740,7 +741,7 @@ def test_pdi_recursion_default_runs_every_month_like_the_explicit_full_length() 
 
 
 @pytest.mark.parametrize("months", [1, 5, 11, 12, 13, 23])
-def test_pdi_recursion_short_records_end_at_the_last_real_month(months):
+def test_pdi_recursion_short_records_end_at_the_last_real_month(months: int) -> None:
     """Records of one to two years: the flush reads the last real month, never a padded one."""
     rng = np.random.default_rng(1663)
     z = rng.normal(0.0, 1.5, size=(months, 3))
@@ -754,7 +755,7 @@ def test_pdi_recursion_short_records_end_at_the_last_real_month(months):
         np.testing.assert_array_equal(actual, getattr(reference, name), err_msg=name)
 
 
-def test_pdi_recursion_stops_at_n_months_even_when_the_tail_is_not_nan():
+def test_pdi_recursion_stops_at_n_months_even_when_the_tail_is_not_nan() -> None:
     """``n_months`` ends the record even when the months after it are finite numbers.
 
     The caller pads with NaN, but the bound must be the month count rather than a
@@ -771,7 +772,7 @@ def test_pdi_recursion_stops_at_n_months_even_when_the_tail_is_not_nan():
         assert np.isnan(getattr(result, name).reshape(-1)[18:]).all(), name
 
 
-def test_pdi_recursion_zero_months_runs_nothing():
+def test_pdi_recursion_zero_months_runs_nothing() -> None:
     """No real month: every output stays NaN and nothing is flushed."""
     result = _palmer_pdi.calculate(np.zeros((2, 12, 2)), _PDI_FIXTURE_FACTORS, n_months=0)
 
@@ -780,20 +781,20 @@ def test_pdi_recursion_zero_months_runs_nothing():
 
 
 @pytest.mark.parametrize("n_months", [-1, 25])
-def test_pdi_recursion_rejects_an_n_months_outside_the_record(n_months):
+def test_pdi_recursion_rejects_an_n_months_outside_the_record(n_months: int) -> None:
     with pytest.raises(ValueError, match="n_months"):
         _palmer_pdi.calculate(np.zeros((2, 12, 1)), _PDI_FIXTURE_FACTORS, n_months=n_months)
 
 
 @pytest.mark.parametrize("n_months", [5.0, 36.0, "5", True, False, np.True_])
-def test_pdi_recursion_rejects_a_non_integer_n_months(n_months):
+def test_pdi_recursion_rejects_a_non_integer_n_months(n_months: object) -> None:
     with pytest.raises(TypeError):
-        _palmer_pdi.calculate(np.zeros((3, 12, 1)), _PDI_FIXTURE_FACTORS, n_months=n_months)
+        _palmer_pdi.calculate(np.zeros((3, 12, 1)), _PDI_FIXTURE_FACTORS, n_months=n_months)  # type: ignore[arg-type]
     with pytest.raises(TypeError):
-        palmer._pdi_recursion(np.zeros((3, 12, 1)), _PDI_FIXTURE_FACTORS, n_months=n_months)
+        palmer._pdi_recursion(np.zeros((3, 12, 1)), _PDI_FIXTURE_FACTORS, n_months=n_months)  # type: ignore[arg-type]
 
 
-def test_pdsi_on_a_june_ending_record_matches_the_zero_prefixed_reference():
+def test_pdsi_on_a_june_ending_record_matches_the_zero_prefixed_reference() -> None:
     """End to end: ``pdsi()`` on a record the NaN padding would change.
 
     Division 1102 is one of the 14 of the 344 fixture divisions where the padded run
