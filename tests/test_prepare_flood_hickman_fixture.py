@@ -20,7 +20,8 @@ def test_redirect_handler_refuses_other_origins() -> None:
         accepted = handler.redirect_request(original, response, 302, "Found", HTTPMessage(), prepare.URL)
         with pytest.raises(URLError, match="refusing redirect"):
             handler.redirect_request(original, response, 302, "Found", HTTPMessage(), "https://example.invalid/")
-    assert accepted is not None and accepted.full_url == prepare.URL
+    assert accepted is not None
+    assert accepted.full_url == prepare.URL
 
 
 def test_publish_preserves_fixture_until_both_csvs_match(tmp_path: Path) -> None:
