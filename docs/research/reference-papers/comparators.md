@@ -120,7 +120,7 @@ One exclusion:
 
 ## Programs run in containers
 
-Two comparators do not run natively on the survey machine (macOS arm64), so each has a Dockerfile under [`containers/`](containers/); the NDMC one also has a runner, `smoke.sh`, and the NCL one has a smoke program, `spi_smoke.ncl`, whose input is described below. They are evidence of how the comparators were run, not harness code: [REFIMPL-08](https://github.com/monocongo/climate_indices/issues/1610) decides where the harness environments live and may relocate or replace them. Docker Desktop 29.9.3 (linux/arm64) was used. Windows containers are not available on macOS, so neither container is a Windows environment.
+Two comparators do not run natively on the survey machine (macOS arm64), so each has a Dockerfile under [`containers/`](containers/); the NDMC one also has a runner, `smoke.sh`, and the NCL one has a smoke program, `spi_smoke.ncl`, whose input is described below. They are evidence of how the comparators were run, not harness code: [REFIMPL-08](https://github.com/monocongo/climate_indices/issues/1610) put the harness in `intercomparison/` ([harness-design.md](harness-design.md)); these files stay here as survey records until the adapter tickets move or replace them. Docker Desktop 29.9.3 (linux/arm64) was used. Windows containers are not available on macOS, so neither container is a Windows environment.
 
 ### NDMC SPI Generator
 
@@ -232,6 +232,6 @@ Proposed, not yet logged on that ticket, because the ledger's format belongs to 
 | Palmer comparators | [REFIMPL-30](https://github.com/monocongo/climate_indices/issues/1632) |
 | Implementation lineage and independence | [REFIMPL-04](https://github.com/monocongo/climate_indices/issues/1606) |
 | Contacting comparator maintainers and data producers | [REFIMPL-06](https://github.com/monocongo/climate_indices/issues/1608) |
-| Harness environments, full locking (CRAN dependencies are not pinned), a native x86_64 and CI run of the Linux smoke, and where the `containers/` files end up. The one-month Linux smoke of the Python and R comparators is done (see "Linux confirmation") | [REFIMPL-08](https://github.com/monocongo/climate_indices/issues/1610) |
+| R and Octave harness environments and their full locking (CRAN dependencies are not pinned), a native x86_64 and CI run of the Linux smoke, and where the `containers/` files end up (the Python environments and the location are decided: [harness-design.md](harness-design.md)). The one-month Linux smoke of the Python and R comparators is done (see "Linux confirmation") | [REFIMPL-08](https://github.com/monocongo/climate_indices/issues/1610) |
 | Provider terms for committing Climate Engine and Earth Engine outputs | [REFIMPL-06](https://github.com/monocongo/climate_indices/issues/1608); its contact table names the Climate Engine team, not Google, so Earth Engine terms need adding |
 | Adapters for R `Evapotranspiration`, `climatekit`, NCL, and the NDMC program, which REFIMPL-12 to REFIMPL-15 do not name | maintainer decision, or extend [REFIMPL-13](https://github.com/monocongo/climate_indices/issues/1615) |

@@ -270,7 +270,7 @@ This protocol binds future validation work, so [ADR-0029](../../adr/0029-referen
 | The sizes and hardware of the C7 benchmark | REFIMPL-23, [#1625](https://github.com/monocongo/climate_indices/issues/1625) |
 | How and when comparator maintainers are contacted | REFIMPL-06, [#1608](https://github.com/monocongo/climate_indices/issues/1608) |
 | The wording of the conflict-of-interest statement | REFIMPL-07, [#1609](https://github.com/monocongo/climate_indices/issues/1609) |
-| Whether the harness lives here or in a sibling repository | REFIMPL-08, [#1610](https://github.com/monocongo/climate_indices/issues/1610) |
+| ~~Whether the harness lives here or in a sibling repository~~ Decided 2026-11-22: here, in `intercomparison/` ([harness-design.md](harness-design.md)) | REFIMPL-08, [#1610](https://github.com/monocongo/climate_indices/issues/1610) |
 | The metric implementations | REFIMPL-16, [#1618](https://github.com/monocongo/climate_indices/issues/1618) |
 
 ## Measure reference

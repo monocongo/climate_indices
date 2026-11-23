@@ -1,7 +1,7 @@
 # Discrepancy ledger
 
 **Ticket:** REFIMPL-24, [#1626](https://github.com/monocongo/climate_indices/issues/1626).
-**Status:** seeded by REFIMPL-29 ([#1631](https://github.com/monocongo/climate_indices/issues/1631)) with that ticket's entries only. REFIMPL-24 owns the format, the machine-readable copy, and the summary tables, and may restructure this file.
+**Status:** seeded by REFIMPL-29 ([#1631](https://github.com/monocongo/climate_indices/issues/1631)); REFIMPL-08 ([#1610](https://github.com/monocongo/climate_indices/issues/1610)) added its entries. REFIMPL-24 owns the format, the machine-readable copy, and the summary tables, and may restructure this file.
 
 Dispositions follow the categories in #1626: method choice, undocumented convention, defect in `climate_indices`, defect in a comparator, numerical noise, unexplained. **Every disposition below is a proposal for the maintainer**; none has been decided. A default change is never decided here.
 
@@ -31,9 +31,10 @@ The `pdi.f`-lineage values are closer to nClimDiv on 87.6% of the P disagreement
 
 ## Entries from REFIMPL-08
 
-Study [#1610](https://github.com/monocongo/climate_indices/issues/1610), the harness slice: gamma SPI-3 on division 0101 of `tests/fixture/palmer/` (1,536 months, 1895-01 to 2022-12, inches), `climate_indices` 3.2.0 against `xclim` 1.0.0, both in the aligned configuration `spi-gamma-thom` (Thom closed form, zeros as a mass of n0/n, calendar months, calibration 1895-2022). Stored in `intercomparison/studies/refimpl-08-slice/manifest.json`. This is one series; it shows that the harness runs and is not evidence of agreement.
+Study [#1610](https://github.com/monocongo/climate_indices/issues/1610), the harness slice: gamma SPI-3 on division 0101 of `tests/fixture/palmer/` (1,536 months, 1895-01 to 2022-12, inches), `climate_indices` 3.2.0 against `xclim` 1.0.0, both in the aligned configuration `spi-gamma-thom` (Thom closed form, zeros as a mass of n0/n, calendar months, calibration 1895-2022). Stored in `intercomparison/studies/refimpl-08-slice/manifest.json`. This is one series; it shows that the harness runs and is not evidence of agreement. The series has no zero-precipitation month, so the zero-handling position is declared by both adapters but not exercised.
 
 | ID | Class | Configuration | Size | Cause | Proposed disposition |
 | --- | --- | --- | --- | --- | --- |
 | P08-B | output bound | `spi-gamma-thom`, 0101, SPI-3 | 1 of 1,534 paired months (1965-12): library -3.09, xclim -3.1527, difference 0.0627 | The library clips SPI at ±3.09; xclim clips at ±8.21 (`method-matrix.json`, axis `output_bound`). The unclipped value at that month is below -3.09 | **Method choice** (documented in `method-matrix.json`); the protocol puts the output bound in rung L4 of the ladder |
-| P08-N | numerical noise | same | the other 1,533 paired months: maximum absolute difference 7.4e-14 (month 1348) | Not traced; the size is that of two floating-point code paths computing the same closed form | **Numerical noise** ("identical" class is 1e-10) |
+| P08-A | accumulation | same | 0 months; recorded by the xclim adapter as a method difference (`mean` against the requested `sum`) | xclim rolls a mean (`compute/stats.py`); the library sums. A constant factor of `scale` leaves a gamma fit and its quantiles unchanged, so the index is the same | **Method choice**; no effect on gamma SPI. Its contribution to P08-N is not separated |
+| P08-N | numerical noise | same | the other 1,533 paired months: maximum absolute difference 7.4e-14 (index 1348, 2007-05) | Not traced; the size is that of two floating-point code paths computing the same closed form | **Numerical noise** ("identical" class is 1e-10) |

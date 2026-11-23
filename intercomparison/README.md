@@ -31,5 +31,5 @@ The first `xclim` run builds `intercomparison/adapters/xclim/.venv` from its `uv
 | `studies/<study>/store.zarr` | no | array `values`, dims (implementation, unit, time) |
 | `studies/<study>/work/` | no | the request, the input CSV, and each adapter's `result.json` and series |
 
-A rerun on the same inputs reproduces every `output_sha256` and `checksum_sha256`. Wall time, platform and `created` differ.
+A rerun on the same inputs reproduces every `output_sha256` and `checksum_sha256`. Wall time, platform, `created` and the `harness` commit and dirty flag differ.
 Validate a manifest with `manifest.schema.json`.
