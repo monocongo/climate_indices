@@ -888,7 +888,10 @@ grid points. Pass the rounding unit of the prepared
 sample as `resolution` if the record was rounded (the record's own unit for SPI; with `aggregation="mean"` that unit
 divided by the Timescale): without it a record rounded to 10 mm was rejected in 24% of series at a nominal 5%. A unit
 comparable to the mean of a zero-heavy record (35% zeros, unit 1 on a mean of 2.4) still leaves the bootstrap
-anti-conservative, at about 8% (K-S) and 10% (A²), so treat its p-values there as screening evidence. The same
+anti-conservative, at about 8% (K-S) and 10% (A²), so treat its p-values there as screening evidence. For daily
+input the calendar adapter fills February 29 of a common year with the mean of February 28 and March 1, but the
+bootstrap draws every year from one fitted law, so the p-values (the naive K-S p-value too) at that day and the
+next Timescale − 1 days are approximate. The same
 `seed` gives the same bootstrap p-values for a cell alone, in a grid, or under any Dask chunking; the fitted
 statistics agree to floating-point rounding. An unseeded call records its 128-bit seed as a decimal string in
 `climate_indices_rng_seed`.
@@ -907,6 +910,9 @@ such parameter) run over `(candidate, month | dayofyear, *cells)`. The per-step 
 `ad_p_value_bootstrap` and `bootstrap_failed_share`) run over the per-candidate dimensions, the
 Benjamini–Hochberg p-values `ks_p_value_bh` and `ad_p_value_bh` likewise, and `rejection_share` runs over
 `(candidate, month | dayofyear, statistic)`; a series with no cell dimension has neither of the last two.
+The Benjamini–Hochberg p-values need `bh_adjust=True`, and `ad_p_value_bh` also needs `n_bootstrap > 0`, because
+Anderson–Darling has no naive p-value; with `n_bootstrap=0` only `ks_p_value_bh` is present. With `gof=()` the
+Dataset has no goodness-of-fit variables, no `rejection_share` and no `climate_indices_gof_bootstrap_samples`.
 Every variable carries the
 ADR-0028 provenance attributes, including
 `climate_indices_candidates`, `climate_indices_fitting_methods`, `climate_indices_criterion`,

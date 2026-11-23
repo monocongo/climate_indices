@@ -777,6 +777,10 @@ def _bootstrap_p_values(
     so the null distribution carries the estimation of the parameters. The p-value is
     ``(1 + #{statistic* >= statistic}) / (B_ok + 1)`` over the ``B_ok`` refits that succeeded, NaN where none did.
     ``scored`` is ``(candidate, step, *cell)`` and marks the candidates with a usable observed fit.
+
+    Every year of a step is drawn from that step's one fitted law. A calendar-adapted daily record has synthetic
+    February 29 values (the mean of February 28 and March 1) in common years, which do not follow that law, so the null
+    is approximate for that day and the next ``scale - 1`` days.
     """
     years, cell_shape = sample.shape[0], sample.shape[1:]
     batch = max(1, min(n_bootstrap, _BOOTSTRAP_BATCH_ELEMENTS // max(sample.size, 1)))
@@ -1221,7 +1225,8 @@ def compare_distributions(
         gof: Goodness-of-fit statistics to compute, ``"ks"`` and ``"ad"``. An empty sequence skips goodness of
             fit and leaves ``goodness_of_fit`` as ``None``. A statistic left out has NaN arrays.
         n_bootstrap: Parametric-bootstrap replicates per candidate, step and cell; 0 (the default) computes the
-            statistics and the naive K-S p-value only.
+            statistics and the naive K-S p-value only. For daily input the bootstrap null is approximate on February 29
+            and the next ``scale - 1`` days, where common years carry synthetic values.
         resolution: Rounding unit of the prepared sample, applied to the bootstrap draws; ``None`` draws continuous
             samples, the right null only for an unrounded record. Sums of values rounded to a unit are multiples of
             it, so for SPI it is the record's unit; with ``aggregation="mean"`` the sample's unit is that divided by
