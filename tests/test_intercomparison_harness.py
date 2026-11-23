@@ -358,6 +358,26 @@ def test_the_climate_indices_adapter_applies_what_it_is_given_and_reports_it(tmp
     assert "'distribution'" in warning and "'pearson'" in warning and "'gamma'" in warning
 
 
+def test_the_climate_indices_adapter_reports_the_calibration_window_the_library_applied(tmp_path: Path) -> None:
+    """The library clamps a window the record does not cover to the whole record; the report must say so."""
+    positions = harness.positions_for(3, 1981, 2010)  # requested; the record is 2000-2003
+    request = harness.write_request(
+        tmp_path / "work",
+        study="t",
+        unit="u",
+        times=harness.monthly_times(2000, 48),
+        values=np.linspace(1.0, 9.0, 48) + np.sin(np.arange(48)),
+        units="mm",
+        positions=positions,
+    )
+
+    result = harness.run_adapter("climate_indices", ADAPTERS["climate_indices"], request, tmp_path / "out")
+
+    assert result["effective_method"]["calibration_period"] == "2000/2003"
+    (warning,) = contract.diff_method(positions, result["effective_method"])
+    assert "'calibration_period'" in warning and "1981/2010" in warning and "2000/2003" in warning
+
+
 def test_the_climate_indices_adapter_refuses_a_series_that_does_not_start_in_january(tmp_path: Path) -> None:
     request = harness.write_request(
         tmp_path / "work",
