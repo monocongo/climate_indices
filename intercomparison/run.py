@@ -11,6 +11,7 @@ Heavy runs are manual; CI exercises only the offline tests in tests/test_interco
 from __future__ import annotations
 
 import argparse
+import contextlib
 import datetime
 import shutil
 import subprocess  # nosec B404 # runs the fixed adapter commands and git
@@ -83,7 +84,9 @@ def run_adapter(name: str, command: list[str], request: Path, out_dir: Path) -> 
     The output directory is emptied first: an adapter that exits 0 without writing must not be
     credited with a previous run's files.
     """
-    shutil.rmtree(out_dir, ignore_errors=True)
+    # any failure but a missing directory must stop the run, or the old files could be credited to this adapter
+    with contextlib.suppress(FileNotFoundError):
+        shutil.rmtree(out_dir)
     subprocess.run([*command, "run", str(request), str(out_dir)], check=True)  # nosec B603 # argv is ADAPTER_COMMANDS plus harness-built paths
     if not (out_dir / "result.json").is_file():
         raise contract.ContractError(f"{name}: exited 0 but wrote no result.json")

@@ -376,6 +376,33 @@ def test_an_adapter_that_exits_zero_without_writing_is_not_credited_with_an_old_
         harness.run_adapter("lazy", [sys.executable, "-c", "pass"], request, out)
 
 
+def test_an_output_directory_that_cannot_be_emptied_stops_the_run(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    request = harness.write_request(
+        tmp_path / "work",
+        study="t",
+        unit="u",
+        times=harness.monthly_times(2000, 48),
+        values=np.linspace(1.0, 9.0, 48) + np.sin(np.arange(48)),
+        units="mm",
+        positions=harness.positions_for(3, 2000, 2003),
+    )
+    out = tmp_path / "out"
+    harness.run_adapter("climate_indices", ADAPTERS["climate_indices"], request, out)  # leaves a valid result behind
+
+    def refuse(path: Path) -> None:
+        raise PermissionError(path)
+
+    monkeypatch.setattr(harness.shutil, "rmtree", refuse)
+    marker = tmp_path / "ran"
+    adapter = [sys.executable, "-c", f"import pathlib; pathlib.Path({str(marker)!r}).touch()"]
+    with pytest.raises(PermissionError):
+        harness.run_adapter("lazy", adapter, request, out)
+
+    assert not marker.exists()  # the adapter never started, so the old result cannot be credited to it
+
+
 @needs_git
 def test_driver_records_a_warning_when_an_adapter_applied_another_method(tmp_path: Path) -> None:
     fake = tmp_path / "fake_adapter.py"
