@@ -473,7 +473,9 @@ def test_finish_up_leaves_months_of_a_resolved_spell_alone():
     """_finish_up flushes only the months still pending (#1665, ADR-0030).
 
     Slots at or beyond k8 hold months a closed spell already resolved; a second
-    flush would overwrite their recorded values with the provisional ones.
+    flush would overwrite their recorded values with the provisional ones. This is
+    the unit-level check of the new semantics; the end-to-end regressions for the
+    stale high-water mark are the two ``calculate()`` tests that follow.
     """
     state = _state()
     state.k8 = np.array([1])  # only the first slot is still pending
@@ -486,6 +488,27 @@ def test_finish_up_leaves_months_of_a_resolved_spell_alone():
 
     assert state.pdsi[0, 0, 0] == 9.0  # pending: flushed
     assert (state.pdsi[0, 1, 0], state.phdi[0, 1, 0], state.wplm[0, 1, 0]) == (1.5, 2.5, 3.5)
+
+
+def test_a_resolved_month_keeps_its_value_when_nothing_is_pending_at_the_end():
+    """#1665: the REFIMPL-29 "F" sequence, where the stale ``k8max`` rewrote a resolved month.
+
+    The spell resolves at the fifth month and the sixth resolves directly, so nothing is
+    pending when the record ends. Before the fix the fifth month's PDSI was re-flushed to
+    its provisional -0.618839 and its PMDI to the final month's 1.897. Values are the
+    library's own, pinned to the Rust test of the same name in ``palmer_pdi.rs``.
+    """
+    wetm = drym = (1.0 - 0.897) / (1.0 / 3.0)
+    wetb = dryb = 0.897 / (1.0 / 3.0)
+    factors = _palmer_pdi.PdiDurationFactors(wetm, wetb, drym, dryb)
+    z = np.concatenate([np.zeros(6), [-2.0, -1.0, -1.3, -2.0, 3.0, 3.0]])  # whole year, no-op padding
+
+    result = _palmer_pdi.calculate(z.reshape(1, 12, 1), factors)
+
+    # same operation order as the Rust kernel, so agreement is to rounding
+    assert result.pdsi.reshape(-1)[10] == pytest.approx(1.0, abs=1e-12)
+    assert result.phdi.reshape(-1)[10] == pytest.approx(-0.6188390862539994, abs=1e-12)
+    assert result.pmdi.reshape(-1)[10] == pytest.approx(0.9003972913896878, abs=1e-12)
 
 
 def test_resolved_months_survive_truncating_the_record_division_0101():
