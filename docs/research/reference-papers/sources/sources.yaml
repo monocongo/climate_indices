@@ -234,20 +234,20 @@ sources:
   citation: Jacobi et al. (2013), MATLAB Palmer tool checked against the NCDC Fortran, with discrepancies documented
     (research-notes.md).
   doi: 10.1002/wrcr.20342
-  url: null
-  status: not-opened
-  opened_in: null
+  url: https://doi.org/10.1002/wrcr.20342
+  status: opened
+  opened_in: docs/research/reference-papers/literature.md
   license_class: unknown
   license_evidence: null
   committable: pending
-  local_path: null
-  sha256: null
+  local_path: local/jacobi-2013.pdf
+  sha256: 6675f31a86739c9ea7891e921c605d403bf2d2dc233cba969e0c710946dc1c73
   supports:
   - D1
   tickets:
   - REFIMPL-05
   - REFIMPL-26
-  notes: DOI from research-notes.md; not opened; Wiley returned 403 to an unauthenticated fetch; licence not checked.
+  notes: Read from a local copy; Wiley returns 403 to an unauthenticated fetch; licence not checked.
 - id: ncei-pdi-f
   kind: code
   family: palmer
@@ -348,14 +348,14 @@ sources:
   - REFIMPL-06
   - REFIMPL-27
   notes: Unofficial mirror of the Sibada port; credits Wells, Goddard and Hayes as ctb only; not the UNL original.
-- id: baldwin-chen-2020
+- id: spade-2020
   kind: paper
   family: spi
-  citation: Baldwin and Chen (2020), Major Over- and Underestimation of Drought Found in NOAA's Climate Divisional
-    SPI Dataset, J. Appl. Meteor. Climatol.
-  doi: null
-  url: null
-  status: not-opened
+  citation: Spade, D., de Beurs, K., and Shafer, M. (2020), Major Over- and Underestimation of Drought Found in NOAA's
+    Climate Divisional SPI Dataset, J. Appl. Meteor. Climatol. 59(9), 1469-1480.
+  doi: 10.1175/JAMC-D-19-0272.1
+  url: https://doi.org/10.1175/JAMC-D-19-0272.1
+  status: located
   opened_in: null
   license_class: unknown
   license_evidence: null
@@ -366,7 +366,7 @@ sources:
   tickets:
   - REFIMPL-05
   - REFIMPL-06
-  notes: 'Not opened; cited in tests/fixture/ncei_spi/provenance.json and #1608''s NCEI row.'
+  notes: 'Not opened; citation from Crossref (../references-verification.json). Cited as Baldwin and Chen (2020) elsewhere; see ../literature.md.'
 - id: dficklin-cageo-paper
   kind: code
   family: palmer
