@@ -21,6 +21,7 @@ import csv
 import hashlib
 import io
 import json
+import os
 import platform
 import sys
 import time
@@ -47,6 +48,19 @@ _MISSING = object()
 
 class ContractError(ValueError):
     """A request or result violates the adapter contract."""
+
+
+def path_arg(value: str) -> Path:
+    """Resolve a command-line path, refusing a relative one that escapes the working directory.
+
+    Same guard as benchmarks/cli_multiprocessing.py (pythonsecurity:S8707); absolute paths are
+    the documented usage and pass through after normalisation.
+    """
+    resolved = os.path.realpath(value)
+    base = os.path.realpath(os.getcwd())
+    if not os.path.isabs(value) and resolved != base and not resolved.startswith(base + os.sep):
+        raise SystemExit(f"{value!r} is outside the working directory")
+    return Path(resolved)
 
 
 def sha256_file(path: Path) -> str:
@@ -200,7 +214,7 @@ def run_adapter(
     if len(argv) != 3 or argv[0] != "run":
         print(f"usage: {comparator} run <request.json> <out_dir>", file=sys.stderr)
         return 2
-    request_path, out_dir = Path(argv[1]), Path(argv[2])
+    request_path, out_dir = path_arg(argv[1]), path_arg(argv[2])
     request = read_request(request_path)
     inputs = {
         name: read_entry_series(request_path.parent, entry, f"input {name!r}")

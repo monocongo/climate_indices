@@ -240,11 +240,11 @@ def run_study(study_dir: Path, division: str, scale: int, adapters: dict[str, li
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--division", default="0101", help="climate division directory under tests/fixture/palmer/")
-    parser.add_argument("--study", type=Path, required=True, help="study directory (created if absent)")
+    parser.add_argument("--study", type=contract.path_arg, required=True, help="study directory (created if absent)")
     parser.add_argument("--scale", type=int, default=3)
     args = parser.parse_args(argv)
     args.study.mkdir(parents=True, exist_ok=True)
-    manifest = run_study(args.study.resolve(), args.division, args.scale, ADAPTER_COMMANDS)
+    manifest = run_study(args.study, args.division, args.scale, ADAPTER_COMMANDS)
     for array in manifest["arrays"]:
         print(array["implementation"], array["version"], array["output_sha256"][:12], *array["warnings"], sep="  ")
     return 0
