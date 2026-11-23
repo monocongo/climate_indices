@@ -168,23 +168,21 @@ recorded in REFIMPL-46 ([#1661](https://github.com/monocongo/climate_indices/iss
 - **Faithful to `pdi.f` but unsupported by any opened source.** The library does not
   update X2 in the month X1 establishes a spell (row 14). The Wells manual calls a
   related behaviour "the bug found in the FORTRAN program" (its `-b` flag).
-- **Other fidelity notes.** The library differs on records that end before December (the
-  NaN padding runs through the recursion). Fix:
-  [#1663](https://github.com/monocongo/climate_indices/issues/1663).
-  An exact PMDI tie now goes to X1, as in `pdi.f`
+- **Other fidelity notes.** An exact PMDI tie now goes to X1, as in `pdi.f`
   ([#1662](https://github.com/monocongo/climate_indices/issues/1662)).
   The UL denominator at `awc == 0` now matches `pdi.f`
   ([#1664](https://github.com/monocongo/climate_indices/issues/1664)).
-- **Maintainer decisions (2026-11-19), recorded in {doc}`ADR-0030 <../adr/0030-palmer-end-of-record-flush>`.**
+- **Maintainer decisions, recorded in {doc}`ADR-0030 <../adr/0030-palmer-end-of-record-flush>`.**
   The stale `k8max` (row 19), which re-flushed months a closed spell had already resolved,
   is **fixed** ([#1665](https://github.com/monocongo/climate_indices/issues/1665)): the library now flushes only the months still pending, so it
   differs from `pdi.f` on the months the stale flush rewrote. The final-month PMDI of the
-  flushed months is **fixed** too
-  ([#1666](https://github.com/monocongo/climate_indices/issues/1666)): each flushed month is
-  recorded from its own `ppr`/`px1`/`px2`/`px3`, and the flush no longer reads a month 12 the
-  record never computed. Together, against nClimDiv, the PMDI maximum difference fell from
-  5.5748 to 1.7026 and its median from 0.0191 to 0.0190. The X2 behaviour stays: nClimDiv
-  agrees with it better than with updating X2.
+  flushed months is **fixed** too ([#1666](https://github.com/monocongo/climate_indices/issues/1666)).
+  The flush now records each month's PMDI from its own `ppr`/`px1`/`px2`/`px3`.
+  With both fixes, the maximum PMDI difference from nClimDiv fell from 5.5748 to 1.7026.
+  The median fell from 0.0191 to 0.0190. The recursion still advances through NaN padding
+  for records that end before December; stopping at the last supplied month is pending
+  ([#1663](https://github.com/monocongo/climate_indices/issues/1663)). The X2 behaviour stays:
+  nClimDiv agrees with it better than with updating X2.
 
 ## History
 

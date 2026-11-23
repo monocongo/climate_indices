@@ -261,6 +261,35 @@ The same NumPy core backs the xarray `fit_diagnostics()` surface, which returns 
 diagnostics as an `xr.Dataset` over a `month`/`dayofyear` dimension plus the input's
 cell dimensions; it re-fits per Dask spatial chunk, so the same block cost applies.
 
+## Goodness of fit in distribution comparison
+
+`suitability.compare_distributions()` adds the Kolmogorov-Smirnov and Anderson-Darling
+statistics and a naive K-S p-value to every comparison. That costs little: the exact
+K-S p-value is evaluated once per sample size (tabulated and interpolated from seven
+values on, SciPy's exact value below that), so it adds no SciPy call per series. The bootstrap (`n_bootstrap`) is the cost. For every candidate,
+calendar step and cell it simulates `n_bootstrap` samples, refits each with the
+library's own estimator and scores it, so it costs roughly `n_bootstrap` times the
+comparison's fits for each candidate: `n_bootstrap x candidates x steps x cells` refits.
+The refits are vectorized in batches that bound memory, and the result does not depend
+on the batch size, so memory stays near 330 MB on a 100-cell, 40-year block whatever
+`n_bootstrap` is. That bound covers the simulated samples. Each calendar step and cell also holds one random
+generator, built once per call (about 1 KB and 35 microseconds each), so a block of a million such columns
+spends about 1 GB and 35 s on them before the first replicate. The Dask route runs the bootstrap per spatial chunk, and its
+Benjamini-Hochberg step rechunks the cell dimensions into one chunk.
+
+| Block (40 years, 12 steps, 100 cells) | Without goodness of fit | Statistics and naive p | `n_bootstrap=99` | `n_bootstrap=499` |
+| --- | --- | --- | --- | --- |
+| SPI, Pearson III and gamma (2,400 candidate-series) | 0.07 s | 0.24 s | 4.3 s | 19 s |
+| SPEI, four candidates (4,800 candidate-series) | 0.02 s | 0.03 s | 5.5 s | 27 s |
+
+Measured with Python 3.14.7, NumPy 2.4.6 and SciPy 1.17.1 on arm64 macOS, one process, from
+`suitability.compare_distributions(values, 3, ..., spatial_time_major=True)`. The first
+statistics call in a process also builds the K-S tables (about 0.1 s). The numbers are one run
+on one machine, so re-measure on yours. Run the bootstrap on the calibration series or the
+cells you are auditing, not on a full production grid, and keep `n_bootstrap` at 99, 199 or
+499: with `alpha = 0.05` a bootstrap size where `(n_bootstrap + 1) x alpha` is an integer
+lets a test that rejects at `p <= alpha` reach its nominal size when no refit fails.
+
 ## Measuring your own
 
 Re-run the reference harness on your own machine and dependency set rather than

@@ -142,6 +142,9 @@ ignore = [
 per-file-ignores = {"__init__.py" = ["F401"], "tests/**/*" = ["B011"]}
 
 [tool.uv]
+# Lock only for 3.11.5+: soupsieve>=4.0 (GHSA-mmhr-3c5m-f64f) needs it, and a split lock
+# otherwise keeps vulnerable soupsieve 2.10 for 3.11.0-3.11.4. Metadata `requires-python` is unchanged.
+environments = ["python_full_version >= '3.11.5'"]
 # Python 3.15 needs numpy>=2.5 and scipy>=1.18, the first releases with cp315 wheels. Keep
 # the numerics stack that 3.11-3.14 are tested on unchanged; drop these once 3.11-3.14 move up (#1579).
 constraint-dependencies = [

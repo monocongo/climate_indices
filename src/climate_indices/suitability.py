@@ -22,10 +22,13 @@ from __future__ import annotations
 
 import dataclasses
 import functools
+import hashlib
 import inspect
 import json
+import math
+import secrets
 import warnings
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from typing import Any, Literal, get_args
 
 import numpy as np
@@ -34,7 +37,7 @@ import scipy.stats
 import xarray as xr
 
 from climate_indices import __version__, compute, provenance
-from climate_indices._calibration_period import MIN_CALIBRATION_YEARS, resolve_calibration_period
+from climate_indices._calibration_period import MIN_CALIBRATION_YEARS, CalibrationPeriod, resolve_calibration_period
 from climate_indices.compound import compound_events
 from climate_indices.compound._events import _validated_runs
 from climate_indices.compound._harmonize import Cadence
@@ -74,6 +77,8 @@ __all__ = [
     "Criterion",
     "DistributionComparison",
     "EventConcordance",
+    "GofStatistic",
+    "GoodnessOfFit",
     "IndexRoute",
     "category_agreement",
     "compare_categories",
@@ -84,6 +89,7 @@ __all__ = [
 
 Criterion = Literal["aicc", "aic", "bic"]
 IndexRoute = Literal["spi", "spei", "standardized_index"]
+GofStatistic = Literal["ks", "ad"]
 
 _BETA_MESSAGE = "suitability is beta: its interface may change in a minor release (ADR-0028)."
 
@@ -136,6 +142,55 @@ _GLO_SHAPE_TOLERANCE = 1e-6
 
 
 @dataclasses.dataclass(frozen=True, eq=False)
+class GoodnessOfFit:
+    """Per-candidate goodness-of-fit evidence from the probability integral transform (PIT).
+
+    The statistics test the continuous part of each fit. For gamma and Pearson Type III, whose fit carries a zero
+    mass, exact zeros are excluded because they are the mass, not observations of the continuous part. Log-logistic and
+    GEV have no zero mass, so a zero is an ordinary value there and is kept. Repeated values are kept with their
+    frequency. Shapes follow :class:`DistributionComparison`: ``(candidate, step, *cell)``, NaN where a candidate has
+    no usable fit (``fit_failed``) or no value remains. A statistic not named in ``gof`` is not computed and its
+    arrays are NaN.
+
+    Both statistics are evaluated at parameters estimated from the same sample, so a naive p-value is
+    uncalibrated; the parametric bootstrap (``n_bootstrap > 0``) refits every simulated sample with the
+    library's own estimator, so its null carries the estimation of the parameters. Its size is measured, not
+    guaranteed: near nominal in the characterized conditions (``VALIDATION.md``), below nominal for a series whose
+    refits fail, and anti-conservative for a zero-heavy record rounded to a coarse unit. The p-value of the
+    candidate that ``best`` selects is a post-selection statistic, not an ordinary confirmatory test.
+    """
+
+    #: Kolmogorov-Smirnov D of the PIT against the uniform distribution.
+    ks_statistic: np.ndarray
+    #: Naive K-S p-value, the exact null distribution of D for a sample of fully specified parameters.
+    #: It is uncalibrated for estimated parameters. From 7 values on it is tabulated per sample size and
+    #: interpolated to within 1e-5; fewer take SciPy's exact value.
+    ks_p_value_naive: np.ndarray
+    #: Anderson-Darling A^2 of the PIT. It has no naive p-value.
+    ad_statistic: np.ndarray
+    #: Bootstrap K-S p-value ``(1 + #{D* >= D}) / (B_ok + 1)``; NaN where no refit succeeded. ``None``
+    #: unless ``n_bootstrap > 0``.
+    ks_p_value_bootstrap: np.ndarray | None
+    #: Bootstrap Anderson-Darling p-value, defined like ``ks_p_value_bootstrap``.
+    ad_p_value_bootstrap: np.ndarray | None
+    #: Benjamini-Hochberg adjustment of the K-S p-value across cells (bootstrap when ``n_bootstrap > 0``,
+    #: else naive), separately for every candidate and step. ``None`` unless ``bh_adjust``.
+    ks_p_value_bh: np.ndarray | None
+    #: Benjamini-Hochberg adjustment of ``ad_p_value_bootstrap``. ``None`` unless ``bh_adjust`` and
+    #: ``n_bootstrap > 0``.
+    ad_p_value_bh: np.ndarray | None
+    #: Share of cells with ``p <= alpha``, ``(candidate, step, 2)`` over the statistics ``("ks", "ad")``,
+    #: from the bootstrap p-value when ``n_bootstrap > 0`` and else from the naive K-S p-value (AD has
+    #: none, so NaN). Cells without a p-value are not counted. ``None`` without a cell axis.
+    rejection_share: np.ndarray | None
+    #: Bootstrap replicates requested per candidate, step and cell.
+    n_bootstrap: int
+    #: Share of the ``n_bootstrap`` refits that failed and were left out of the p-value,
+    #: ``(candidate, step, *cell)``. ``None`` unless ``n_bootstrap > 0``.
+    bootstrap_failed_share: np.ndarray | None = None
+
+
+@dataclasses.dataclass(frozen=True, eq=False)
 class DistributionComparison:
     """Per-step, per-cell relative-fit evidence for a set of candidate distributions.
 
@@ -184,6 +239,8 @@ class DistributionComparison:
     #: Provenance strings: the ``climate_indices_*`` attributes of ADR-0028 section 6 that apply
     #: to the NumPy core, plus the provenance record.
     metadata: Mapping[str, str]
+    #: Goodness of fit of every candidate (:class:`GoodnessOfFit`), or ``None`` when ``gof`` is empty.
+    goodness_of_fit: GoodnessOfFit | None = None
 
 
 def _invalid(message: str, name: str, value: Any, valid: str) -> InvalidArgumentError:
@@ -422,6 +479,668 @@ def _select_best(criterion_values: np.ndarray, eligible: np.ndarray) -> tuple[np
     return best, gap
 
 
+# ---- goodness of fit (SUIT-05, #1586) -------------------------------------------------------------
+
+_GOF_STATISTICS: tuple[GofStatistic, ...] = ("ks", "ad")
+
+
+@dataclasses.dataclass(frozen=True)
+class _GofOptions:
+    """Validated settings shared by the public call and every xarray block."""
+
+    statistics: tuple[GofStatistic, ...] = _GOF_STATISTICS
+    n_bootstrap: int = 0
+    resolution: float | None = None
+    bh_adjust: bool = False
+    alpha: float = 0.05
+    seed: int = 0
+
+
+# a PIT value is held this far inside (0, 1), so a sample at the edge of a fitted support scores a large
+# but finite A^2 instead of infinity
+_PIT_MARGIN = 1e-12
+
+# the exact K-S p-value is tabulated against t = D sqrt(m); beyond this t it is below 1e-30
+_KS_TABLE_LIMIT = 6.0
+_KS_TABLE_POINTS = 2001
+# fewer values than this take SciPy's exact K-S value: the table's interpolation error reaches 1e-3 there
+_KS_EXACT_BELOW = 7
+
+# elements of one stacked bootstrap batch: it bounds memory and never changes a result. A million holds peak memory
+# near 330 MB on a 100-cell, 40-year block, and is as fast as four times that
+_BOOTSTRAP_BATCH_ELEMENTS = 1_000_000
+
+
+def _glo_cdf(x: np.ndarray, loc: np.ndarray, scale: np.ndarray, shape: np.ndarray) -> np.ndarray:
+    """Hosking's generalized-logistic CDF, ``1 / (1 + exp(-y))``; 0 or 1 beyond the support's end the value is on."""
+    with np.errstate(all="ignore"):
+        logistic = np.abs(shape) <= _GLO_SHAPE_TOLERANCE
+        k = np.where(logistic, 0.0, shape)
+        z = (x - loc) / scale
+        argument = 1.0 - k * z
+        inside = logistic | (argument > 0.0)
+        y = np.where(logistic, z, -np.log(np.where(argument > 0.0, argument, 1.0)) / np.where(logistic, 1.0, k))
+        probability = np.where(inside, scipy.special.expit(y), np.where(k > 0.0, 1.0, 0.0))
+    result: np.ndarray = np.where(np.isnan(x), np.nan, probability)
+    return result
+
+
+def _glo_ppf(u: np.ndarray, loc: np.ndarray, scale: np.ndarray, shape: np.ndarray) -> np.ndarray:
+    """Inverse of :func:`_glo_cdf`: ``loc + scale * (1 - exp(-k y)) / k`` with ``y = logit(u)``."""
+    with np.errstate(all="ignore"):
+        logistic = np.abs(shape) <= _GLO_SHAPE_TOLERANCE
+        k = np.where(logistic, 0.0, shape)
+        y = scipy.special.logit(u)
+        z = np.where(logistic, y, -np.expm1(-k * y) / np.where(logistic, 1.0, k))
+        quantile: np.ndarray = loc + scale * z
+    return quantile
+
+
+def _continuous_cdf(distribution: Distribution, x: np.ndarray, p: dict[str, np.ndarray]) -> np.ndarray:
+    """CDF of the continuous part of one family at its fitted parameters; NaN where ``x`` is NaN."""
+    with np.errstate(all="ignore"):
+        if distribution is Distribution.gamma:
+            probability: np.ndarray = scipy.stats.gamma.cdf(x, a=p["alpha"], scale=p["beta"])
+        elif distribution is Distribution.pearson:
+            probability = scipy.stats.pearson3.cdf(x, p["skew"], loc=p["loc"], scale=p["scale"])
+        elif distribution is Distribution.loglogistic:
+            probability = _glo_cdf(x, p["loc"], p["scale"], p["shape"])
+        elif distribution is Distribution.gev:
+            probability = scipy.stats.genextreme.cdf(x, p["shape"], loc=p["loc"], scale=p["scale"])
+        else:
+            raise ValueError(f"{distribution} has no likelihood in suitability")
+    return probability
+
+
+def _continuous_ppf(distribution: Distribution, u: np.ndarray, p: dict[str, np.ndarray]) -> np.ndarray:
+    """Quantile function of the continuous part of one family at its fitted parameters."""
+    with np.errstate(all="ignore"):
+        if distribution is Distribution.gamma:
+            quantile: np.ndarray = scipy.stats.gamma.ppf(u, a=p["alpha"], scale=p["beta"])
+        elif distribution is Distribution.pearson:
+            quantile = scipy.stats.pearson3.ppf(u, p["skew"], loc=p["loc"], scale=p["scale"])
+        elif distribution is Distribution.loglogistic:
+            quantile = _glo_ppf(u, p["loc"], p["scale"], p["shape"])
+        elif distribution is Distribution.gev:
+            quantile = scipy.stats.genextreme.ppf(u, p["shape"], loc=p["loc"], scale=p["scale"])
+        else:
+            raise ValueError(f"{distribution} has no likelihood in suitability")
+    return quantile
+
+
+def _pit_statistics(pit: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Kolmogorov-Smirnov D, Anderson-Darling A^2 and the count of finite PIT values, along axis 0.
+
+    ``D = max_i max(i/m - u_(i), u_(i) - (i-1)/m)`` and
+    ``A^2 = -m - (1/m) sum_i (2i - 1) (ln u_(i) + ln(1 - u_(m+1-i)))`` over the ``m`` ordered finite
+    values, each held within ``_PIT_MARGIN`` of 0 and 1. Both are NaN where ``m`` is 0.
+    """
+    finite = np.isfinite(pit)
+    count = finite.sum(axis=0)
+    ordered = np.sort(np.where(finite, np.clip(pit, _PIT_MARGIN, 1.0 - _PIT_MARGIN), np.nan), axis=0)
+    rank = np.arange(1, pit.shape[0] + 1).reshape((-1,) + (1,) * (pit.ndim - 1))
+    inside = rank <= count
+    size = np.maximum(count, 1)
+    with np.errstate(all="ignore"):
+        d_plus = np.where(inside, rank / size - ordered, -np.inf).max(axis=0)
+        d_minus = np.where(inside, ordered - (rank - 1) / size, -np.inf).max(axis=0)
+        mirrored = np.take_along_axis(ordered, np.clip(count - rank, 0, pit.shape[0] - 1), axis=0)
+        terms = np.where(inside, (2 * rank - 1) * (np.log(ordered) + np.log1p(-mirrored)), 0.0)
+        # Sum the years in the same order for a single series and for stacked replicates.
+        total = np.ascontiguousarray(np.moveaxis(terms, 0, -1)).sum(axis=-1)
+        anderson_darling = -count - total / size
+    return (
+        np.where(count > 0, np.maximum(d_plus, d_minus), np.nan),
+        np.where(count > 0, anderson_darling, np.nan),
+        count,
+    )
+
+
+@functools.lru_cache(maxsize=512)
+def _ks_table(size: int) -> tuple[np.ndarray, np.ndarray]:
+    """The exact K-S survival function of ``D`` for ``size`` observations, on a grid of ``t = D sqrt(size)``."""
+    t = np.linspace(0.0, _KS_TABLE_LIMIT, _KS_TABLE_POINTS)
+    return t, np.clip(scipy.stats.kstwo.sf(t / math.sqrt(size), size), 0.0, 1.0)
+
+
+def _ks_naive_p_value(statistic: np.ndarray, count: np.ndarray) -> np.ndarray:
+    """Naive two-sided K-S p-value of ``statistic`` for ``count`` fully specified observations.
+
+    SciPy's exact distribution costs about 35 microseconds a value and every cell and step needs one,
+    so from ``_KS_EXACT_BELOW`` values on it is evaluated once per sample size on a fine grid and interpolated to
+    within 1e-5. Fewer values are rare, and the survival function has kinks that the grid would smooth over
+    (an error of 1.3e-3 for one value), so they take SciPy's exact value. NaN where ``count`` is 0 or ``statistic``
+    is NaN.
+    """
+    p_value = np.full(statistic.shape, np.nan)
+    for size in np.unique(count[count > 0]):
+        picked = (count == size) & np.isfinite(statistic)
+        if size < _KS_EXACT_BELOW:
+            p_value[picked] = np.clip(scipy.stats.kstwo.sf(statistic[picked], int(size)), 0.0, 1.0)
+        else:
+            t, table = _ks_table(int(size))
+            p_value[picked] = np.interp(statistic[picked] * math.sqrt(size), t, table)
+    return p_value
+
+
+def _sample_pit(
+    distribution: Distribution, sample: np.ndarray, valid: np.ndarray, p: dict[str, np.ndarray]
+) -> tuple[np.ndarray, np.ndarray]:
+    """The probability integral transform of a sample, and the values it covers.
+
+    A family with a zero mass covers only its positive values (a zero is the mass, not an observation of the
+    continuous part). A family without covers every valid value, as :func:`_score_fit` does, so a zero is an ordinary
+    value there. The statistics and the support check use exactly these values.
+    """
+    covered = valid & (sample != 0.0) if distribution in _ZERO_MASS_FAMILIES else valid  # NOSONAR (S1244) exact zeros
+    return _continuous_cdf(distribution, np.where(covered, sample, np.nan), p), covered
+
+
+def _observed_statistics(
+    distribution: Distribution,
+    sample: np.ndarray,
+    valid: np.ndarray,
+    p: dict[str, np.ndarray],
+    scored: np.ndarray,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """K-S, A^2 and the number of values they cover for the shared sample against one fitted candidate."""
+    pit, _ = _sample_pit(distribution, sample, valid, p)
+    return _pit_statistics(np.where(scored, pit, np.nan))
+
+
+def _column_generators(seed: int, sample: np.ndarray) -> list[np.random.Generator]:
+    """One random stream per calendar step and cell, keyed by ``seed`` and that column's own values.
+
+    Keying a stream on the data, not on the column's position, makes the simulated samples the same
+    whether a cell is run alone, in a block of a Dask graph or in a full grid, so a chunking cannot change
+    a p-value. Two columns with identical values share a stream, which leaves each p-value valid.
+    """
+    # one byte pattern per value: every NaN alike (its sign bit and payload vary by platform), -0.0 as 0.0, little-endian
+    columns = np.ascontiguousarray(
+        (np.where(np.isnan(sample), np.nan, sample) + 0.0).reshape(sample.shape[0], -1).T.astype("<f8")
+    )
+    return [
+        np.random.Generator(
+            np.random.PCG64(
+                np.random.SeedSequence(
+                    [seed, int.from_bytes(hashlib.blake2b(row.tobytes(), digest_size=16).digest(), "little")]
+                )
+            )
+        )
+        for row in columns
+    ]
+
+
+def _draw_uniforms(
+    generators: list[np.random.Generator], years: int, cell_shape: tuple[int, ...], size: int
+) -> np.ndarray:
+    """``size`` more uniform samples of ``years`` values for every column, as ``(years, *cell_shape, size)``.
+
+    Every generator advances by ``size * years`` draws, so the replicates do not depend on how they are batched.
+    """
+    drawn = np.empty((len(generators), size, years))
+    for column, generator in enumerate(generators):
+        drawn[column] = generator.random((size, years))
+    return np.moveaxis(drawn.reshape(*cell_shape, size, years), -1, 0)
+
+
+def _round_to_lattice(values: np.ndarray | np.float64, resolution: float, origin: float) -> np.ndarray:
+    """Round ``values`` to the lattice ``origin + k * resolution``.
+
+    A unit far below the spacing of the floats overflows the quotient. Such a value is already its own nearest
+    lattice point, so it is kept rather than rounded to infinity.
+    """
+    quotient = (values - origin) / resolution
+    result: np.ndarray = np.where(np.isfinite(quotient), np.round(quotient) * resolution + origin, values)
+    return result
+
+
+def _simulate(
+    distribution: Distribution,
+    uniforms: np.ndarray,
+    p: dict[str, np.ndarray],
+    resolution: float | None,
+    origin: float = 0.0,
+) -> np.ndarray:
+    """Draw from the fitted mixed distribution by inverting its CDF at ``uniforms``.
+
+    A zero-mass family returns an exact zero where ``u <= p0`` and otherwise the continuous quantile
+    at ``(u - p0) / (1 - p0)``, so the zero mass is part of every simulated sample. A ``resolution`` rounds the draws
+    to that unit, which gives the simulated sample the observed record's tie structure. The values lie on the lattice
+    ``origin + k * resolution``: the prepared SPEI sample carries an offset (``+1000`` per summed step), so its
+    multiples of the unit start at ``origin``, not at zero. The library fits p0 on the rounded record, so p0 already
+    counts the values that rounded to zero. Move a continuous draw that rounds to zero to the least positive lattice
+    point, so the simulated zero share stays p0. For gamma, also move a draw that rounds below zero, outside its support.
+    Keep negative Pearson Type III lattice points.
+    """
+    with np.errstate(all="ignore"):
+        if distribution in _ZERO_MASS_FAMILIES:
+            p0 = p["prob_zero"]
+            positive = uniforms > p0
+            conditional = np.clip((uniforms - p0) / (1.0 - p0), _PIT_MARGIN, 1.0 - _PIT_MARGIN)
+            draws = np.where(positive, _continuous_ppf(distribution, conditional, p), 0.0)
+            if resolution is not None:
+                lattice = _round_to_lattice(draws, resolution, origin)
+                nearest_zero = _round_to_lattice(np.float64(0.0), resolution, origin)
+                smallest = nearest_zero if nearest_zero > 0.0 else nearest_zero + resolution
+                # Nonzero Pearson lattice points stay on the lattice, even when close to zero.
+                replace = lattice <= 0.0 if distribution is Distribution.gamma else np.equal(lattice, 0.0)
+                draws = np.where(positive, np.where(replace, smallest, lattice), 0.0)
+        else:
+            draws = _continuous_ppf(distribution, np.clip(uniforms, _PIT_MARGIN, 1.0 - _PIT_MARGIN), p)
+            if resolution is not None:
+                draws = _round_to_lattice(draws, resolution, origin)
+    result: np.ndarray = draws
+    return result
+
+
+def _refit_statistics(
+    distribution: Distribution, draws: np.ndarray, period: CalibrationPeriod, periodicity: compute.Periodicity
+) -> tuple[dict[GofStatistic, np.ndarray], np.ndarray]:
+    """Refit simulated samples with the library's own estimator and score each refit's PIT.
+
+    Returns the K-S and A^2 statistics and where the refit succeeded and left a positive value, each
+    shaped like the trailing axes of ``draws``. A refit fails by the rule that sets ``fit_failed`` for the
+    observed sample: no usable parameters, or a value outside the fitted support. A refit that raises fails
+    every column of the batch.
+    """
+    try:
+        with compute._fit_warnings_suppressed(), np.errstate(all="ignore"):
+            fitted = compute.FittedDistribution.resolve(
+                draws, distribution, period.start_year, period.start_year, period.end_year, periodicity
+            )
+    except DistributionFittingError:
+        failed = np.full(draws.shape[1:], np.nan)
+        return {"ks": failed, "ad": failed}, np.zeros(draws.shape[1:], dtype=bool)
+    p = compute._broadcast_parameters(draws, fitted.parameters, full=True)
+    pit, covered = _sample_pit(distribution, draws, ~np.isnan(draws), p)
+    # the observed fit's rule (_score_fit): a value with no finite log-density is outside the fitted support. A CDF of
+    # 0 or 1 is not that rule's evidence, since it also underflows inside the support
+    outside = (covered & ~np.isfinite(_log_density(distribution, draws, p))).any(axis=0)
+    usable = _usable(distribution, p) & ~outside
+    if distribution is Distribution.gamma:
+        # Thom's fit is undefined for a constant positive sample. Roundoff can leave a finite shape.
+        positive = draws > 0.0
+        usable &= draws.max(axis=0, where=positive, initial=-np.inf) > draws.min(axis=0, where=positive, initial=np.inf)
+    ks, ad, count = _pit_statistics(np.where(usable, pit, np.nan))
+    return {"ks": ks, "ad": ad}, usable & (count > 0)
+
+
+def _bootstrap_p_values(
+    chosen: tuple[Distribution, ...],
+    fits: dict[Distribution, dict[str, np.ndarray] | None],
+    scored: np.ndarray,
+    observed: dict[GofStatistic, np.ndarray],
+    sample: np.ndarray,
+    valid: np.ndarray,
+    *,
+    period: CalibrationPeriod,
+    periodicity: compute.Periodicity,
+    n_bootstrap: int,
+    seed: int,
+    resolution: float | None,
+    origin: float = 0.0,
+) -> tuple[dict[GofStatistic, np.ndarray], np.ndarray]:
+    """Parametric-bootstrap p-values of the requested statistics and the share of failed refits.
+
+    Each replicate has the observed sample's size and missing-value pattern and is drawn from the candidate's
+    fitted mixed distribution, zero mass included. It is refitted with the library's estimator and scored,
+    so the null distribution carries the estimation of the parameters. The p-value is
+    ``(1 + #{statistic* >= statistic}) / (B_ok + 1)`` over the ``B_ok`` refits that succeeded, NaN where none did.
+    ``scored`` is ``(candidate, step, *cell)`` and marks the candidates with a usable observed fit.
+
+    Every year of a step is drawn from that step's one fitted law. A calendar-adapted daily record has synthetic
+    February 29 values (the mean of February 28 and March 1) in common years, which do not follow that law, so the null
+    is approximate for that day and the next ``scale - 1`` days.
+    """
+    years, cell_shape = sample.shape[0], sample.shape[1:]
+    batch = max(1, min(n_bootstrap, _BOOTSTRAP_BATCH_ELEMENTS // max(sample.size, 1)))
+    # a candidate with no usable fit in any column has NaN results already: it is neither simulated nor refitted. Every
+    # batch still draws the same uniforms for the others, so skipping one never changes another's p-values
+    runs = [
+        fits[distribution] is not None and bool(scored[position].any()) for position, distribution in enumerate(chosen)
+    ]
+    generators = _column_generators(seed, sample) if any(runs) else []
+    exceeded = {name: np.zeros((len(chosen), *cell_shape), dtype=np.int64) for name in observed}
+    succeeded = np.zeros((len(chosen), *cell_shape), dtype=np.int64)
+    done = 0
+    while done < n_bootstrap and generators:
+        size = min(batch, n_bootstrap - done)
+        uniforms = _draw_uniforms(generators, years, cell_shape, size)
+        for position, distribution in enumerate(chosen):
+            parameters = fits[distribution]
+            if parameters is None or not runs[position]:
+                continue
+            expanded = {key: value[..., np.newaxis] for key, value in parameters.items()}
+            draws = _simulate(distribution, uniforms, expanded, resolution, origin)
+            draws = np.where((valid & scored[position])[..., np.newaxis], draws, np.nan)
+            statistics, succeeded_here = _refit_statistics(distribution, draws, period, periodicity)
+            succeeded[position] += succeeded_here.sum(axis=-1)
+            for name, reference in observed.items():
+                target = reference[position][..., np.newaxis]
+                # Also count floating-point ties between refitted and observed statistics.
+                reached = (statistics[name] >= target) | np.isclose(statistics[name], target, rtol=1e-12, atol=1e-12)
+                exceeded[name][position] += (reached & succeeded_here).sum(axis=-1)
+        done += size
+    defined = scored & (succeeded > 0)
+    with np.errstate(all="ignore"):
+        p_values: dict[GofStatistic, np.ndarray] = {
+            name: np.where(defined & np.isfinite(observed[name]), (1 + exceeded[name]) / (succeeded + 1), np.nan)
+            for name in observed
+        }
+        failed_share = np.where(scored, 1.0 - succeeded / n_bootstrap, np.nan)
+    return p_values, failed_share
+
+
+def _bh_adjust_cells(p: np.ndarray, n_cell_dims: int) -> np.ndarray:
+    """Benjamini-Hochberg adjustment over the trailing ``n_cell_dims`` axes, apart for every leading index.
+
+    NaN p-values are left out of the family and stay NaN.
+    """
+    flat = p.reshape(*p.shape[: p.ndim - n_cell_dims], -1)
+    adjusted = np.full(flat.shape, np.nan)
+    for index in np.ndindex(*flat.shape[:-1]):
+        finite = np.isfinite(flat[index])
+        if finite.any():
+            adjusted[index][finite] = scipy.stats.false_discovery_control(flat[index][finite])
+    result: np.ndarray = adjusted.reshape(p.shape)
+    return result
+
+
+def _rejection_share_cells(p: np.ndarray, alpha: float, n_cell_dims: int) -> np.ndarray:
+    """Share of the finite p-values at or below ``alpha`` over the trailing ``n_cell_dims`` axes; NaN if none is finite.
+
+    A Monte-Carlo test rejects at ``p <= alpha``: a bootstrap p-value is a multiple of ``1 / (B_ok + 1)``, so with
+    ``(B_ok + 1) alpha`` an integer ``alpha`` is a value the p-value can take, so ``p <= alpha`` loses none of its
+    size to the grid, where ``p < alpha`` would. That is the attainable resolution, not a measured calibration.
+    """
+    flat = p.reshape(*p.shape[: p.ndim - n_cell_dims], -1)
+    finite = np.isfinite(flat)
+    with np.errstate(all="ignore"):
+        share: np.ndarray = np.where(
+            finite.any(axis=-1), ((flat <= alpha) & finite).sum(axis=-1) / finite.sum(axis=-1), np.nan
+        )
+    return share
+
+
+def _summarize_gof(
+    ks_p: np.ndarray, ad_p: np.ndarray | None, gof: _GofOptions, n_cell_dims: int
+) -> tuple[np.ndarray | None, np.ndarray | None, np.ndarray | None]:
+    """Return the Benjamini-Hochberg p-values and rejection shares across cells."""
+    if n_cell_dims == 0:
+        return None, None, None
+    ks_share = _rejection_share_cells(ks_p, gof.alpha, n_cell_dims)
+    ad_share = (
+        _rejection_share_cells(ad_p, gof.alpha, n_cell_dims) if ad_p is not None else np.full(ks_share.shape, np.nan)
+    )
+    return (
+        _bh_adjust_cells(ks_p, n_cell_dims) if gof.bh_adjust else None,
+        _bh_adjust_cells(ad_p, n_cell_dims) if gof.bh_adjust and ad_p is not None else None,
+        np.stack((ks_share, ad_share), axis=-1),
+    )
+
+
+def _compute_gof(
+    chosen: tuple[Distribution, ...],
+    fits: dict[Distribution, dict[str, np.ndarray] | None],
+    scored: np.ndarray,
+    sample: np.ndarray,
+    valid: np.ndarray,
+    *,
+    gof: _GofOptions,
+    period: CalibrationPeriod,
+    periodicity: compute.Periodicity,
+    origin: float,
+    summarize: bool,
+) -> GoodnessOfFit | None:
+    """Score the observed fits, then optionally simulate refits and summarize across cells."""
+    if not gof.statistics:
+        return None
+    ks_statistic = np.full(scored.shape, np.nan)
+    ks_p_naive = np.full(scored.shape, np.nan)
+    ad_statistic = np.full(scored.shape, np.nan)
+    for position, distribution in enumerate(chosen):
+        full = fits[distribution]
+        if full is None:
+            continue
+        ks, ad, covered_count = _observed_statistics(distribution, sample, valid, full, scored[position])
+        if "ks" in gof.statistics:
+            ks_statistic[position] = ks
+            ks_p_naive[position] = _ks_naive_p_value(ks, covered_count)
+        if "ad" in gof.statistics:
+            ad_statistic[position] = ad
+
+    ks_p_bootstrap = ad_p_bootstrap = failed_share = None
+    if gof.n_bootstrap > 0:
+        statistics = {"ks": ks_statistic, "ad": ad_statistic}
+        observed: dict[GofStatistic, np.ndarray] = {name: statistics[name] for name in gof.statistics}
+        p_values, failed_share = _bootstrap_p_values(
+            chosen,
+            fits,
+            scored,
+            observed,
+            sample,
+            valid,
+            period=period,
+            periodicity=periodicity,
+            n_bootstrap=gof.n_bootstrap,
+            seed=gof.seed,
+            resolution=gof.resolution,
+            origin=origin,
+        )
+        not_run = np.full(scored.shape, np.nan)
+        ks_p_bootstrap, ad_p_bootstrap = p_values.get("ks", not_run), p_values.get("ad", not_run)
+
+    ks_bh, ad_bh, rejection_share = _summarize_gof(
+        ks_p_naive if ks_p_bootstrap is None else ks_p_bootstrap,
+        ad_p_bootstrap,
+        gof,
+        n_cell_dims=sample.ndim - 2 if summarize else 0,
+    )
+    return GoodnessOfFit(
+        ks_statistic=ks_statistic,
+        ks_p_value_naive=ks_p_naive,
+        ad_statistic=ad_statistic,
+        ks_p_value_bootstrap=ks_p_bootstrap,
+        ad_p_value_bootstrap=ad_p_bootstrap,
+        ks_p_value_bh=ks_bh,
+        ad_p_value_bh=ad_bh,
+        rejection_share=rejection_share,
+        n_bootstrap=gof.n_bootstrap,
+        bootstrap_failed_share=failed_share,
+    )
+
+
+def _validate_gof_statistics(gof: Sequence[GofStatistic]) -> tuple[GofStatistic, ...]:
+    names = ", ".join(_GOF_STATISTICS)
+    if isinstance(gof, str) or not isinstance(gof, Sequence):
+        raise _invalid("gof must be a sequence of statistic names.", "gof", gof, names)
+    chosen = tuple(gof)
+    for statistic in chosen:
+        if not isinstance(statistic, str) or statistic not in _GOF_STATISTICS:
+            raise _invalid(f"Unsupported goodness-of-fit statistic: {statistic!r}.", "gof", statistic, names)
+    if len(set(chosen)) != len(chosen):
+        raise _invalid("gof statistics must be distinct.", "gof", chosen, names)
+    return chosen
+
+
+def _validate_gof_resolution(resolution: float | None) -> None:
+    if resolution is None:
+        return
+    unit = math.nan
+    if isinstance(resolution, (int, float, np.integer, np.floating)) and not isinstance(resolution, (bool, np.bool_)):
+        try:
+            unit = float(resolution)
+        except OverflowError:  # an int beyond the float range
+            unit = math.nan
+    # a unit whose reciprocal overflows (a subnormal) would make every rounded draw infinite
+    if not (math.isfinite(unit) and unit > 0.0 and math.isfinite(1.0 / unit)):
+        raise _invalid(
+            "resolution must be a positive, finite rounding unit, or None for a continuous record.",
+            "resolution",
+            resolution,
+            "a positive finite number or None",
+        )
+
+
+def _validate_gof_seed(seed: int | None) -> None:
+    if seed is not None and (isinstance(seed, (bool, np.bool_)) or not isinstance(seed, (int, np.integer)) or seed < 0):
+        raise _invalid(
+            "seed must be a non-negative integer or None; a Generator is not accepted because it does not "
+            "expose the seed that would reproduce its stream.",
+            "seed",
+            type(seed).__name__ if not isinstance(seed, (int, np.integer)) else seed,
+            "a non-negative integer or None",
+        )
+
+
+def _resolve_gof_options(
+    gof: Sequence[GofStatistic],
+    n_bootstrap: int,
+    resolution: float | None,
+    bh_adjust: bool,
+    alpha: float,
+    seed: int | None,
+) -> _GofOptions:
+    """Validate the public goodness-of-fit arguments and resolve one seed for the whole call."""
+    chosen = _validate_gof_statistics(gof)
+    if isinstance(n_bootstrap, (bool, np.bool_)) or not isinstance(n_bootstrap, (int, np.integer)) or n_bootstrap < 0:
+        raise _invalid("n_bootstrap must be a non-negative integer.", "n_bootstrap", n_bootstrap, "0 or more")
+    _validate_gof_resolution(resolution)
+    if not isinstance(bh_adjust, (bool, np.bool_)):
+        raise _invalid("bh_adjust must be a boolean.", "bh_adjust", bh_adjust, "True or False")
+    if (
+        isinstance(alpha, (bool, np.bool_))
+        or not isinstance(alpha, (int, float, np.integer, np.floating))
+        or not 0.0 < alpha < 1.0
+    ):
+        raise _invalid("alpha must lie strictly between 0 and 1.", "alpha", alpha, "0 < alpha < 1")
+    _validate_gof_seed(seed)
+    if not chosen and (n_bootstrap > 0 or bh_adjust):
+        raise _invalid(
+            "n_bootstrap and bh_adjust need at least one statistic in gof.", "gof", chosen, "a non-empty sequence"
+        )
+    if bh_adjust and n_bootstrap == 0 and "ks" not in chosen:
+        raise _invalid(
+            "bh_adjust has nothing to adjust: Anderson-Darling has no naive p-value, so without n_bootstrap it "
+            "needs the K-S statistic in gof.",
+            "bh_adjust",
+            bh_adjust,
+            'n_bootstrap > 0, or "ks" in gof',
+        )
+    resolved_seed = 0
+    if n_bootstrap > 0:
+        resolved_seed = secrets.randbits(128) if seed is None else int(seed)
+    statistics: tuple[GofStatistic, ...] = tuple(statistic for statistic in _GOF_STATISTICS if statistic in chosen)
+    return _GofOptions(statistics, int(n_bootstrap), resolution, bh_adjust, alpha, resolved_seed)
+
+
+def _gof_parameters(gof: _GofOptions) -> dict[str, Any]:
+    """The goodness-of-fit arguments the provenance record keeps; none without a statistic.
+
+    The resolution and seed matter only to a bootstrap. The seed is a string so one above 64 bits survives
+    JSON and NetCDF.
+    """
+    if not gof.statistics:
+        return {}
+    recorded: dict[str, Any] = {
+        "gof": list(gof.statistics),
+        "n_bootstrap": gof.n_bootstrap,
+        "bh_adjust": bool(gof.bh_adjust),
+        "alpha": float(gof.alpha),  # plain Python types, so any NumPy scalar the caller passed serializes
+    }
+    if gof.n_bootstrap > 0:
+        recorded.update(
+            {"resolution": None if gof.resolution is None else float(gof.resolution), "seed": str(gof.seed)}
+        )
+    return recorded
+
+
+def _gof_attributes(gof: _GofOptions) -> dict[str, str]:
+    if not gof.statistics:
+        return {}
+    attributes = {"climate_indices_gof_bootstrap_samples": str(gof.n_bootstrap)}
+    if gof.n_bootstrap > 0:
+        attributes["climate_indices_rng_seed"] = str(gof.seed)
+    return attributes
+
+
+def _across_cells(
+    function: Callable[[np.ndarray], np.ndarray], array: xr.DataArray, cell_dims: list[str], *, reduce: bool
+) -> xr.DataArray:
+    """Apply a function over all cells of a DataArray, rechunking the cell dimensions into one chunk if Dask-backed.
+
+    ``reduce`` drops the cell dimensions from the result; otherwise the result keeps the input's dimensions.
+    """
+    result: xr.DataArray = xr.apply_ufunc(
+        function,
+        array,
+        input_core_dims=[cell_dims],
+        output_core_dims=[[] if reduce else cell_dims],
+        dask="parallelized",
+        output_dtypes=[float],
+        dask_gufunc_kwargs={"allow_rechunk": True},
+    )
+    return result if reduce else result.transpose(*array.dims)
+
+
+def _rejection_share(p: xr.DataArray, alpha: float, cell_dims: list[str]) -> xr.DataArray:
+    """:func:`_rejection_share_cells` as reductions over ``cell_dims``, which Dask runs chunk by chunk."""
+    finite: xr.DataArray = xr.apply_ufunc(np.isfinite, p, dask="allowed")
+    count = finite.sum(cell_dims)
+    share: xr.DataArray = ((p <= alpha) & finite).sum(cell_dims) / count.where(count > 0)  # NaN where none is finite
+    return share
+
+
+def _across_cell_output_names(gof: _GofOptions) -> set[str]:
+    """Names reserved for across-cell goodness-of-fit outputs."""
+    names = {"rejection_share", "statistic"}
+    if gof.bh_adjust:
+        names.add("ks_p_value_bh")
+        if gof.n_bootstrap > 0:
+            names.add("ad_p_value_bh")
+    return names
+
+
+def _add_across_cell_variables(
+    data_vars: dict[str, xr.DataArray],
+    cell_dims: list[str],
+    *,
+    period_dim: str,
+    bootstrap: bool,
+    bh_adjust: bool,
+    alpha: float,
+) -> None:
+    """Add the Benjamini-Hochberg p-values and ``rejection_share`` to the joined variables, as the NumPy route does."""
+    decided = {
+        "ks": data_vars["ks_p_value_bootstrap" if bootstrap else "ks_p_value_naive"],
+        "ad": data_vars["ad_p_value_bootstrap"] if bootstrap else None,
+    }
+    n_cell_dims = len(cell_dims)
+    added: dict[str, xr.DataArray] = {}
+    # two counts per calendar step, so each chunk reduces on its own; only Benjamini-Hochberg needs every cell at once
+    shares = {name: _rejection_share(p, alpha, cell_dims) for name, p in decided.items() if p is not None}
+    empty = xr.full_like(shares["ks"], np.nan)
+    statistic_axis = xr.DataArray(np.array(_GOF_STATISTICS), dims="statistic", name="statistic")
+    added["rejection_share"] = xr.concat(
+        [shares.get(name, empty) for name in _GOF_STATISTICS], dim=statistic_axis
+    ).transpose("candidate", period_dim, "statistic")
+    if bh_adjust:
+        for name, p in decided.items():
+            if p is not None:
+                added[f"{name}_p_value_bh"] = _across_cells(
+                    lambda a: _bh_adjust_cells(a, n_cell_dims), p, cell_dims, reduce=False
+                )
+    base = {
+        key: value
+        for key, value in data_vars["ks_statistic"].attrs.items()
+        if key not in ("long_name", "description", "units")
+    }
+    for name, variable in added.items():
+        variable.attrs = {**base, **_FIELD_METADATA[name]}
+        data_vars[name] = variable
+
+
 def compare_distributions(
     values: np.ndarray | xr.DataArray,  # NOSONAR (S107) the public API declares each contract argument explicitly
     scale: int,
@@ -436,16 +1155,22 @@ def compare_distributions(
     aggregation: Aggregation = "sum",
     clip_negatives: bool = True,
     criterion: Criterion = "aicc",
+    gof: Sequence[GofStatistic] = ("ks", "ad"),
+    n_bootstrap: int = 0,
+    resolution: float | None = None,
+    bh_adjust: bool = False,
+    alpha: float = 0.05,
+    seed: int | None = None,
     spatial_time_major: bool = False,
     time_dim: str = "time",
 ) -> DistributionComparison | xr.Dataset:
     """Compare candidate distributions for an index on one shared calibration sample.
 
-    The series is prepared exactly as the named index prepares it (SPEI's water balance and
-    +1000 offset, ``standardized_index``'s ``aggregation`` and ``clip_negatives``), each
-    candidate is fitted with the library's own estimator for the calibration period, and the
-    log-likelihood is evaluated at those estimates. A zero is an exact zero, the definition
-    both existing zero-mass estimators fit with; the 0.0005 Pearson trace rule is a transform
+    Preparation uses the named index's rules (SPEI's water balance and +1000 offset,
+    ``standardized_index``'s ``aggregation`` and ``clip_negatives``). When a bootstrap runs,
+    window sums use a fixed order across array layouts. Each candidate is fitted with the
+    library's own estimator for the calibration period. The log-likelihood uses those estimates.
+    Both zero-mass estimators count exact zeros. The 0.0005 Pearson trace rule is a transform
     convention and does not change the sample. SPEI's log-logistic and GEV candidates score zeros
     as continuous observations when they lie within their fitted support (ADR-0016).
     The Pearson-to-gamma fallback is disabled: a failed fit is recorded in ``fit_failed``,
@@ -460,6 +1185,23 @@ def compare_distributions(
     candidate, and ``delta_to_runner_up`` is NaN. A GEV with shape above 1 has a density that is
     unbounded at the finite end of its support, where likelihood methods are not regular, so
     treat its criteria with caution there.
+
+    ``gof`` adds absolute goodness of fit, in :class:`GoodnessOfFit`. The statistics are the Kolmogorov-Smirnov D
+    and the Anderson-Darling A^2 of each candidate's probability integral transform over the calibration
+    sample. Gamma and Pearson Type III leave out exact zeros, since the zero mass is not part of the continuous
+    distribution under test; log-logistic and GEV, which have none, keep them. Repeated values are kept. Because the parameters are estimated from the same sample, the naive
+    K-S p-value is uncalibrated and Anderson-Darling has none. With ``n_bootstrap > 0`` every candidate, calendar
+    step and cell runs a parametric bootstrap: it draws ``n_bootstrap`` samples of the observed size and
+    missing-value pattern from the fitted mixed distribution (zero mass included), refits each with the library's
+    own estimator and scores it, giving the p-values ``(1 + #{statistic* >= statistic}) / (B_ok + 1)`` over the
+    ``B_ok`` refits that succeeded (the floor is ``1 / (B_ok + 1)``). A refit that fails is counted in
+    ``bootstrap_failed_share`` and left out. The cost is ``n_bootstrap`` times that of the fits themselves. For a
+    record rounded to a unit, pass that unit as ``resolution`` so the simulated samples have the observed ties;
+    the unit is never inferred. The same ``seed`` gives the same bootstrap p-values, whatever the Dask chunking;
+    the fitted statistics agree to floating-point rounding.
+    A candidate's p-value after ``best`` selected it is a post-selection statistic, not an ordinary test.
+    Across cells, ``rejection_share`` reports the share of cells below ``alpha`` and ``bh_adjust`` adds
+    Benjamini-Hochberg p-values; spatial correlation weakens the assumptions of that adjustment.
 
     An ``xr.DataArray`` takes the xarray route (Dask-backed input included, with time in a single
     chunk, ADR-0003) and returns an ``xr.Dataset``; see Returns.
@@ -491,6 +1233,27 @@ def compare_distributions(
         clip_negatives: Clip negative input to zero. ``False`` rejects negatives, as
             ``standardized_index`` does for gamma and Pearson; ``"standardized_index"`` only.
         criterion: Criterion ``best`` selects on.
+        gof: Goodness-of-fit statistics to compute, ``"ks"`` and ``"ad"``. An empty sequence skips goodness of
+            fit and leaves ``goodness_of_fit`` as ``None``. A statistic left out has NaN arrays.
+        n_bootstrap: Parametric-bootstrap replicates per candidate, step and cell; 0 (the default) computes the
+            statistics and the naive K-S p-value only. For daily input the bootstrap null is approximate on February 29
+            and the next ``scale - 1`` days, where common years carry synthetic values.
+        resolution: Rounding unit of the prepared sample, applied to the bootstrap draws; ``None`` draws continuous
+            samples, the right null only for an unrounded record. Sums of values rounded to a unit are multiples of
+            it, so for SPI it is the record's unit; with ``aggregation="mean"`` the sample's unit is that divided by
+            ``scale``, and a SPEI water balance has a unit only if precipitation and PET share one. A positive draw
+            that rounds to zero is set to the least positive point of the lattice, so the simulated zero share stays the
+            fitted p0. For ``"spei"``
+            the draws lie on ``1000 * scale + k * resolution``, the lattice of the prepared sample with its
+            ``+1000`` offset per summed step. Must be positive and finite. Used only when ``n_bootstrap > 0``.
+        bh_adjust: Add Benjamini-Hochberg adjusted p-values across cells, apart for every candidate and
+            step. It needs a cell axis, so a series without one raises.
+        alpha: Significance level of ``rejection_share``, which counts cells with ``p <= alpha`` (a Monte-Carlo
+            test decides at ``p <= alpha``), strictly between 0 and 1.
+        seed: Non-negative integer that fixes the bootstrap. ``None`` draws a 128-bit seed from the operating
+            system's entropy, which the result records as a decimal string in ``climate_indices_rng_seed``.
+            A ``numpy.random.Generator`` is not accepted, because it does not expose the seed that would
+            reproduce its stream. Used only when ``n_bootstrap > 0``.
         spatial_time_major: Read a three-or-more-dimensional NumPy ``values`` as independent
             series shaped ``(time, *cells)``. The xarray route reads its layout from the
             dimension names and ignores this.
@@ -504,12 +1267,17 @@ def compare_distributions(
         ``bic``, ``n_parameters``, ``fit_failed`` and every fitted parameter, NaN where a family
         has no such parameter) and per-step variables over ``(month | dayofyear, *cells)``
         (``n``, ``best`` as the winning candidate's name or ``"none"``, ``delta_to_runner_up``).
+        When ``gof`` is not empty the Dataset also holds each :class:`GoodnessOfFit` field as a variable of the
+        same name, with ``rejection_share`` over ``(candidate, month | dayofyear, statistic)``. ``rejection_share``
+        and the Benjamini-Hochberg variables exist only when the input has a dimension besides time.
         Every variable carries the ADR-0028 section 6 attributes that apply to this route. A fully
         missing input is accepted and scores as no usable fit (``n`` is 0 and ``best`` is
         ``"none"``) instead of raising as the NumPy route does.
 
     Raises:
-        InvalidArgumentError: For an unsupported route, criterion, candidate, hourly
+        InvalidArgumentError: For an unsupported route, criterion, candidate, goodness-of-fit
+            argument (including a ``gof`` that is empty while ``n_bootstrap`` or ``bh_adjust`` asks for
+            it, and ``bh_adjust`` on a series with no cell axis), hourly
             periodicity, non-numeric or infinite input, an argument combination the route
             does not accept, a NumPy call that omits a required temporal argument, an xarray
             ``data_start_year`` that disagrees with the time coordinate, or an input dimension or
@@ -536,20 +1304,24 @@ def compare_distributions(
             consecutive years share overlapping windows and effective sample sizes shrink.
     """
     warnings.warn(_BETA_MESSAGE, BetaFeatureWarning, stacklevel=2)
+    gof_options = _resolve_gof_options(gof, n_bootstrap, resolution, bh_adjust, alpha, seed)
     if isinstance(values, xr.DataArray):
         return _compare_xarray(
             values,
             scale,
             index=index,
-            data_start_year=data_start_year,
-            calibration_year_initial=calibration_year_initial,
-            calibration_year_final=calibration_year_final,
-            periodicity=periodicity,
+            temporal={
+                "data_start_year": data_start_year,
+                "calibration_year_initial": calibration_year_initial,
+                "calibration_year_final": calibration_year_final,
+                "periodicity": periodicity,
+            },
             candidates=candidates,
             pet_mm=pet_mm,
             aggregation=aggregation,
             clip_negatives=clip_negatives,
             criterion=criterion,
+            gof=gof_options,
             time_dim=time_dim,
         )
     if (
@@ -580,6 +1352,7 @@ def compare_distributions(
         aggregation=aggregation,
         clip_negatives=clip_negatives,
         criterion=criterion,
+        gof=gof_options,
         spatial_time_major=spatial_time_major,
     )
 
@@ -611,6 +1384,20 @@ def _warn_overlapping_windows(scale: int, periodicity: compute.Periodicity) -> N
         )
 
 
+def _warn_short_sample(n: np.ndarray, period: CalibrationPeriod) -> None:
+    # a calibration period under 30 years already drew the fit's own ShortCalibrationWarning
+    short = n[(n > 0) & (n < MIN_CALIBRATION_YEARS)]
+    if short.size and period.n_years >= MIN_CALIBRATION_YEARS:
+        message = (
+            f"{short.size} calendar step(s) or cell(s) have fewer than {MIN_CALIBRATION_YEARS} shared "
+            f"calibration values (smallest {int(short.min())}); criteria and `best` are unreliable there."
+        )
+        warnings.warn(
+            ShortCalibrationWarning(message, actual_years=int(short.min()), required_years=MIN_CALIBRATION_YEARS),
+            stacklevel=_caller_stacklevel(),
+        )
+
+
 def _compare_numpy(
     values: np.ndarray,  # NOSONAR (S107) mirrors the public keywords, which the temporal-inference helpers bind against
     scale: int,
@@ -625,13 +1412,17 @@ def _compare_numpy(
     aggregation: Aggregation = "sum",
     clip_negatives: bool = True,
     criterion: Criterion = "aicc",
+    gof: _GofOptions = _GofOptions(),
     spatial_time_major: bool = False,
     require_valid: bool = True,
+    summarize: bool = True,
 ) -> DistributionComparison:
     """The NumPy core of :func:`compare_distributions`, without the Beta warning (see there).
 
     ``require_valid=False`` lets an all-missing input through, as one masked block or cell of a
-    grid: it scores as no usable fit instead of aborting the whole grid.
+    grid: it scores as no usable fit instead of aborting the whole grid. ``summarize=False`` leaves out the
+    evidence that spans cells (``rejection_share`` and the Benjamini-Hochberg p-values), which a block of
+    a larger grid cannot compute; the xarray route adds it after the blocks are joined.
     """
     _validate_arguments(index, criterion, pet_mm, aggregation, clip_negatives)
     # a DataArray would be paired with values by position, ignoring its labels, and a
@@ -660,6 +1451,7 @@ def _compare_numpy(
         clip_negatives=clip,
         spatial_time_major=spatial_time_major,
         aggregation=aggregation,
+        _fixed_sum_order=gof.n_bootstrap > 0,
     )
     if not require_valid:
         scaled = _shape_all_missing(scaled, prepared, periodicity, spatial_time_major)
@@ -667,6 +1459,13 @@ def _compare_numpy(
         data_start_year, scaled.shape[0], calibration_year_initial, calibration_year_final, policy="clamp"
     )
     sample = scaled[period.rows, ...]
+    if gof.bh_adjust and sample.ndim == 2 and summarize:
+        raise _invalid(
+            "bh_adjust adjusts across cells, so the series needs a cell axis.",
+            "bh_adjust",
+            gof.bh_adjust,
+            "False, or values with a cell axis (a block, or spatial_time_major=True)",
+        )
     valid = ~np.isnan(sample)
     n = valid.sum(axis=0)
     n0 = (valid & (sample == 0.0)).sum(axis=0)  # NOSONAR (S1244) p0 counts exact zeros, not trace values
@@ -676,6 +1475,7 @@ def _compare_numpy(
     n_parameters = np.zeros((len(chosen), *cell_shape), dtype=np.int64)
     fit_failed = np.ones((len(chosen), *cell_shape), dtype=bool)
     parameters: dict[Distribution, dict[str, np.ndarray]] = {}
+    fits: dict[Distribution, dict[str, np.ndarray] | None] = dict.fromkeys(chosen)
 
     for position, distribution in enumerate(chosen):
         # the fit's own calibration-quality warnings reach the caller as they do from the index; suppressing
@@ -700,6 +1500,21 @@ def _compare_numpy(
         full = compute._broadcast_parameters(sample, fitted.parameters, full=True)
         parameters[distribution] = {key: full[key] for key in keys}
         log_likelihood[position], fit_failed[position] = _score_fit(distribution, sample, full, valid, n, n0)
+        fits[distribution] = full
+
+    goodness_of_fit = _compute_gof(
+        chosen,
+        fits,
+        ~fit_failed,
+        sample,
+        valid,
+        gof=gof,
+        period=period,
+        periodicity=periodicity,
+        # SPEI sums `scale` water balances that each carry the +1000 of _spei_water_balance.
+        origin=1000.0 * scale if index == "spei" else 0.0,
+        summarize=summarize,
+    )
 
     k_all = n_parameters.astype(float)
     n_float = np.broadcast_to(n.astype(float), log_likelihood.shape)
@@ -713,17 +1528,7 @@ def _compare_numpy(
     selected = {"aicc": aicc, "aic": aic, "bic": bic}[criterion]
     best, delta = _select_best(selected, ~fit_failed & ~np.isnan(selected))
 
-    # a calibration period under 30 years already drew the fit's own ShortCalibrationWarning
-    short = n[(n > 0) & (n < MIN_CALIBRATION_YEARS)]
-    if short.size and period.n_years >= MIN_CALIBRATION_YEARS:
-        message = (
-            f"{short.size} calendar step(s) or cell(s) have fewer than {MIN_CALIBRATION_YEARS} shared "
-            f"calibration values (smallest {int(short.min())}); criteria and `best` are unreliable there."
-        )
-        warnings.warn(
-            ShortCalibrationWarning(message, actual_years=int(short.min()), required_years=MIN_CALIBRATION_YEARS),
-            stacklevel=_caller_stacklevel(),
-        )
+    _warn_short_sample(n, period)
     _warn_overlapping_windows(scale, periodicity)
 
     inputs: dict[str, Any] = {"values": values}
@@ -745,6 +1550,7 @@ def _compare_numpy(
             "calibration_year_initial": period.start_year,
             "calibration_year_final": period.end_year,
             "spatial_time_major": spatial_time_major,
+            **_gof_parameters(gof),
         },
         inputs=inputs,
     )
@@ -760,6 +1566,7 @@ def _compare_numpy(
             "climate_indices_version": __version__,
         }
     )
+    metadata.update(_gof_attributes(gof))
     return DistributionComparison(
         candidates=chosen,
         criterion=criterion,
@@ -774,6 +1581,7 @@ def _compare_numpy(
         fit_failed=fit_failed,
         parameters=parameters,
         metadata=metadata,
+        goodness_of_fit=goodness_of_fit,
     )
 
 
@@ -782,7 +1590,75 @@ def _compare_numpy(
 _CANDIDATE_FIELDS = ("log_likelihood", "aic", "aicc", "bic", "n_parameters", "fit_failed")
 _STEP_FIELDS = ("n", "best", "delta_to_runner_up")
 
+# GoodnessOfFit fields a block computes per candidate; the bootstrap ones exist only when n_bootstrap > 0
+_GOF_FIELDS = ("ks_statistic", "ks_p_value_naive", "ad_statistic")
+_GOF_BOOTSTRAP_FIELDS = ("ks_p_value_bootstrap", "ad_p_value_bootstrap", "bootstrap_failed_share")
+
 _FIELD_METADATA: dict[str, dict[str, str]] = {
+    "ks_statistic": {
+        "long_name": "Kolmogorov-Smirnov statistic of the probability integral transform",
+        "units": "1",
+        "description": (
+            "Largest gap between the empirical distribution of the candidate's PIT over the calibration values and the "
+            "uniform distribution; exact zeros are left out for a family with a zero mass. NaN where the candidate "
+            "failed to fit."
+        ),
+    },
+    "ks_p_value_naive": {
+        "long_name": "Naive Kolmogorov-Smirnov p-value",
+        "units": "1",
+        "description": (
+            "P-value under the fully specified K-S null, interpolated for samples of seven or more values. "
+            "It is not calibrated for parameters fitted to the same sample."
+        ),
+    },
+    "ad_statistic": {
+        "long_name": "Anderson-Darling statistic of the probability integral transform",
+        "units": "1",
+        "description": "A^2 of the candidate's PIT over the same values as the K-S statistic; it has no naive p-value.",
+    },
+    "ks_p_value_bootstrap": {
+        "long_name": "Parametric-bootstrap Kolmogorov-Smirnov p-value",
+        "units": "1",
+        "description": (
+            "(1 + #{D* >= D}) / (B_ok + 1) over the refits that succeeded; NaN where none did. A p-value of the "
+            "candidate that `best` selected is a post-selection statistic."
+        ),
+    },
+    "ad_p_value_bootstrap": {
+        "long_name": "Parametric-bootstrap Anderson-Darling p-value",
+        "units": "1",
+        "description": (
+            "(1 + #{A2* >= A2}) / (B_ok + 1) over the refits that succeeded; NaN where none did. A p-value of the "
+            "candidate that `best` selected is a post-selection statistic."
+        ),
+    },
+    "bootstrap_failed_share": {
+        "long_name": "Share of bootstrap refits that failed",
+        "units": "1",
+        "description": "Refits with no usable parameters or no positive value, left out of the bootstrap p-value.",
+    },
+    "ks_p_value_bh": {
+        "long_name": "Benjamini-Hochberg adjusted Kolmogorov-Smirnov p-value",
+        "units": "1",
+        "description": (
+            "Adjusted across cells for each candidate and calendar step, from the bootstrap p-value when it was "
+            "computed and else the naive one. Spatial correlation weakens the assumptions of the adjustment."
+        ),
+    },
+    "ad_p_value_bh": {
+        "long_name": "Benjamini-Hochberg adjusted Anderson-Darling p-value",
+        "units": "1",
+        "description": "Adjusted across cells for each candidate and calendar step; present only with a bootstrap.",
+    },
+    "rejection_share": {
+        "long_name": "Share of cells with a goodness-of-fit p-value at or below alpha",
+        "units": "1",
+        "description": (
+            "Per candidate, calendar step and statistic, from the bootstrap p-value when it was computed and else "
+            "the naive K-S p-value (the Anderson-Darling share is then NaN). Cells without a p-value are not counted."
+        ),
+    },
     "log_likelihood": {
         "long_name": "Log-likelihood of the candidate at the library's fitted estimates",
         "units": "1",
@@ -858,15 +1734,26 @@ def _comparison_block(
     *secondary: np.ndarray,
     chosen: tuple[Distribution, ...],
     slots: tuple[tuple[str, Distribution], ...],
+    fields: tuple[str, ...],
     **kwargs: Any,
 ) -> tuple[np.ndarray, ...]:
     """Run the NumPy core on one block or cell and flatten it into the declared output arrays."""
     result = _compare_numpy(
-        values, pet_mm=secondary[0] if secondary else None, candidates=chosen, require_valid=False, **kwargs
+        values,
+        pet_mm=secondary[0] if secondary else None,
+        candidates=chosen,
+        require_valid=False,
+        summarize=False,
+        **kwargs,
     )
     arrays = [
-        np.asarray(getattr(result, field)[position], dtype=float)
-        for field in _CANDIDATE_FIELDS
+        np.asarray(
+            getattr(result.goodness_of_fit if field in _GOF_FIELDS + _GOF_BOOTSTRAP_FIELDS else result, field)[
+                position
+            ],
+            dtype=float,
+        )
+        for field in fields
         for position in range(len(chosen))
     ]
     arrays += [np.asarray(result.parameters[distribution][name], dtype=float) for name, distribution in slots]
@@ -977,46 +1864,9 @@ def _reject_output_name_clashes(reserved: set[str], time_dim: str, *arrays: xr.D
         )
 
 
-def _compare_xarray(
-    values: xr.DataArray,
-    scale: int,
-    *,
-    index: IndexRoute,
-    data_start_year: int | None,
-    calibration_year_initial: int | None,
-    calibration_year_final: int | None,
-    periodicity: compute.Periodicity | None,
-    candidates: Sequence[Distribution] | None,
-    pet_mm: np.ndarray | xr.DataArray | None,
-    aggregation: Aggregation,
-    clip_negatives: bool,
-    criterion: Criterion,
-    time_dim: str,
-) -> xr.Dataset:
-    """The xarray/Dask route of :func:`compare_distributions`, following ``fit_diagnostics``."""
-    _validate_arguments(index, criterion, pet_mm, aggregation, clip_negatives)
-    chosen = _resolve_candidates(index, candidates)
-    input_da, pet_da = _validated_inputs(values, pet_mm, time_dim)
-
-    provided: dict[str, Any] = {
-        key: value
-        for key, value in {
-            "scale": scale,
-            "index": index,
-            "data_start_year": data_start_year,
-            "calibration_year_initial": calibration_year_initial,
-            "calibration_year_final": calibration_year_final,
-            "periodicity": periodicity,
-            "aggregation": aggregation,
-            "clip_negatives": clip_negatives,
-            "criterion": criterion,
-        }.items()
-        if value is not None
-    }
+def _infer_comparison_years(input_da: xr.DataArray, provided: dict[str, Any], time_dim: str) -> None:
     # inference is metadata-only, so it stays safe for Dask-backed input
     provided.update(_infer_temporal_parameters(_compare_numpy, input_da, [input_da], provided, time_dim))
-    # the coordinate is authoritative here: a data_start_year that disagrees with it would
-    # slice the record from a different origin than the years recorded in every attribute
     coordinate_start_year = _infer_data_start_year(input_da[time_dim])
     if provided["data_start_year"] != coordinate_start_year:
         raise _invalid(
@@ -1026,6 +1876,82 @@ def _compare_xarray(
             provided["data_start_year"],
             str(coordinate_start_year),
         )
+
+
+def _comparison_dataset(
+    arrays: Sequence[xr.DataArray],
+    fields: tuple[str, ...],
+    slots: tuple[tuple[str, Distribution], ...],
+    labels: list[str],
+    cell_dims: list[str],
+    period_dim: str,
+    gof: _GofOptions,
+) -> xr.Dataset:
+    """Join the kernel outputs in their declaration order and summarize across cells."""
+    data_vars: dict[str, xr.DataArray] = {}
+    axis = _candidate_axis(labels)
+    cursor = 0
+    for field in fields:
+        data_vars[field] = xr.concat(arrays[cursor : cursor + len(labels)], dim=axis)
+        cursor += len(labels)
+    for name in dict.fromkeys(name for name, _ in slots):
+        present = [distribution.value for slot_name, distribution in slots if slot_name == name]
+        parts = arrays[cursor : cursor + len(present)]
+        cursor += len(present)
+        data_vars[name] = xr.concat(parts, dim=_candidate_axis(present)).reindex(candidate=axis)
+    data_vars.update(zip(_STEP_FIELDS, arrays[cursor:], strict=True))
+    if gof.statistics and cell_dims:
+        _add_across_cell_variables(
+            data_vars,
+            cell_dims,
+            period_dim=period_dim,
+            bootstrap=gof.n_bootstrap > 0,
+            bh_adjust=gof.bh_adjust,
+            alpha=gof.alpha,
+        )
+    for variable in data_vars.values():
+        for key in _RANGE_ATTRS:
+            variable.attrs.pop(key, None)
+    return xr.Dataset(data_vars)
+
+
+def _compare_xarray(
+    values: xr.DataArray,
+    scale: int,
+    *,
+    index: IndexRoute,
+    temporal: Mapping[str, int | compute.Periodicity | None],
+    candidates: Sequence[Distribution] | None,
+    pet_mm: np.ndarray | xr.DataArray | None,
+    aggregation: Aggregation,
+    clip_negatives: bool,
+    criterion: Criterion,
+    gof: _GofOptions,
+    time_dim: str,
+) -> xr.Dataset:
+    """The xarray/Dask route of :func:`compare_distributions`, following ``fit_diagnostics``."""
+    _validate_arguments(index, criterion, pet_mm, aggregation, clip_negatives)
+    chosen = _resolve_candidates(index, candidates)
+    input_da, pet_da = _validated_inputs(values, pet_mm, time_dim)
+    cell_dims = [str(dim) for dim in input_da.dims if dim != time_dim]
+    if gof.bh_adjust and not cell_dims:
+        raise _invalid(
+            "bh_adjust adjusts across cells, so values needs a dimension besides time.",
+            "bh_adjust",
+            gof.bh_adjust,
+            "False, or values with a cell dimension",
+        )
+
+    provided: dict[str, Any] = {
+        "scale": scale,
+        "index": index,
+        "aggregation": aggregation,
+        "clip_negatives": clip_negatives,
+        "criterion": criterion,
+        "gof": gof,
+        **{key: value for key, value in temporal.items() if value is not None},
+    }
+    _infer_comparison_years(input_da, provided, time_dim)
     resolved_periodicity: compute.Periodicity = provided["periodicity"]
     _indices._validate_periodicity(resolved_periodicity)
     _indices._validate_scale(scale, resolved_periodicity)
@@ -1043,7 +1969,12 @@ def _compare_xarray(
         if name in compute._PARAMETER_KEYS[distribution.value]
     )
 
-    reserved = {"candidate", period_dim, *_CANDIDATE_FIELDS, *_STEP_FIELDS, *(name for name, _ in slots)}
+    fields: tuple[str, ...] = _CANDIDATE_FIELDS
+    if gof.statistics:
+        fields = fields + _GOF_FIELDS + (_GOF_BOOTSTRAP_FIELDS if gof.n_bootstrap > 0 else ())
+    reserved = {"candidate", period_dim, *fields, *_STEP_FIELDS, *(name for name, _ in slots)}
+    if gof.statistics and cell_dims:
+        reserved.update(_across_cell_output_names(gof))
     _reject_output_name_clashes(reserved, time_dim, input_da, pet_da)
 
     first_year, last_year = _effective_calibration_years(
@@ -1068,6 +1999,7 @@ def _compare_xarray(
         "climate_indices_fitting_methods": json.dumps({d.value: _FITTING_METHODS[d] for d in chosen}),
         "climate_indices_criterion": criterion,
         "climate_indices_log_likelihood_at": "fitted_estimates",
+        **_gof_attributes(gof),
     }
     # native types, so a query over the record matches the same values as the NumPy route
     provenance_parameters = {
@@ -1083,6 +2015,7 @@ def _compare_xarray(
         "calibration_year_initial": first_year,
         "calibration_year_final": last_year,
         "log_likelihood_at": "fitted_estimates",
+        **_gof_parameters(gof),
     }
 
     def declare(field: str, *, transform: Any = None) -> _SpatialOutput:
@@ -1115,7 +2048,7 @@ def _compare_xarray(
     inputs = (input_da,) if pet_da is None else (input_da, pet_da)
     transforms = {"n_parameters": integer, "fit_failed": boolean}
     outputs = (
-        *(declare(field, transform=transforms.get(field)) for field in _CANDIDATE_FIELDS for _ in chosen),
+        *(declare(field, transform=transforms.get(field)) for field in fields for _ in chosen),
         # one output per kernel array, including a name two families share ("shape")
         *(declare_parameter(name) for name, _ in slots),
         declare("n", transform=integer),
@@ -1123,7 +2056,7 @@ def _compare_xarray(
         declare("delta_to_runner_up"),
     )
     arrays = _spatial_kernel_call(
-        functools.partial(_comparison_block, chosen=chosen, slots=slots),
+        functools.partial(_comparison_block, chosen=chosen, slots=slots, fields=fields),
         inputs,
         kernel_kwargs=provided,
         # a single cell axis keeps the per-cell interpretation, as fit_diagnostics does
@@ -1141,23 +2074,7 @@ def _compare_xarray(
         time_dim=time_dim,
     )
 
-    data_vars: dict[str, xr.DataArray] = {}
-    cursor = 0
-    for field in _CANDIDATE_FIELDS:
-        data_vars[field] = xr.concat(arrays[cursor : cursor + len(chosen)], dim=_candidate_axis(labels))
-        cursor += len(chosen)
-    for name in dict.fromkeys(name for name, _ in slots):
-        present = [str(distribution.value) for slot_name, distribution in slots if slot_name == name]
-        parts = arrays[cursor : cursor + len(present)]
-        cursor += len(present)
-        data_vars[name] = xr.concat(parts, dim=_candidate_axis(present)).reindex(candidate=_candidate_axis(labels))
-    for field in _STEP_FIELDS:
-        data_vars[field] = arrays[cursor]
-        cursor += 1
-    for variable in data_vars.values():
-        for key in _RANGE_ATTRS:
-            variable.attrs.pop(key, None)
-    return xr.Dataset(data_vars)
+    return _comparison_dataset(arrays, fields, slots, labels, cell_dims, period_dim, gof)
 
 
 # ---------------------------------------------------------------------------
