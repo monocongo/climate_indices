@@ -192,6 +192,37 @@ def test_spi_fit_notebook_plots_on_prepared_sample(e2e_data, monkeypatch):
             plt.close(number)
 
 
+def test_distribution_suitability_notebook_runs_on_prepared_sample(e2e_data, monkeypatch):
+    """The suitability workflow executes offline: comparison, bootstrap, categories, PIT and concordance."""
+    matplotlib = pytest.importorskip("matplotlib")
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+
+    monkeypatch.setattr(
+        sys.modules[__name__], "NOTEBOOK", REPO_ROOT / "notebooks" / "check_distribution_suitability.ipynb"
+    )
+    previous_figures = set(plt.get_fignums())
+    try:
+        namespace = {}
+        _exec_cells(namespace, _code_cells())
+        candidates = namespace["candidates"]
+        shares = namespace["shares"]
+        assert list(shares.columns) == [*candidates, "none"]
+        np.testing.assert_allclose(shares[[*candidates]].sum(axis=1), 1.0)
+        rejection = namespace["rejection"]
+        assert list(rejection.columns) == ["KS naive", "KS bootstrap", "AD bootstrap"]
+        assert np.isfinite(rejection[["KS bootstrap", "AD bootstrap"]].to_numpy()).all()
+        assert len(namespace["top_two"]) == 2
+        change = namespace["change"]
+        assert set(change["share_changed"].dims) == {"lat", "lon"}
+        concordance = namespace["concordance"]
+        assert concordance.hits + concordance.misses == int(namespace["reference_runs"].start_index.size)
+        assert len(plt.get_fignums()) - len(previous_figures) >= 3
+    finally:
+        for number in set(plt.get_fignums()) - previous_figures:
+            plt.close(number)
+
+
 def _synthetic_dataset(time_freq="MS") -> xr.Dataset:
     """One land cell, one fully masked cell, and one meaningful zero, 1980-2010 monthly."""
     rng = np.random.default_rng(42)

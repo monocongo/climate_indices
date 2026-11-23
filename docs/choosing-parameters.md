@@ -79,10 +79,12 @@ for that fit, while SPEI does not fall back at all, so check the Pearson fit
 before committing to it there. {doc}`data_requirements` has the error contract
 for each path. On gridded input the SPI fallback is per spatial block, so a block
 whose fit fails is standardized with gamma while its neighbours use Pearson — see
-[ADR-0009](adr/0009-spatial-block-declaration.md). For maps of KS p-values and
-`prob_zero`, plus PIT histograms for SPI-1/3/12, follow
-{doc}`checking-distribution-fit`; a low p-value flags a fit to inspect, not a
-calibrated test on independently held-out data.
+[ADR-0009](adr/0009-spatial-block-declaration.md). {doc}`checking-distribution-fit`
+is the full choice workflow: relative comparison with `compare_distributions`,
+goodness of fit, category impact, seasonal uniformity and reference agreement,
+with a [worked notebook](https://github.com/monocongo/climate_indices/blob/main/notebooks/check_distribution_suitability.ipynb).
+A KS p-value flags a fit to inspect, not a calibrated test on independently
+held-out data.
 
 To standardize new data against a fit computed once — a projection run, or a rerun
 that must not refit — compute the parameters and pass them as `fitting_params`

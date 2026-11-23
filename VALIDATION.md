@@ -19,6 +19,7 @@ Their scope limits are in the sections below.
 | Format | `uv run ruff format --check src/ tests/` | No formatting changes needed. |
 | Notebooks | `uv run jupyter nbconvert --execute --to notebook --inplace notebooks/xarray_getting_started.ipynb notebooks/palmer_indices_xarray.ipynb notebooks/eddi_xarray.ipynb notebooks/icechunk_spi_spei.ipynb` | Requires Python 3.12 or later. All four notebooks execute from a clean checkout; the Icechunk notebook uses the optional extra that the `dev` group installs on Python 3.12 or later. |
 | Notebook smoke (Zarr/Dask tutorial, local only) | `bash scripts/smoke_e2e_notebook.sh` | `notebooks/zarr_dask_spi_spei.ipynb` executes end to end from a fresh kernel against the prepared sample inputs. |
+| Notebook (distribution-suitability workflow, local only) | `uv run --group dev jupyter nbconvert --execute --to notebook --inplace notebooks/check_distribution_suitability.ipynb` | Requires the prepared nClimGrid sample (`uv run --group dev scripts/prepare_e2e_inputs.py`); the core suite executes its cells against an offline synthetic prepared store. |
 
 ## Per-Index Evidence
 
@@ -97,6 +98,36 @@ people, institutions, or code beyond the named sources is unknown.
 | Empirical standardization, SREPI, demand, and SRLI | Bloomfield & Brayshaw supply the ERA5-derived German wind series. Other cases use synthetic inputs, including demand and residual load. | Allen & Otero's R `SEI` generates expected scores. The library deliberately shares SEI's ranking, tie rule, and minimum count. The Gamma control shares its fitted parameters. |
 | Reliability relationships and worked examples | EIA supplies aggregate utility reports, not event logs. The tests construct equivalent logs, use IEEE's example counts with reconstructed timestamps, or construct an EPRI-style scenario. | EIA supplies reporting relationships, IEEE 1366-2012 supplies example values including the Major Event Day case, and the EPRI-style result is derived analytically. None supplies a matched operational event log. |
 | GRIDMET cross-provider comparison | Both provider products and the local calculation use gridMET inputs; exact input equivalence and ET crop are unresolved. | Earth Engine publishes the precomputed collection; Climate Engine supplies API values. Producer code and overlap between the two providers are unknown. The calendar windows differ from this package. |
+| Distribution-suitability workflow reproduction | Both sides use the same prepared nClimGrid sample; the demonstration reference is that sample's own `P - PET` 20th percentile. | No external expected output is adopted. The notebook reports the AICc ranking, the goodness-of-fit rejection share, the category change and the seasonal PIT of the workflow; its concordance reference shares the index's input. |
+
+## Distribution-Suitability Workflow Reproduction
+
+`notebooks/check_distribution_suitability.ipynb` runs the ADR-0028 tools on the
+prepared nClimGrid low-resolution sample (1980-2016, calibration 1981-2010).
+The core suite executes all of its code cells against an offline synthetic
+prepared store
+(`tests/test_e2e_with_dask.py::test_distribution_suitability_notebook_runs_on_prepared_sample`),
+and no test downloads data. The real sample comes from
+`scripts/prepare_e2e_inputs.py`, as the notebook documents.
+
+**Workflow reproduction; not reference reproduction.**
+The notebook does not reproduce Monish & Rehana (2020) or any published figure.
+That study is cited by DOI only (`10.1007/s12040-019-1271-x`); its data and
+verified methods are not available, and OQ-5 of
+`docs/design/distribution-suitability.md` leaves the independent reference open.
+
+| Step | Evidence scope |
+| --- | --- |
+| AICc share and `delta_to_runner_up` by Timescale | Characterization of the prepared sample at the library's own estimators; no external oracle. |
+| Goodness-of-fit rejection share | The naive K-S p-value is uncalibrated; the bootstrap calibration is synthetic and runs on the same sample, so its rejection share is screening evidence, not an error guarantee. |
+| Category change between the top two candidates | Specification-level: the USDM edges and the shares are internal definitions. |
+| Seasonal PIT for SPEI against SPAI | In-sample, naive p-values; no external field validation. |
+| Event concordance | The reference is a labelled demonstration built from the sample's own 20th-percentile `P - PET`, so it shares its input with the index. No accuracy claim. |
+
+The notebook's numbers are not frozen, so a run records what the sample shows
+rather than asserting a target. The committed fixtures and tolerances for the
+tools themselves remain in the `validation` tests listed in the per-index
+evidence rows above.
 
 ## Reliability Benchmark Relationships
 
