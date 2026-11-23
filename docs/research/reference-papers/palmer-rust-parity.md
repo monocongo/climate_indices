@@ -92,7 +92,7 @@ For `pdsi()` and `scpdsi()`, all four index arrays had maximum absolute and rela
 
 | Corpus | Cases run on both paths | Triples with a numerical response to a one-ulp input change | Disagreements |
 | --- | --- | --- | --- |
-| Random Z with 60% boundary entries, one entry moved one ulp either way, `pdi.f` recursion | 1,500 triples | 28 (PDSI), 14 (PHDI), 0 (PMDI; 6 before #1666, when the end-of-record flush copied the final month's PMDI into every pending month) | 0 |
+| Random Z with 60% boundary entries, one entry moved one ulp either way, `pdi.f` recursion | 1,500 triples | 28 (PDSI), 14 (PHDI), 0 (PMDI, measured at HEAD after the per-month flush fix) | 0 |
 | Same, Wells recursion | 600 triples | 4 | 0 |
 | Established spell, then a threshold value, one ulp either side, `pdi.f` | 384 triples | 26 | 0 |
 | Same, Wells | 384 triples | 30 | 0 |

@@ -44,7 +44,9 @@ here rather than made quietly.
 3. **The recursion ends at the last real month, and flushes there.** The padded months are
    never read. (#1663.)
 
-The library therefore departs from `pdi.f` in these three places, on purpose. X2 not being
+The first two are intentional departures from `pdi.f`, and #1666 is the only one implemented with
+this record. The third restores agreement with `pdi.f`, which already stops at `nendmo`, and is
+still pending. X2 not being
 updated in the month X1 establishes a spell is a separate `pdi.f` behaviour and stays, because
 nClimDiv agrees with it better than with the alternative.
 
