@@ -8,6 +8,13 @@ Research date: 2026-09-22. All access statements below describe what was actuall
 fetched on that date; anything that could not be fetched is marked as requiring manual
 retrieval rather than asserted present.
 
+**Update 2026-11-23 (#1696).** After this survey: the Deo et al. (2015) full text
+was read and its Eq. (1) is the harmonic double sum, so the kernel conflict below is
+resolved (`docs/research/deo-2015-flood-index-notes.md`); and the Hickman record is
+committed as a Table 5 characterization fixture, not an exact reference
+(`tests/fixture/flood_hickman/`). The I_F entries below also carry dated markers
+where this reading supersedes them; the rest of the text keeps its 2026-09-22 state.
+
 ## Question
 
 Which publicly accessible references can validate this library's planned Effective
@@ -58,13 +65,12 @@ Resources Index) is PE normalized by the harmonic sum `sum 1/N`, from the Byun &
   paper's *variable* summation duration, which #1099 has not yet decided, and only with a
   30-year per-calendar-day MEP baseline behind it (gaps 5 and 6). Byun & Lee (2002) is
   the openly accessible confirmation of the equation algebra.
-- **I_F**: Deo et al. (2015) is the definitional source, but its abstract describes an
-  exponentially decaying effective precipitation while #1105/#1107 plan the harmonic
-  double sum. The two forms are not algebraically equivalent, so this is a real
-  convention conflict, and whether the 2015 implementation matched its abstract is
-  unverified because the full text is paywalled. The decision should be routed to
-  **#1099** - it is not yet on that ticket's checklist, but #1099 owns the other flood-
-  module conventions and #1107 can only consume this one, not make it (gap 1).
+- **I_F**: Deo et al. (2015) is the definitional source. *Superseded 2026-11-23
+  (#1696):* its abstract described an exponentially decaying effective precipitation
+  while #1105/#1107 plan the harmonic double sum, which is a real convention conflict
+  if the abstract is read as the implementation; the full text has since been read and
+  its Eq. (1) is that harmonic double sum, so ADR-0014 decision 2 settles the conflict
+  and gap 1 is closed. See the update note above.
 - **API**: no accessible source tabulates index values. Kohler & Linsley (1951) is not
   digitized online; the located implementations are an independent implementation with
   no published oracle values (a fixed-`k` `ahrapi`) or a different definition (the
@@ -232,6 +238,12 @@ the handling of leading windows and missing days.
 - **Limitations**: requires manual retrieval; unknown whether values are tabulated.
 
 ### 4. Deo, Byun, Adamowski & Kim (2015), *Water Resources Management* 29(11), 4075-4093 - originating paper (I_F)
+
+**Superseded 2026-11-23 (#1696).** The full text has since been read from a
+subscriber copy: its Eq. (1) is the harmonic double sum, so limitation 1 is resolved
+by ADR-0014 decision 2, and its event and return-period definitions are recorded in
+`docs/research/deo-2015-flood-index-notes.md`. The access and classification
+statements below describe the 2026-09-22 state.
 
 - **What it is**: the paper that introduces the real-time flood monitoring index I_F for
   Brisbane and Lockyer Valley, with event severity, duration, peak danger and return
@@ -503,7 +515,7 @@ convention; the last two are not validation evidence as they stand.
 | --- | --- | --- | --- |
 | PE kernel | Byun & Wilhite (1999), Eq. (2); Byun & Lee (2002) for the open algebra | exact reference, conditional on the variable-`DS` convention (Table 5); digitized figure for the plotted index-chain panels (not raw EP, never separately plotted) | Table 5 (Hickman, NE) for the variable-`DS` chain; Fig. 2b for the Eq. (2) index panel; Fig. 1 for the weight curve |
 | EDI | Byun & Wilhite (1999), Eq. (9)/Table 5 | exact reference, conditional on the variable-`DS` convention and a multi-decade MEP baseline | min EDI -2.5 (Eq. 2) and -1.22 (Eq. 3) on day 469, Table 5 |
-| I_F | Deo et al. (2015) | specification-level: definition and abstract-level event statistics; implemented kernel unverified; exponential-vs-double-sum conflict | none reproducible; the abstract's `I_acc_F`/`I_max_F`/`D_F`/`T` need the Brisbane/Lockyer record |
+| I_F | Deo et al. (2015) | specification-level: definition and event statistics (kernel confirmed as the harmonic double sum in #1696; estimator details recorded, numeric anchor still absent) | none reproducible; the abstract's `I_acc_F`/`I_max_F`/`D_F`/`T` need the Brisbane/Lockyer record |
 | API | Kohler & Linsley (1951) | specification-level; numeric content unverified; no numeric oracle found | none; the analytic `P/(1-k)` limit is regression coverage and the MIT `ahrapi` implementation is an independent implementation, neither an oracle |
 
 For the PE kernel, Byun & Lee (2002) is the openly accessible confirmation of the exact
@@ -521,9 +533,10 @@ Using `VALIDATION.md` vocabulary explicitly:
 
 - **External scientific validation** could come from Byun & Wilhite (1999) Table 5 for
   PE/EDI (if the variable-duration convention is adopted and the Hickman inputs are
-  reconstructed), from Deo et al. (2015) for I_F (if the full text is retrieved and its
-  convention is matched), and from Kohler & Linsley (1951) for API (only if that report
-  turns out to tabulate values reproducible against a public precipitation record).
+  reconstructed), from Deo et al. (2015) for I_F (its convention is now matched, but
+  its adjusted rainfall record is not published), and from Kohler & Linsley (1951)
+  for API (only if that report turns out to tabulate values reproducible against a
+  public precipitation record).
 - **Digitized figures** would be required for the EDI daily-index series (Byun & Wilhite
   Fig. 2b/2c), for the weight curve (Fig. 1), and for any Deo et al. (2015) series whose
   table cannot be obtained. The HDW / Srock et al. precedent shows the cost and the
@@ -542,16 +555,15 @@ Using `VALIDATION.md` vocabulary explicitly:
 
 ## Remaining gaps and required maintainer sign-off
 
-1. **I_F PE-kernel conflict (highest priority) - decision should be routed to #1099,**
-   which is not yet on that ticket's checklist. The Deo et al. (2015) and (2019)
-   abstracts describe an exponentially decaying PE; #1105/#1107 plan the harmonic
-   double-sum. Either the planned kernel changes, or the divergence is documented and
-   signed off. Until the 2015 full text or Byun & Jung (1998) is retrieved, even the
-   exponential parameterization (decay constant, summation length, hydrological-period
-   definition) is unknown. #1107 consumes this decision; it cannot make it.
-2. **Retrieve Deo et al. (2015) full text** through an institutional subscription/ILL
-   and record whether I_F values are tabulated or only plotted; then decide between
-   transcription and digitization. If figures are used, confirm reuse terms.
+1. **I_F PE-kernel conflict - resolved 2026-11-23 (#1696).** The Deo et al. (2015)
+   full text was read; its Eq. (1) is the harmonic double sum #1105/#1107 implement,
+   and ADR-0014 decision 2 records the selection. The survey's 2026-09-22 routing of
+   this decision to #1099 is closed; see the update note above.
+2. **Deo et al. (2015) full text - retrieved 2026-11-23 (#1696).** Its event and
+   return-period definitions are recorded in the reading notes. Tables 2-4 tabulate
+   the Brisbane/Lockyer event values, but they depend on the paper's adjusted BoM
+   40094 rainfall, which is not published, so no numeric I_F fixture can be committed;
+   see the notes' "Tabulated values" and "Why no oracle is committed".
 3. **Retrieve the 2014 USQ conference PDF** when `eprints.usq.edu.au` returns (or via
    ILL). This is the best chance of a same-group worked example with tables outside the
    Springer paywall.

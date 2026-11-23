@@ -37,12 +37,18 @@ package root ([ADR-0013](../adr/0013-flood-module-api-and-naming.md), FLOOD-11
 ## Validation
 
 `tests/test_flood_edi.py` checks the source-backed fixed-window algebra,
-missing data, daily baselines, and shape/calibration contracts. No numeric
-external oracle is available for this fixed-window form; the published Table 5
-uses variable-duration EDI and requires the unavailable Hickman daily record
-(see `tests/fixture/flood/README.md`). These tests are specification checks,
-not external scientific validation. `VALIDATION.md` records EDI as regression
-only in its Flood Evidence Classification section.
+missing data, daily baselines, and shape/calibration contracts. These are
+specification checks, not external scientific validation.
+
+`tests/test_flood_hickman_reference.py` (marked `validation`) is a
+**characterization** against Byun and Wilhite (1999) Table 5 on the Hickman,
+Nebraska record in `tests/fixture/flood_hickman/`: 1995–1996 EDI is at or below
+−1 on the table's minimum-EDI day, and its minimum lies inside the table's
+Eq. (2) drought duration. It is not an exact reference. Table 5 gives summary
+statistics for variable-duration EDI, not daily values. The library's 1995–1996
+minimum is −2.10 against the paper's −2.5. The fixture uses one candidate station
+with calendar-day-mean gap fill. `VALIDATION.md` records the evidence
+limits in its Flood Evidence Classification section.
 
 ## Reference
 

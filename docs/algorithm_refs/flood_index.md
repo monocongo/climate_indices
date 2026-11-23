@@ -23,20 +23,24 @@ the convention and its measured size.
 
 The PE kernel is the harmonic double sum of Byun and Wilhite (1999), Eq. (2),
 selected over their Eq. (3) by [ADR-0014](../adr/0014-flood-family-scientific-conventions.md).
-The Deo et al. (2015, 2019) abstracts describe an exponentially decaying PE;
-whether the 2015 implementation uses that kernel remains unverified. The
-exponential form and flood-event detection helpers are **not implemented**.
+The Deo et al. (2015) abstract describes an "exponentially decaying" PE, but the
+paper's Eq. (1) is the same harmonic double sum (see
+`docs/research/deo-2015-flood-index-notes.md`).
+No separate exponential form is implemented.
 Moishin et al. (2021), co-authored with Deo, supplies an openly licensed
 same-lineage statement of the double sum, not a numeric oracle for this API.
 
 `tests/test_flood_index.py` checks the declared normalization and year-boundary
-contract; no numeric external oracle is available yet (see
+contract, and `tests/test_flood_properties.py` checks on seeded synthetic rain
+that calibration annual maxima standardize to mean 0 and SD 1, that a rainfall
+step raises the index from that day on, and that constant input gives NaN, never
+infinity. No numeric external oracle is available (see
 `tests/fixture/flood/README.md`). The NumPy route is stable, DataArray dispatch
 is beta ([#1108](https://github.com/monocongo/climate_indices/issues/1108)), and
 the CLI reaches the same index as `--index flood_index`
 ([#1115](https://github.com/monocongo/climate_indices/issues/1115)).
-`VALIDATION.md` records I_F as regression only in its Flood Evidence
-Classification section.
+`VALIDATION.md` records I_F as specification and regression coverage with
+synthetic property checks in its Flood Evidence Classification section.
 
 ## References
 
