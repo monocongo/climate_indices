@@ -87,7 +87,7 @@ fn recharge(p: f64, pet: f64, ss: f64, su: f64, awc: f64) -> Recharge {
 
     // evaporation exceeds precipitation
     let deficit = pet - p;
-    let ul_both = py_min(su, (deficit - ss) * su / awc);
+    let ul_both = py_min(su, (deficit - ss) * su / (awc_bot + AWCTOP));
     let surface_only = ss >= deficit;
     let sl = if surface_only { deficit } else { ss };
     let ul = if surface_only { 0.0 } else { ul_both };
@@ -186,10 +186,6 @@ pub struct WaterBalance {
 ///   to a calendar-year block with a trailing cell axis; `awc` the total
 ///   available water capacity per cell, in inches.
 /// - Outputs: the nine monthly arrays and their calibration-period monthly sums.
-/// - Zero and NaN semantics: every branch keeps NumPy's comparison order, so a
-///   NaN precipitation or PET propagates through the same expressions the Python
-///   path evaluates, and an exact-zero denominator (`awc == 0`) reaches the same
-///   `inf`/`NaN` arithmetic.
 ///
 /// # Numerical contract
 ///
@@ -202,11 +198,14 @@ pub struct WaterBalance {
 /// years independently per cell. Calibration bounds select inclusive, zero-based
 /// year rows for ordinary sums; they do not restrict the state updates.
 ///
-/// Zero precipitation and PET are observations, not missing values. A zero AWC
-/// is not replaced; divisions use IEEE arithmetic and ordered min/max selection.
-/// NaNs are not skipped, and ordered comparisons with NaN are false. Selections
-/// can retain finite operands, so a missing input need not make every output
-/// missing. State updates continue, and a NaN added to a calibration sum remains.
+/// Zero precipitation and PET are valid observations. The potential and actual
+/// soil moisture loss calculations divide by the combined layer capacity
+/// (`awc_bot + AWCTOP`). For zero or sub-inch AWC, the underlying layer has
+/// zero capacity and the one-inch surface layer supplies the denominator.
+/// The calculations include NaNs and preserve NumPy's comparison order.
+/// Ordered comparisons with NaN return false. Selections can retain finite
+/// operands when an input is missing. State updates continue, and a NaN
+/// added to a calibration sum remains.
 /// No calendar padding or missing-value replacement occurs.
 ///
 /// See the Measured accuracy section in [`crate`] for `palmer_pdsi` and
@@ -357,6 +356,21 @@ mod tests {
         assert_eq!(out.rodat[[0, 0, 0]], 0.0);
         assert_eq!(out.sssdat[[0, 0, 0]], 0.0);
         assert_eq!(out.ssudat[[0, 0, 0]], 2.625);
+    }
+
+    /// A dry month at zero AWC with water still in the underlying layer: the loss
+    /// denominator is the combined capacity, so the loss stays finite and below `su`.
+    ///
+    /// `water_balance` cannot reach this state at `awc == 0` (the underlying layer
+    /// starts empty), so this pins `recharge`'s denominator directly. The old
+    /// `/ awc` denominator makes the quotient infinite and `py_min` keeps all of `su`.
+    #[test]
+    fn zero_awc_uses_the_combined_capacity_denominator() {
+        let outcome = recharge(0.5, 2.0, 1.0, 0.5, 0.0);
+
+        assert_eq!(outcome.tl, 1.25);
+        assert_eq!(outcome.et, 1.75);
+        assert_eq!(outcome.ssu, 0.25);
     }
 
     /// The sums only accrue over the inclusive calibration years, while the

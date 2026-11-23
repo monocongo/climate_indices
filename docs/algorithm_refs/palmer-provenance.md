@@ -48,7 +48,7 @@ citation is NCEI's, not a reading of the paper.
 | --- | --- | --- | --- | --- | --- | --- |
 | 1 | PE (potential evapotranspiration) | Palmer 1965 p. 7: PE is "Thornthwaite's potential evapotranspiration term"; Alley 1984 p. 1101 and Karl 1986 p. 78 say the same. `pdi.f` computes it internally (294-315): Thornthwaite from the fitted `B`, `H` and `TLA` of `soilcnst.asc`, 0 at or below 32 °F, a separate form at or above 80 °F, and a Julian leap rule (280) that gives February 1900 29 days | Input to the Palmer functions. Thornthwaite: `drought/eto.py:eto_thornthwaite` | `eto.rs:thornthwaite` | The Palmer code accepts any PE series; it does not compute PE. The committed `pet.npy` fixtures equal `pdi.f`'s single-precision PE, Julian February 1900 included (D9). | V+R |
 | 2 | Layer capacities | Palmer 1965 p. 8: 1 in. surface layer, remainder underlying (6 = 1 + 5 in Kansas, 10 = 1 + 9 in Iowa). Alley 1984 p. 1101: 25 mm in the surface layer. Wells C++ `CalcActual` (`pdsi.cpp:2959`, `2966`). `pdi.f` 228, 237-240: the input `WCBOT` is the underlying layer; `WCTOP = 1.0`, `WCTOT = WCBOT + WCTOP`; both layers start full | `AWCTOP = 1.0` (`palmer.py:30`); `_get_awc_bot` = `max(awc - 1, 0)` (111) | `awc_bottom` (`palmer.rs:33`) | `awc` is the total, so `awc = WCBOT + 1`. The sources do not address `awc < 1`. The code still starts the surface layer at 1.0. See D1. | V+R |
-| 3 | Actual loss, recharge, runoff, ET; layer update | Palmer 1965 p. 7, Eqs. (1) and (2): `Ls = S's or (PE - P)`, whichever is smaller; `Lu = (PE - P - Ls)·S'u/AWC`, `Lu <= S'u`; no runoff until both layers are at capacity. Alley 1984 p. 1101 states the same rules. Wells C++ `CalcActual` (`pdsi.cpp:2945-3016`). `pdi.f` 331-379 | `_calc_recharge` (143), `_calc_water_balances` (348) | `recharge` (61), `water_balance` (215) | Vectorized with `np.where`. UL divides by raw `awc` (`palmer.py:202`, `palmer.rs:90`), as Eq. (2) does; `pdi.f` divides by `WCTOT` (372). The two agree when `awc >= 1`; see D1. | V+R |
+| 3 | Actual loss, recharge, runoff, ET; layer update | Palmer 1965 p. 7, Eqs. (1) and (2): `Ls = S's or (PE - P)`, whichever is smaller; `Lu = (PE - P - Ls)·S'u/AWC`, `Lu <= S'u`; no runoff until both layers are at capacity. Alley 1984 p. 1101 states the same rules. Wells C++ `CalcActual` (`pdsi.cpp:2945-3016`). `pdi.f` 331-379 | `_calc_recharge` (143), `_calc_water_balances` (348) | `recharge` (61), `water_balance` (215) | Vectorized with `np.where`. UL divides by `awc_bot + AWCTOP = max(awc, 1)` (`palmer.py:202`, `palmer.rs:90`), as `pdi.f` does (`WCTOT`, 372); Palmer 1965 Eq. (2), Alley 1984 Eq. (2) and the Wells C++ `CalcActual` divide by `AWC`. The forms agree for the AWC values in use (`>= 1` in); see D1. | V+R |
 | 4 | PR, potential recharge | Palmer 1965 p. 10, Eq. (3): `PR = AWC - S'`. Alley 1984 p. 1101, Eq. (1): `PR = AWC - (Ss + Su)`. Wells C++ `CalcPR` (`pdsi.cpp:2913`). `pdi.f` 290: `PR = WCBOT + WCTOP - SP` | `pr = awc_bot + AWCTOP - sp` (`palmer.py:363`) | `water_balance` (`palmer.rs:276`) | The `pdi.f` form. Equals `AWC - S'` when `awc >= 1`. | V+R |
 | 5 | PRO, potential runoff | Palmer 1965 p. 11, Eq. (5): `PRO = AWC - PR = S'`; footnote 1 notes the author would now prefer `PRO = 3P - PR`. Alley 1984 p. 1101, Eq. (3), repeats that remark. Wells C++ `CalcPRO` (`pdsi.cpp:2922`). `pdi.f` 289: `SP = SS + SU` | `sp = ss + su` (`palmer.py:362`) | `water_balance` (`palmer.rs:275`) | None. | V+R |
 | 6 | PL, potential loss | Palmer 1965 p. 10, Eq. (4): `PL = PLs + PLu`, `PLs = PE or S's` whichever is smaller, `PLu = (PE - PLs)·S'u/AWC`. Alley 1984 p. 1101, Eq. (2), is the same. Wells C++ `CalcPL` (`pdsi.cpp:2931-2939`) divides by `AWC` and caps at `PRO`. `pdi.f` 319-324 divides by `WCBOT + WCTOP` and caps at `SP` | `_calc_potential_loss` (122): divides by `awc_bot + AWCTOP` and caps at `ss + su` | `potential_loss` (`palmer.rs:40`) | **Follows `pdi.f`; differs from Palmer, Alley and the Wells C++ when `awc < 1`**: the denominator is `max(awc, 1)`, not `awc`. See D1. | V+R |
@@ -95,8 +95,7 @@ citation is NCEI's, not a reading of the paper.
 
 ## Differences found while tracing
 
-Each is recorded, not changed. Dispositions belong to the REFIMPL-24
-discrepancy ledger.
+Each is recorded. Dispositions belong to the REFIMPL-24 discrepancy ledger.
 
 **D1. AWC semantics and the PL and UL denominators.** `pdi.f` reads the
 underlying-layer capacity `WCBOT` (228) and sets `WCTOP = 1.0` and
@@ -105,10 +104,13 @@ underlying-layer capacity `WCBOT` (228) and sets `WCTOP = 1.0` and
 `tests/fixture/palmer_awc.json` equals `WCBOT + 1` for all 344 divisions.
 `_calc_potential_loss` divides by `awc_bot + AWCTOP = max(awc, 1)`
 (`palmer.py:139`, `palmer.rs:42`), as `pdi.f` does; Palmer 1965 Eq. (4),
-Alley 1984 Eq. (2) and the Wells C++ `CalcPL` divide by `AWC`. The two agree when
-`awc >= 1`. UL divides by raw `awc` (`palmer.py:202`, `palmer.rs:90`), which
-equals `WCTOT` when `awc >= 1`. At `awc == 0` the division is 0/0, which warns and
-resolves to 0. A removed 2023 comment tied an `awc + 1` denominator to NCEI's
+Alley 1984 Eq. (2) and the Wells C++ `CalcPL` divide by `AWC`. The two agree for
+the AWC values in use (`>= 1` in). UL divides by the same combined capacity
+(`palmer.py:202`, `palmer.rs:90`), which `pdi.f` calls `WCTOT` (372), so the
+`awc == 0` difference is closed (issue #1664). For `awc < 1` the underlying layer
+starts empty and the loss stays zero, so no output value changes; the expression
+then differs from Palmer Eq. (2), Alley Eq. (2) and the Wells `CalcActual`, as PL
+does. A removed 2023 comment tied an `awc + 1` denominator to NCEI's
 pre-2013 code (Jacobi et al. 2013, not opened). The likeliest reading is that
 users passed the total capacity as `WCBOT`; that is an inference.
 
@@ -170,9 +172,12 @@ recorded in REFIMPL-46 ([#1661](https://github.com/monocongo/climate_indices/iss
 
   The Wells manual calls a related form of the X2 behaviour "the bug found in the
   FORTRAN program" (its `-b` flag).
-- **Differs from `pdi.f`.** The code differs on an exact PMDI tie (D2), on records
-  that end before December (the NaN padding runs through the recursion), and on the
-  UL denominator at `awc == 0` (D1). Fixes: [#1662](https://github.com/monocongo/climate_indices/issues/1662), [#1663](https://github.com/monocongo/climate_indices/issues/1663), [#1664](https://github.com/monocongo/climate_indices/issues/1664).
+- **Differs from `pdi.f`.** The code differs on an exact PMDI tie (D2) and on records
+  that end before December (the NaN padding runs through the recursion). Fixes:
+  [#1662](https://github.com/monocongo/climate_indices/issues/1662),
+  [#1663](https://github.com/monocongo/climate_indices/issues/1663).
+  The UL denominator at `awc == 0` now matches `pdi.f`
+  ([#1664](https://github.com/monocongo/climate_indices/issues/1664)).
 - **Maintainer decisions (2026-11-19), recorded in {doc}`ADR-0030 <../adr/0030-palmer-end-of-record-flush>`.**
   The stale `k8max` (row 19), which re-flushed months a closed spell had already resolved,
   is **fixed** ([#1665](https://github.com/monocongo/climate_indices/issues/1665)): the library now flushes only the months still pending, so it
