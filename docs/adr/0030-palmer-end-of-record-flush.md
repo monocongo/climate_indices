@@ -135,11 +135,11 @@ updates this record's status line.
   kernels against the expected per-month PMDI, not just against each other.
 - **Test decision 3 by cutting the division 1102 precipitation and PET inputs at June 2022.**
   Use the same 1931-1990 calibration period and AWC for the full and cut runs. Compare the cut
-  run with the zero-prefixed reference: the same Z series with Z = 0 months prepended, so the
-  record ends in December. A longer run truncated at the cut keeps its pending-spell state, so
-  it is not a valid reference. Check the pending months against their own provisional PDSI,
-  PHDI, and PMDI. Require finite PMDI throughout the cut fixture. Run these checks on both
-  backends. Also check that decision 3 leaves the December-ending case unchanged from decision 2.
+  run with the zero-prefixed reference: the same Z series with Z = 0 months prepended, which
+  moves the run's year boundary so its last real month is the twelfth. A longer run truncated
+  at the cut keeps its pending-spell state, so it is not a valid reference. Check the pending
+  months against their own provisional PDSI, PHDI, and PMDI. Require finite PMDI throughout
+  the cut fixture. Run these checks on both backends. Also check that decision 3 leaves the December-ending case unchanged from decision 2.
 - **REFIMPL-29's mechanism F is retired.** The divergence study counted this bug as
   Pdi-vs-Wells class F. With decision 1 the library follows the Wells rule there, so the F
   case no longer diverges, and the pinned study results remain the record of the pinned commit.
