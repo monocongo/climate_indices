@@ -57,9 +57,8 @@ nClimDiv agrees with it better than with the alternative.
   PHDI do not change with #1666.
 - A record's PMDI no longer depends on December: the value of a pending month is the same
   whether or not the record ends in it.
-- The library no longer matches a `pdi.f` build on these months. The `pdi.f` fidelity report
-  and the provenance record (D9) name the departure, and `pdi.f` remains the comparator
-  for everything else.
+- The library no longer matches a `pdi.f` build on these months. The provenance record (D9) names the departure,
+  and `pdi.f` remains the comparator for everything else.
 - The Python and Rust paths change together and stay bit-identical; the fixtures
   (`tests/fixture/palmer` and the Rust `palmer_reference.txt`) are regenerated from the new code.
 - Changing a pending month's PMDI back to the final month's would be a decision to reverse this
