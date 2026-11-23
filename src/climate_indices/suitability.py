@@ -698,9 +698,10 @@ def _simulate(
     to that unit, which gives the simulated sample the observed record's tie structure. The values lie on the lattice
     ``origin + k * resolution``: the prepared SPEI sample carries an offset (``+1000`` per summed step), so its
     multiples of the unit start at ``origin``, not at zero. The library fits p0 on the rounded record, so p0 already
-    counts the values that rounded to zero: a positive draw that rounds to zero or below would add zeros beyond p0, and
-    is set to the smallest positive lattice value instead. Every nonzero value is then at least that, as in the observed
-    record, and the simulated zero share stays p0.
+    counts the values that rounded to zero: a draw that rounds to zero would add zeros beyond p0, and is set to the
+    least positive lattice value instead. Every nonzero value stays on the lattice, and the simulated zero share stays
+    p0. A negative draw from a family with a real support below zero stays negative; only a draw that rounds to zero is
+    moved.
     """
     with np.errstate(all="ignore"):
         if distribution in _ZERO_MASS_FAMILIES:
@@ -711,7 +712,7 @@ def _simulate(
             if resolution is not None:
                 lattice = np.round((draws - origin) / resolution) * resolution + origin
                 smallest = (origin % resolution) or resolution  # the least positive point of the lattice
-                draws = np.where(positive, np.where(lattice <= 0.0, smallest, lattice), 0.0)
+                draws = np.where(positive, np.where(lattice == 0.0, smallest, lattice), 0.0)
         else:
             draws = _continuous_ppf(distribution, np.clip(uniforms, _PIT_MARGIN, 1.0 - _PIT_MARGIN), p)
             if resolution is not None:
@@ -1179,7 +1180,8 @@ def compare_distributions(
     ``B_ok`` refits that succeeded (the floor is ``1 / (B_ok + 1)``). A refit that fails is counted in
     ``bootstrap_failed_share`` and left out. The cost is ``n_bootstrap`` times that of the fits themselves. For a
     record rounded to a unit, pass that unit as ``resolution`` so the simulated samples have the observed ties;
-    the unit is never inferred. The same ``seed`` gives an identical result, whatever the Dask chunking.
+    the unit is never inferred. The same ``seed`` gives the same bootstrap p-values, whatever the Dask chunking;
+    the fitted statistics agree to floating-point rounding.
     A candidate's p-value after ``best`` selected it is a post-selection statistic, not an ordinary test.
     Across cells, ``rejection_share`` reports the share of cells below ``alpha`` and ``bh_adjust`` adds
     Benjamini-Hochberg p-values; spatial correlation weakens the assumptions of that adjustment.
@@ -1222,7 +1224,8 @@ def compare_distributions(
             samples, the right null only for an unrounded record. Sums of values rounded to a unit are multiples of
             it, so for SPI it is the record's unit; with ``aggregation="mean"`` the sample's unit is that divided by
             ``scale``, and a SPEI water balance has a unit only if precipitation and PET share one. A positive draw
-            that rounds to zero is set to ``resolution``, so the simulated zero share stays the fitted p0. For ``"spei"``
+            that rounds to zero is set to the least positive point of the lattice, so the simulated zero share stays the
+            fitted p0. For ``"spei"``
             the draws lie on ``1000 * scale + k * resolution``, the lattice of the prepared sample with its
             ``+1000`` offset per summed step. Must be positive and finite. Used only when ``n_bootstrap > 0``.
         bh_adjust: Add Benjamini-Hochberg adjusted p-values across cells, apart for every candidate and

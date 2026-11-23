@@ -120,9 +120,10 @@ Implementation decisions of SUIT-05 ([#1586](https://github.com/monocongo/climat
 - **The bootstrap sample.** Each replicate has the observed size and missing-value pattern and is drawn by inverting the fitted
   mixed CDF at uniform numbers, so the zero mass is part of every sample. A `resolution` rounds the draws to the unit of the
   prepared sample and is never inferred (that unit is the record's for SPI; `aggregation="mean"` divides it by the Timescale). The
-  library fits p0 on the rounded record, so p0 already counts what rounded to zero: a positive draw that rounds to zero is set to
-  the unit, which keeps the simulated zero share at p0 and every nonzero value at least the unit, as in the record. Rounding
-  the draws a second time would add zeros beyond p0, and rejected 8.9% (K-S) and 17.8% (A²) of series at a nominal 4% in a
+  library fits p0 on the rounded record, so p0 already counts what rounded to zero: a draw that rounds to zero is set to the
+  least positive point of the lattice, which keeps the simulated zero share at p0 and every nonzero value on the lattice, as in
+  the record. A negative draw from a family with a real support below zero stays negative; only a draw that rounds to zero moves.
+  Rounding the draws a second time would add zeros beyond p0, and rejected 8.9% (K-S) and 17.8% (A²) of series at a nominal 4% in a
   zero-heavy record. Without `resolution`, a record rounded to a coarse unit is rejected far too often
   ([VALIDATION.md](https://github.com/monocongo/climate_indices/blob/main/VALIDATION.md)).
 - **A refit fails by the rule that fails the observed fit.** A refit with no usable parameters, or with a value outside its fitted

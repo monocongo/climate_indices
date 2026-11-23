@@ -425,6 +425,15 @@ class TestBootstrap:
         assert (draws == 0).mean() > 0.2
         assert np.allclose(draws / 2.0, np.round(draws / 2.0))
 
+    def test_a_zero_mass_family_keeps_negative_pearson_draws_and_moves_only_a_rounding_zero(self):
+        # Pearson Type III has a real support below zero. A zero-mass clamp must not fold those draws onto the
+        # least positive lattice point: only a draw that rounds to zero moves, so the zero share stays p0.
+        uniforms = np.array([0.5, 0.01, 0.99]).reshape(3, 1)
+        p = {"loc": np.array([0.0]), "scale": np.array([1.0]), "skew": np.array([0.0]), "prob_zero": np.array([0.0])}
+        draws = suitability._simulate(Distribution.pearson, uniforms, p, 1.0)
+        assert draws[0] == 1.0  # the draw that rounds to zero sits on the least positive lattice point
+        assert draws[1] < 0.0 and draws[2] > 0.0  # the real negative and positive support stays on the lattice
+
     def test_the_draws_lie_on_the_lattice_of_the_prepared_sample_not_on_multiples_of_the_unit(self):
         # a SPEI sample of values recorded in 3s carries +1000 per step, so it lies on 1000 + 3k, not on 3k
         uniforms = np.random.default_rng(3).uniform(size=(2000, 1))

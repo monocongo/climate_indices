@@ -888,8 +888,10 @@ grid points. Pass the rounding unit of the prepared
 sample as `resolution` if the record was rounded (the record's own unit for SPI; with `aggregation="mean"` that unit
 divided by the Timescale): without it a record rounded to 10 mm was rejected in 24% of series at a nominal 5%. A unit
 comparable to the mean of a zero-heavy record (35% zeros, unit 1 on a mean of 2.4) still leaves the bootstrap
-anti-conservative, at about 8% (K-S) and 10% (A²), so treat its p-values there as screening evidence. The same `seed` gives an identical result for a cell alone, in a grid, or under any Dask
-chunking, and an unseeded call records its 128-bit seed as a decimal string in `climate_indices_rng_seed`.
+anti-conservative, at about 8% (K-S) and 10% (A²), so treat its p-values there as screening evidence. The same
+`seed` gives the same bootstrap p-values for a cell alone, in a grid, or under any Dask chunking; the fitted
+statistics agree to floating-point rounding. An unseeded call records its 128-bit seed as a decimal string in
+`climate_indices_rng_seed`.
 `rejection_share` reports the share of cells at or below `alpha`, and `bh_adjust=True` adds
 Benjamini–Hochberg p-values across cells, whose assumptions spatial correlation weakens. A p-value of the
 candidate that `best` selected is a post-selection statistic, not an ordinary test. The bootstrap costs
