@@ -49,3 +49,49 @@ once with `uv run --group dev scripts/prepare_e2e_inputs.py` (about 15 MB
 on the first run), then open the notebook with its kernel in `notebooks/` (the
 notebook's default relative data path assumes that working directory). See
 {doc}`choosing-parameters` for choosing the distribution and period.
+
+## Check uniformity by calendar step
+
+Use `suitability.pit_uniformity()` with probability output from a continuous SPI,
+SPEI, SPAI, or `standardized_index()` fit. It reports the Kolmogorov–Smirnov
+statistic `ks_statistic`, the naive p-value `ks_p_value_naive`, and the
+Anderson–Darling statistic `ad_statistic` for each month or day of the 366-day
+calendar. For daily xarray input, February 29 includes only observed leap days.
+SPAI pools anomalies across the calendar, so months with different spreads can
+show nonuniform probabilities even when the pooled fit looks reasonable.
+
+For the gamma SPI above, use the fitted `prob_zero` and mark exact zero
+accumulations. Use the same Calibration Period as the source fit.
+
+```python
+from climate_indices import suitability
+
+accumulated = precip.clip(min=0).rolling(time=options["scale"]).sum()
+seasonal = suitability.pit_uniformity(
+    pit, **options, prob_zero=fit.prob_zero, zero_mask=accumulated == 0
+)
+july = seasonal.sel(month=7)
+```
+
+For a mixed CDF the diagnostic removes the marked point mass and transforms
+the remaining probabilities to `(p - p0) / (1 - p0)`. For a Pearson Type III
+fit with a zero mass, mark all accumulated values below 0.0005 where
+`p0 > 0` in `zero_mask`, and mark the nonzero subset in `trace_mask`.
+`zero_share` and `trace_share` count exact zeros and traces separately as
+fractions of finite probabilities. `n_valid` counts the probabilities that
+enter the statistics. An unmasked mixed-CDF probability below `p0` raises a
+mask error. A masked probability must match a supported point-mass placement
+at the input precision. For an all-zero gamma calibration step, the diagnostic
+accepts a masked probability of 0 with `prob_zero=1`. That step has
+`zero_share=1`, `n_valid=0`, and missing test statistics. Pearson Type III also
+permits 1 at its upper support limit. Check `distribution_used` from
+`fit_diagnostics()` for fallback before specifying the distribution and mask.
+
+Removing Pearson traces truncates the continuous sample at 0.0005. Check the
+fitted CDF at that cutoff before interpreting the results. The uniform
+reference approximates the retained sample only when that probability is
+negligible. An exact probability of 0 or 1 gives an infinite Anderson–Darling
+statistic. A p-value from the fit's own
+Calibration Period can be conservative and is useful for screening. Above a
+Timescale of 12 months or 365 days, overlapping accumulation windows invalidate
+the naive p-values and produce a warning.

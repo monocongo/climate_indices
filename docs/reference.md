@@ -982,6 +982,10 @@ scored as a miss or a false alarm. Every ratio is a point estimate with no inter
 the pairs where both are present, the two definitions the Earth Engine pilot uses. It rejects an xarray
 `DataArray`, which would otherwise be compared position by position and lose its labels.
 
+`pit_uniformity` takes an existing continuous probability-scale index and reports uniformity by
+calendar step. It supports NumPy and xarray/Dask inputs, including SPAI. For an example using the
+continuous part of a mixed CDF, see {doc}`checking-distribution-fit`.
+
 ```{eval-rst}
 .. automodule:: climate_indices.suitability
    :members:
