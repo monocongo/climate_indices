@@ -20,7 +20,7 @@
       },
       "store_index": 0,
       "version": "3.2.0",
-      "wall_time_s": 0.012528250008472241,
+      "wall_time_s": 0.008773166991886683,
       "warnings": []
     },
     {
@@ -45,7 +45,7 @@
       },
       "store_index": 1,
       "version": "1.0.0",
-      "wall_time_s": 0.0181596669863211,
+      "wall_time_s": 0.03033108400995843,
       "warnings": [
         "method: position 'accumulation': requested 'sum', applied 'mean'"
       ]
@@ -54,9 +54,9 @@
   "checksum_sha256": "868ae67cc05b656d714a195ca9390c6d5bd8273fbb0e1568c8d9247b1acb8ced",
   "created": "2026-11-23",
   "download_date": "2024-01-01",
-  "fixture_version": "1.1.2",
+  "fixture_version": "1.2.0",
   "harness": {
-    "git_commit": "7bd941c720d9a530895d79f93d5daaf234b5ec81",
+    "git_commit": "bd40df4a0eae40b35b7d27260b590e7ab6b2541c",
     "git_dirty": false
   },
   "index": "spi",
