@@ -8,6 +8,12 @@ Research date: 2026-09-22. All access statements below describe what was actuall
 fetched on that date; anything that could not be fetched is marked as requiring manual
 retrieval rather than asserted present.
 
+**Update 2026-11-23 (#1696).** After this survey: the Deo et al. (2015) full text
+was read and its Eq. (1) is the harmonic double sum, so the kernel conflict below is
+resolved (`docs/research/deo-2015-flood-index-notes.md`); and the Hickman record is
+committed as a Table 5 characterization fixture, not an exact reference
+(`tests/fixture/flood_hickman/`). The survey text below is unchanged.
+
 ## Question
 
 Which publicly accessible references can validate this library's planned Effective

@@ -44,7 +44,7 @@ is not a reference for this library's gap policy.
 | Index | Needed before committing an oracle |
 | --- | --- |
 | PE / EDI | Characterized, not exactly reproduced, in `tests/fixture/flood_hickman/` (single station, calendar-day-mean fill). For an exact reference, reconstruct the paper's 113-station High Plains subset and 100 km substitution rule; pin the 30-year MEP window within the 1960–1996 record; resolve AMS reuse terms. The published Table 5 uses variable-duration EDI, not the fixed-window public contract. |
-| I_F | The Deo et al. (2015) full text confirms the kernel (`docs/research/deo-2015-flood-index-notes.md`); the Brisbane values need the paper's adjusted BoM 40094 rainfall for 1915–2012, which is not published, and its 365-day calendar, then reuse terms. |
+| I_F | The Deo et al. (2015) full text confirms the kernel (`docs/research/deo-2015-flood-index-notes.md`); the Brisbane values need the paper's adjusted BoM 40094 rainfall for 1915–2012, which is not published, and its 365-day calendar, then reuse terms. The 2014 USQ conference paper is another possible source for the inputs. |
 | API | Retrieve the remaining Kohler and Linsley (1951) pages to check for published numeric values. The R comparison does not establish agreement on observed inputs or validate flood prediction. |
 
 Any future artifact must add schema-valid `provenance.json` metadata and must

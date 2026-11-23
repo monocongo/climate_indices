@@ -31,13 +31,16 @@ Moishin et al. (2021), co-authored with Deo, supplies an openly licensed
 same-lineage statement of the double sum, not a numeric oracle for this API.
 
 `tests/test_flood_index.py` checks the declared normalization and year-boundary
-contract; no numeric external oracle is available yet (see
+contract, and `tests/test_flood_properties.py` checks on seeded synthetic rain
+that calibration annual maxima standardize to mean 0 and SD 1, that a rainfall
+step raises the index from that day on, and that constant input gives NaN, never
+infinity. No numeric external oracle is available (see
 `tests/fixture/flood/README.md`). The NumPy route is stable, DataArray dispatch
 is beta ([#1108](https://github.com/monocongo/climate_indices/issues/1108)), and
 the CLI reaches the same index as `--index flood_index`
 ([#1115](https://github.com/monocongo/climate_indices/issues/1115)).
-`VALIDATION.md` records I_F as regression only in its Flood Evidence
-Classification section.
+`VALIDATION.md` records I_F as specification and regression coverage with
+synthetic property checks in its Flood Evidence Classification section.
 
 ## References
 

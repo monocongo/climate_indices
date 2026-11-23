@@ -24,7 +24,9 @@ No kernel or API behavior changed.
 Amended after reading the Deo et al. (2015) full text
 (`docs/research/deo-2015-flood-index-notes.md`): its Eq. (1) is the harmonic
 double sum of decision 2, so the abstract's "exponentially decaying" wording is
-descriptive and the kernel is no longer unverified. No kernel or API behavior
+descriptive and the kernel is no longer unverified. The Hickman, Nebraska record
+is also now committed as a Table 5 *characterization* fixture
+(`tests/fixture/flood_hickman/`), not an exact reference. No kernel or API behavior
 changed.
 
 Amended for [#1258](https://github.com/monocongo/climate_indices/issues/1258):
@@ -258,11 +260,11 @@ an established EDI construction — it does **not** share this kernel's weights
 (`H_D − H_{m−1}`, against its reversed `H_n`) and is not an oracle. None of this
 is external validation: no reproducible numeric paper oracle has been
 identified for PE, EDI, I_F, or API, so the family stops at the source-algebra
-and regression tiers.
+and regression tiers, plus the Hickman characterization and synthetic property checks.
 
-Deferred work is blocked on retrieval rather than on design: reproducing Table 5
-and implementing the variable-duration EDI both wait on the Hickman record, whose
-source the paper names, with the dry-day threshold and the `DS` definition now
+Deferred work is blocked on retrieval rather than on design: an exact Table 5 reproduction
+and the variable-duration EDI both wait on the paper's processed Hickman record
+(a single-station characterization is committed), with the dry-day threshold and the `DS` definition now
 settled by decision 1; an I_F numeric oracle waits on the Deo et al. (2015) rainfall
 inputs (adjusted BoM 40094, not published); an API numeric oracle waits on the remaining pages of Kohler & Linsley
 (1951), whose retrieved portion tabulates no values. A reader who
