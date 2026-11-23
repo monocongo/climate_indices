@@ -11,13 +11,15 @@ An adapter is a subprocess: ``<adapter> run <request.json> <out_dir>``.
   effective method the comparator actually applied, software versions, wall time, warnings, and
   each output series by path and SHA-256.
 * A series is a two-column CSV, ``time,value``. Values use ``repr(float)``, the shortest string
-  that round-trips a binary64 exactly; a missing value is ``NaN``.
+  that round-trips a binary64 exactly; a missing value is ``nan`` (``NaN`` is read as well).
+* A ``path`` must stay inside the directory of the document that names it.
 """
 
 from __future__ import annotations
 
 import csv
 import hashlib
+import io
 import json
 import platform
 import sys
@@ -40,6 +42,7 @@ _RESULT_KEYS = (
     "warnings",
     "outputs",
 )
+_MISSING = object()
 
 
 class ContractError(ValueError):
@@ -61,13 +64,21 @@ def write_series(path: Path, times: Sequence[str], values: Sequence[float]) -> s
     return sha256_file(path)
 
 
-def read_series(path: Path) -> tuple[list[str], list[float]]:
-    with path.open(newline="", encoding="utf-8") as handle:
-        reader = csv.reader(handle)
-        if next(reader, None) != ["time", "value"]:
-            raise ContractError(f"{path}: header is not 'time,value'")
-        rows = list(reader)
-    return [r[0] for r in rows], [float(r[1]) for r in rows]
+def read_series(path: Path, sha256: str | None = None) -> tuple[list[str], list[float]]:
+    """Read a series. With ``sha256``, the bytes parsed are the bytes hashed (no verify-then-reopen gap)."""
+    data = path.read_bytes()
+    if sha256 is not None and hashlib.sha256(data).hexdigest() != sha256:
+        raise ContractError(f"{path}: SHA-256 differs from the {sha256} the document names")
+    rows = list(csv.reader(io.StringIO(data.decode("utf-8"), newline="")))
+    if not rows or rows[0] != ["time", "value"]:
+        raise ContractError(f"{path}: header is not 'time,value'")
+    body = rows[1:]
+    if any(len(row) != 2 for row in body):
+        raise ContractError(f"{path}: every row must be exactly 'time,value'")
+    try:
+        return [row[0] for row in body], [float(row[1]) for row in body]
+    except ValueError as error:
+        raise ContractError(f"{path}: {error}") from error
 
 
 def read_json(path: Path) -> dict[str, Any]:
@@ -89,20 +100,46 @@ def _require(document: Mapping[str, Any], keys: Sequence[str], what: str) -> Non
         raise ContractError(f"{what} has schema_version {document['schema_version']!r}, expected {SCHEMA_VERSION}")
 
 
-def _verify(base: Path, entry: Mapping[str, Any], what: str) -> Path:
-    path = base / entry["path"]
+def _require_mappings(document: Mapping[str, Any], keys: Sequence[str], what: str) -> None:
+    for key in keys:
+        if not isinstance(document[key], Mapping):
+            raise ContractError(f"{what}: {key!r} must be an object")
+
+
+def entry_path(base: Path, entry: Any, what: str) -> tuple[Path, str]:
+    """Resolve ``{"path", "sha256"}`` against ``base``; the path may not leave ``base``."""
+    if not isinstance(entry, Mapping) or not all(isinstance(entry.get(k), str) for k in ("path", "sha256")):
+        raise ContractError(f"{what}: expected an object with string 'path' and 'sha256'")
+    root = base.resolve()
+    path = (root / entry["path"]).resolve()
+    if not path.is_relative_to(root):
+        raise ContractError(f"{what}: {entry['path']!r} is outside {base}")
+    return path, entry["sha256"]
+
+
+def _verify(base: Path, entry: Any, what: str) -> Path:
+    path, expected = entry_path(base, entry, what)
     if not path.is_file():
         raise ContractError(f"{what}: {path} does not exist")
     actual = sha256_file(path)
-    if actual != entry["sha256"]:
-        raise ContractError(f"{what}: {path} has SHA-256 {actual}, the request or result says {entry['sha256']}")
+    if actual != expected:
+        raise ContractError(f"{what}: {path} has SHA-256 {actual}, the document says {expected}")
     return path
+
+
+def read_entry_series(base: Path, entry: Any, what: str) -> tuple[list[str], list[float]]:
+    """Read the series a ``{"path", "sha256"}`` entry names, hashing the bytes that are parsed."""
+    path, expected = entry_path(base, entry, what)
+    if not path.is_file():
+        raise ContractError(f"{what}: {path} does not exist")
+    return read_series(path, expected)
 
 
 def read_request(path: Path) -> dict[str, Any]:
     """Load a request and verify every input's SHA-256 against the file on disk."""
     request = read_json(path)
     _require(request, _REQUEST_KEYS, "request")
+    _require_mappings(request, ("positions", "inputs"), "request")
     for name, entry in request["inputs"].items():
         _verify(path.parent, entry, f"input {name!r}")
     return request
@@ -112,6 +149,7 @@ def read_result(path: Path) -> dict[str, Any]:
     """Load a result and verify every output's SHA-256 against the file on disk."""
     result = read_json(path)
     _require(result, _RESULT_KEYS, "result")
+    _require_mappings(result, ("effective_method", "software", "outputs"), "result")
     for name, entry in result["outputs"].items():
         _verify(path.parent, entry, f"output {name!r}")
     return result
@@ -121,12 +159,30 @@ def diff_method(requested: Mapping[str, Any], effective: Mapping[str, Any]) -> l
     """Return one warning per requested position the comparator did not apply as requested.
 
     A position the comparator does not report counts as a difference: silence is not agreement.
+    Types must match too, so ``3``, ``3.0`` and ``True`` are three different values.
     """
-    return [
-        f"position {key!r}: requested {want!r}, applied {effective.get(key, '<not reported>')!r}"
-        for key, want in requested.items()
-        if effective.get(key) != want
-    ]
+    warnings = []
+    for key, want in requested.items():
+        got = effective.get(key, _MISSING)
+        if got is _MISSING or type(got) is not type(want) or got != want:
+            shown = "<not reported>" if got is _MISSING else got
+            warnings.append(f"position {key!r}: requested {want!r}, applied {shown!r}")
+    return warnings
+
+
+def require_consecutive_months(times: Sequence[str], *, january_start: bool = False) -> None:
+    """Raise unless ``times`` are consecutive ``YYYY-MM`` labels (and start in January if asked)."""
+    try:
+        year, month = int(times[0][:4]), int(times[0][5:7])
+    except (IndexError, ValueError) as error:
+        raise ContractError(f"times do not start with a YYYY-MM label: {list(times[:1])!r}") from error
+    first = year * 12 + month - 1
+    for i, label in enumerate(times):
+        n = first + i
+        if label != f"{n // 12:04d}-{n % 12 + 1:02d}":
+            raise ContractError(f"times are not consecutive calendar months: {label!r} at position {i}")
+    if january_start and month != 1:
+        raise ContractError(f"times start in month {month}, but this comparator takes the first value as January")
 
 
 def run_adapter(
@@ -138,14 +194,18 @@ def run_adapter(
 
     ``compute(request, inputs)`` receives the verified request and each input series, and returns
     ``version``, ``effective_method``, ``software`` (versions), optional ``warnings``, and
-    ``series``: ``{output name: (times, values)}``.
+    ``series``: ``{output name: (times, values)}``. Only ``compute`` is timed, so import time is
+    not in ``wall_time_s`` as long as the adapter imports its comparator at module level.
     """
     if len(argv) != 3 or argv[0] != "run":
         print(f"usage: {comparator} run <request.json> <out_dir>", file=sys.stderr)
         return 2
     request_path, out_dir = Path(argv[1]), Path(argv[2])
     request = read_request(request_path)
-    inputs = {name: read_series(request_path.parent / entry["path"]) for name, entry in request["inputs"].items()}
+    inputs = {
+        name: read_entry_series(request_path.parent, entry, f"input {name!r}")
+        for name, entry in request["inputs"].items()
+    }
     out_dir.mkdir(parents=True, exist_ok=True)
     started = time.perf_counter()
     computed = compute(request, inputs)

@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import argparse
 import datetime
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -77,9 +78,19 @@ def write_request(
 
 
 def run_adapter(name: str, command: list[str], request: Path, out_dir: Path) -> dict[str, Any]:
-    """Run one adapter as a subprocess and return its verified result."""
+    """Run one adapter as a subprocess and return its verified result.
+
+    The output directory is emptied first: an adapter that exits 0 without writing must not be
+    credited with a previous run's files.
+    """
+    shutil.rmtree(out_dir, ignore_errors=True)
     subprocess.run([*command, "run", str(request), str(out_dir)], check=True)
-    return contract.read_result(out_dir / "result.json")
+    if not (out_dir / "result.json").is_file():
+        raise contract.ContractError(f"{name}: exited 0 but wrote no result.json")
+    result = contract.read_result(out_dir / "result.json")
+    if "spi" not in result["outputs"]:
+        raise contract.ContractError(f"{name}: the result has no 'spi' output")
+    return result
 
 
 def write_store(
@@ -91,7 +102,9 @@ def write_store(
     names = list(results)
     data = np.full((len(names), 1, len(times)), np.nan)
     for i, name in enumerate(names):
-        got_times, values = contract.read_series(out_dirs[name] / results[name]["outputs"]["spi"]["path"])
+        got_times, values = contract.read_entry_series(
+            out_dirs[name], results[name]["outputs"]["spi"], f"{name} output 'spi'"
+        )
         if got_times != times:
             raise contract.ContractError(f"{name}: output times differ from the input times")
         data[i, 0, :] = values
@@ -119,6 +132,7 @@ def build_manifest(
     times: list[str],
     units: str,
     store_name: str,
+    zeros: int,
     created: str | None = None,
 ) -> dict[str, Any]:
     provenance = contract.read_json(FIXTURE_DIR / "provenance.json")
@@ -149,15 +163,21 @@ def build_manifest(
         "created": created or datetime.date.today().isoformat(),
         "harness": {
             "git_commit": _git("rev-parse", "HEAD"),
-            "git_dirty": bool(_git("status", "--porcelain", "--untracked-files=no")),
+            "git_dirty": bool(_git("status", "--porcelain")),
         },
-        "source": "NCEI nClimDiv monthly precipitation (climdiv-pcpndv), as committed in tests/fixture/palmer/",
+        "source": f"{source_path.relative_to(ROOT).as_posix()} of this repository",
+        # url and download_date are the fixture's own provenance (tests/fixture/palmer/provenance.json)
         "url": provenance["url"],
         "download_date": provenance["download_date"],
         "subset_description": f"Climate division {unit}, monthly precipitation in inches, {times[0]} to {times[-1]}.",
         "checksum_sha256": entry["sha256"],
         "fixture_version": provenance["fixture_version"],
-        "notes": "Slice of REFIMPL-08 (issue 1610): shows that the harness runs, not that the comparators agree. Metrics are REFIMPL-16.",
+        "notes": (
+            "Slice of REFIMPL-08 (issue 1610): shows that the harness runs, not that the comparators agree. "
+            "Metrics are REFIMPL-16. url and download_date are those of the fixture's provenance.json. "
+            f"The series has {zeros} zero-precipitation months, so the zero_handling position is "
+            f"{'declared but not exercised' if zeros == 0 else 'exercised'}."
+        ),
         "index": "spi",
         "unit": unit,
         "positions": positions,
@@ -187,6 +207,7 @@ def run_study(study_dir: Path, division: str, scale: int, adapters: dict[str, li
     values = np.load(source)
     times = monthly_times(1895, len(values))
     positions = positions_for(scale, 1895, int(times[-1][:4]))
+    (study_dir / "manifest.json").unlink(missing_ok=True)  # a failed rerun must not leave the old one
     work = study_dir / "work"
     request = write_request(
         work, study=study_dir.name, unit=division, times=times, values=values, units="inch", positions=positions
@@ -205,6 +226,7 @@ def run_study(study_dir: Path, division: str, scale: int, adapters: dict[str, li
         times=times,
         units="inch",
         store_name="store.zarr",
+        zeros=int((values == 0).sum()),
     )
     contract.write_json(study_dir / "manifest.json", manifest)
     return manifest
