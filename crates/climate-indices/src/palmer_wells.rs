@@ -479,5 +479,6 @@ mod tests {
         }
         assert_eq!(pmdi(0.0, 0.3, -0.7, 0.0), -0.7);
         assert_eq!(pmdi(0.0, 0.7, -0.3, 0.0), 0.7);
+        assert!(!pmdi(0.0, 0.0, -0.0, 0.0).is_sign_negative());
     }
 }

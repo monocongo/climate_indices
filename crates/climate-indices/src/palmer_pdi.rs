@@ -557,5 +557,7 @@ mod tests {
         assert_eq!(case(0.0, 0.5, -0.5, 0.0), 0.5);
         assert_eq!(case(0.0, 0.3, -0.7, 0.0), -0.7);
         assert_eq!(case(0.0, 0.7, -0.3, 0.0), 0.7);
+        // |+0.0| == |-0.0| is a tie too: X1 keeps its sign bit (assert_eq! alone treats 0.0 == -0.0).
+        assert!(!case(0.0, 0.0, -0.0, 0.0).is_sign_negative());
     }
 }
