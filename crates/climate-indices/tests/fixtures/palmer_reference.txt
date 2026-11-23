@@ -1,7 +1,7 @@
 # Palmer standalone Rust regression fixtures.
 # Classification: Python regression, NOT external or independent scientific validation.
 # Source repository: https://github.com/monocongo/climate_indices
-# Exact Python source revision: 352797513fa309004faaa390b001af5f60f2ddac
+# Exact Python source revision: 159d3bc5
 # Source files: drought/palmer.py, drought/_palmer_common.py, drought/_palmer_duration.py, drought/_palmer_pdi.py, drought/_palmer_wells.py, drought/self_calibration.py, _calibration_period.py, utils.py, compute.py (under src/climate_indices/).
 # The generator refuses modifications to these source files relative to the recorded revision.
 # Generator: scripts/prepare_rust_palmer_fixtures.py
