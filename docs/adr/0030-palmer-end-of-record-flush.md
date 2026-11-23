@@ -59,11 +59,12 @@ updates this record's status line.
 
 ## Consequences
 
-- **Default output changes, near the end of a record only.** The months that move are those a
-  stale flush would have rewritten: PDSI, PHDI and PMDI of resolved months within the last
-  deferral run's length of the end. A record ending in December 2002 and the same record
-  extended to 2022 now agree on every resolved month. A month still pending at the end is
-  unchanged by decision 1.
+- **Default output changes for some records.** The months that move are those of the last
+  deferral run, which the stale flush rewrote at the end of the record although their spell had
+  resolved. That run is usually near the end but need not be: if the spell then runs on without
+  deferring, the rewritten months can lie two or more years before the end. A record ending in
+  December 2002 and the same record extended to 2022 now agree on every resolved month. A month
+  still pending at the end is unchanged by decision 1.
 - **Agreement with nClimDiv improves.** Against NCEI nClimDiv over the 344 fixture divisions,
   the maximum PMDI difference falls from 5.5748 to 4.3961, the PDSI mean from 0.0432 to
   0.0428, and the PMDI median from 0.0191 to 0.0190; the PDSI median (0.0127) and the 86.2%
@@ -72,6 +73,12 @@ updates this record's status line.
   differ from a compiled `pdi.f` by up to the amounts in the table above. Every other month
   runs the same recursion as before. The provenance record (`palmer-provenance.md`, row 19 and
   D9) states the departure, so nobody restores it as a "fix".
+- **The standard-Palmer fixtures were regenerated.** `tests/fixture/palmer/` holds this
+  library's own PDSI, PHDI and PMDI output, so it now encodes the departure: only the months that
+  moved (PDSI 177 in 51 divisions, PMDI 252 in 80, PHDI 24 in 14) were patched, and the fixture
+  provenance records it. On those months the mean absolute difference from nClimDiv fell for PDSI
+  (1.29 to 0.045) and PMDI (1.48 to 0.057); PHDI fell on average (0.42 to 0.19) but rose in
+  divisions 1108 and 1109.
 - **A truncation test replaces the `pdi.f` comparison** for this behavior: truncating division
   0101 at December 2002 must not change any month before it.
 - **REFIMPL-29's mechanism F is retired.** The divergence study counted this bug as
