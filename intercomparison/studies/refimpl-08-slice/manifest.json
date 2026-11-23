@@ -16,11 +16,12 @@
       "platform": "macOS-27.2.1-arm64-arm-64bit-Mach-O",
       "software": {
         "numpy": "2.4.6",
-        "python": "3.14.7"
+        "python": "3.14.7",
+        "scipy": "1.17.1"
       },
       "store_index": 0,
       "version": "3.2.0",
-      "wall_time_s": 0.009477334009716287,
+      "wall_time_s": 0.010153708994039334,
       "warnings": []
     },
     {
@@ -41,11 +42,12 @@
         "numpy": "2.5.5",
         "pandas": "3.1.1",
         "python": "3.12.13",
+        "scipy": "1.18.1",
         "xarray": "2026.9.0"
       },
       "store_index": 1,
       "version": "1.0.0",
-      "wall_time_s": 0.031694332996266894,
+      "wall_time_s": 0.04519383299339097,
       "warnings": [
         "method: position 'accumulation': requested 'sum', applied 'mean'"
       ]
@@ -56,7 +58,7 @@
   "download_date": "2024-01-01",
   "fixture_version": "1.2.0",
   "harness": {
-    "git_commit": "a2566807b0adea5d2b43957d40af113ee9b7c1a6",
+    "git_commit": "66425031d3bdd474a3deed6c6a3119333968e2b7",
     "git_dirty": false
   },
   "index": "spi",
