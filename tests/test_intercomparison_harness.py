@@ -7,6 +7,7 @@ here: the xclim adapter runs only when the slice is run by hand (intercomparison
 
 from __future__ import annotations
 
+import hashlib
 import importlib.util
 import json
 import math
@@ -432,6 +433,47 @@ def test_driver_records_a_warning_when_an_adapter_applied_another_method(tmp_pat
     assert warnings[0] == "own warning"
     assert any("'estimator'" in w and "'mle'" in w for w in warnings)
     assert any("'zero_handling'" in w and "<not reported>" in w for w in warnings)
+
+
+def test_the_manifest_hashes_the_fixture_bytes_the_run_used_even_if_the_file_changes_mid_run(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    pytest.importorskip("zarr")
+    repo = tmp_path / "repo"
+    fixture = repo / "fixture"
+    (fixture / "0101").mkdir(parents=True)
+    shutil.copy(harness.FIXTURE_DIR / "provenance.json", fixture / "provenance.json")
+    source = fixture / "0101" / "precips.npy"
+    np.save(source, np.arange(1.0, 25.0))
+    used = hashlib.sha256(source.read_bytes()).hexdigest()
+    monkeypatch.setattr(harness, "ROOT", repo)
+    monkeypatch.setattr(harness, "FIXTURE_DIR", fixture)
+    monkeypatch.setattr(harness, "harness_state", lambda: {"git_commit": "0" * 40, "git_dirty": False})
+
+    fake = tmp_path / "fake_adapter.py"
+    fake.write_text(
+        textwrap.dedent(
+            f"""
+            import sys
+            import numpy as np
+            sys.path.insert(0, {str(HARNESS)!r})
+            import contract
+
+            def compute(request, inputs):
+                np.save({str(source)!r}, np.zeros(24))  # the fixture changes while the comparator runs
+                times, values = inputs["precip"]
+                return {{"version": "0", "effective_method": request["positions"], "software": {{}},
+                         "series": {{"spi": (times, [0.0] * len(times))}}}}
+
+            raise SystemExit(contract.run_adapter("fake", compute, sys.argv[1:]))
+            """
+        )
+    )
+
+    manifest = harness.run_study(tmp_path / "s", "0101", 3, {"fake": [sys.executable, str(fake)]})
+
+    assert hashlib.sha256(source.read_bytes()).hexdigest() != used  # the adapter did change it
+    assert manifest["inputs"]["precip"]["source_sha256"] == used
 
 
 @needs_git

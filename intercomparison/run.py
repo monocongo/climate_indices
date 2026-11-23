@@ -13,6 +13,8 @@ from __future__ import annotations
 import argparse
 import contextlib
 import datetime
+import hashlib
+import io
 import shutil
 import subprocess  # nosec B404 # runs the fixed adapter commands and git
 import sys
@@ -137,6 +139,7 @@ def build_manifest(
     positions: dict[str, Any],
     request: Path,
     source_path: Path,
+    source_sha256: str,
     times: list[str],
     units: str,
     store_name: str,
@@ -190,7 +193,7 @@ def build_manifest(
         "inputs": {
             "precip": {
                 "source_path": source_path.relative_to(ROOT).as_posix(),
-                "source_sha256": contract.sha256_file(source_path),
+                "source_sha256": source_sha256,
                 "sha256": entry["sha256"],
                 "units": units,
                 "length": len(times),
@@ -213,7 +216,9 @@ def run_study(study_dir: Path, division: str, scale: int, adapters: dict[str, li
     harness = harness_state()  # before the old manifest goes: it is tracked, and its absence would read as dirty
     # first thing after that, so no failure (a bad division included) can leave the old manifest standing
     (study_dir / "manifest.json").unlink(missing_ok=True)
-    values = np.load(source)
+    data = source.read_bytes()  # one read: the bytes hashed are the bytes that become the run's inputs
+    source_sha256 = hashlib.sha256(data).hexdigest()
+    values = np.load(io.BytesIO(data))
     times = monthly_times(1895, len(values))
     positions = positions_for(scale, 1895, int(times[-1][:4]))
     work = study_dir / "work"
@@ -231,6 +236,7 @@ def run_study(study_dir: Path, division: str, scale: int, adapters: dict[str, li
         positions=positions,
         request=request,
         source_path=source,
+        source_sha256=source_sha256,
         times=times,
         units="inch",
         store_name="store.zarr",
