@@ -47,13 +47,12 @@ retroactively.
   parameters or the Z-Index of the calibration-window months (later months have
   their own Z-Index values, which of course follow the later data). They can
   change the PDSI and PHDI of the months in that one open spell, which form a
-  single block ending at the boundary. They are not guaranteed to change nothing
-  else: the end-of-record flush rewrites PDSI and PHDI for months retained from
-  earlier, already closed spells (the stale `k8max`, [#1665](https://github.com/monocongo/climate_indices/issues/1665),
-  not yet fixed), so a much drier post-calibration stretch can
-  move a calibration-window month that is outside the open spell. Each flushed
-  month's PMDI is the PMDI of its own state, not the final month's
-  ([ADR-0030](../adr/0030-palmer-end-of-record-flush-follows-the-literature.md)).
+  single block ending at the boundary. Their PMDI is the PMDI of their own state, so
+  later data can move it too. The end-of-record flush rewrites only the months still
+  pending when the record ends, so it cannot move a month an earlier, closed spell
+  had resolved (ADR-0030, #1665); NCEI's `pdi.f` can, through a stale high-water
+  mark, and this library deliberately does not. Each flushed month's PMDI is also
+  its own rather than the final month's (ADR-0030, #1666), which `pdi.f` does not do.
 - `scpdsi()`: the fitted parameters are likewise unaffected. Its three rescaling
   passes take percentiles of the calibration-window PDSI, which includes that open
   spell, so later data can in rare cases move the rescaling anchors and with them
@@ -63,8 +62,7 @@ retroactively.
 `tests/test_scpdsi.py::test_data_after_the_calibration_period_never_changes_the_fitted_parameters`
 pins the parameter and `pdsi()` Z-Index statements for every series it draws, and
 the open-spell block shape of PDSI for one seeded draw that reaches such a spell
-(issue #544). It does not pin PHDI or PMDI, and doubling the later data does not
-trigger the flush rewrites described above.
+(issue #544). It does not pin PHDI or PMDI.
 
 ### Exact-zero comparisons
 

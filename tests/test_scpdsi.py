@@ -146,8 +146,8 @@ def test_data_after_the_calibration_period_never_changes_the_fitted_parameters(f
     is identical too, and the earlier change this seeded draw produces is the spell still
     open at the last calibration month, which the Palmer recursion backtracks with later
     data by design: one block of months that ends exactly at the boundary. (The
-    end-of-record flush can also rewrite months outside that block when the later data
-    are much drier; doubling does not trigger it, see ``docs/algorithm_refs/palmer.md``.)
+    end-of-record flush rewrites only months still pending, so it cannot move months
+    outside that block; see ``docs/algorithm_refs/palmer.md``.)
     ``scpdsi()`` is excluded from
     those two checks because its rescaling anchors are percentiles of the
     calibration-window PDSI, which includes that open spell, so later data can rescale

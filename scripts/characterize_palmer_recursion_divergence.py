@@ -328,7 +328,9 @@ MECHANISMS: dict[str, list[tuple[str, str, int]]] = {
             1,
         ),
     ],
-    "F": [("step = k8 < state.k8max", "step = k8 < state.k8", 1)],
+    # Mechanism F (the stale-``k8max`` end-of-record flush) was removed from the library by
+    # #1665 (ADR-0030), so there is no source text left to harmonize. The pinned results
+    # JSON still records it, and a rerun is refused by ``verify_pinned_sources``.
     "Tol": [
         ("_py_min(state.v, 0.0)", "_py_min(state.v + 1e-5, 0.0)", 1),
         ("_py_max(state.v, 0.0)", "_py_max(state.v - 1e-5, 0.0)", 1),

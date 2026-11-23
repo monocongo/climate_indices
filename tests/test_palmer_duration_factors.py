@@ -1,4 +1,5 @@
 import types
+from pathlib import Path
 
 import numpy as np
 import pytest
@@ -450,7 +451,7 @@ def test_finish_up_falls_back_to_pdsi_when_no_spell_is_established():
     """_finish_up repeats the no-established-spell fallback for the months left
     pending when the record ends, under the same exact-zero test."""
     state = _state()
-    state.k8max = np.array([2])
+    state.k8 = np.array([2])
     state.indexj[0, 0], state.indexm[0, 0] = 0, 0
     state.indexj[1, 0], state.indexm[1, 0] = 0, 1
     state.x[0, 0, 0] = 3.0
@@ -472,7 +473,7 @@ def test_finish_up_gives_each_pending_month_its_own_pmdi():
     """Each month flushed at the end of the record takes the CASE of its own
     ppr/px1/px2/px3, not the final month's (#1666)."""
     state = _state()
-    state.k8max = np.array([2])
+    state.k8 = np.array([2])
     state.indexj[0, 0], state.indexm[0, 0] = 0, 3
     state.indexj[1, 0], state.indexm[1, 0] = 0, 4
     state.x[0, 3, 0], state.x[0, 4, 0] = 1.0, 2.0
@@ -509,6 +510,101 @@ def test_pending_months_at_the_end_of_the_record_get_their_own_pmdi():
     # the old flush wrote December's CASE into all three
     assert len(set(own)) == 3
     assert not np.any(np.isnan(result.pmdi))
+
+
+def test_finish_up_leaves_months_of_a_resolved_spell_alone():
+    """_finish_up flushes only the months still pending (#1665, ADR-0030).
+
+    Slots at or beyond k8 hold months a closed spell already resolved; a second
+    flush would overwrite their recorded values with the provisional ones. This is
+    the unit-level check of the new semantics; the end-to-end regressions for the
+    stale high-water mark are the two ``calculate()`` tests that follow.
+    """
+    state = _state()
+    state.k8 = np.array([1])  # only the first slot is still pending
+    for slot, month in enumerate((0, 1)):
+        state.indexj[slot, 0], state.indexm[slot, 0] = 0, month
+        state.x[0, month, 0] = 9.0
+    state.pdsi[0, 1, 0], state.phdi[0, 1, 0], state.wplm[0, 1, 0] = 1.5, 2.5, 3.5
+
+    _palmer_pdi._finish_up(state)
+
+    assert state.pdsi[0, 0, 0] == 9.0  # pending: flushed
+    assert (state.pdsi[0, 1, 0], state.phdi[0, 1, 0], state.wplm[0, 1, 0]) == (1.5, 2.5, 3.5)
+
+
+def test_finish_up_flushes_each_cell_up_to_its_own_pending_count():
+    """_finish_up keeps the per-cell k8 mask when cells have different runs pending.
+
+    A regression that flushed the longest cell's slot count for every cell would
+    overwrite the shorter cell's resolved slot 1 with its provisional values.
+    """
+    state = _palmer_pdi._initialize_state(np.full((1, 12, 2), np.nan))
+    state.k8 = np.array([1, 2])
+    for cell in (0, 1):
+        for slot, month in enumerate((0, 1)):
+            state.indexj[slot, cell], state.indexm[slot, cell] = 0, month
+            state.x[0, month, cell] = 9.0
+    # cell 0's slot 1 is a resolved month; cell 1's slot 1 is still pending
+    state.pdsi[0, 1, 0], state.phdi[0, 1, 0], state.wplm[0, 1, 0] = 1.5, 2.5, 3.5
+
+    _palmer_pdi._finish_up(state)
+
+    assert state.pdsi[0, 0, 0] == 9.0  # cell 0 slot 0 pending: flushed
+    assert (state.pdsi[0, 1, 0], state.phdi[0, 1, 0], state.wplm[0, 1, 0]) == (1.5, 2.5, 3.5)
+    assert state.pdsi[0, 0, 1] == 9.0  # cell 1 both slots pending: flushed
+    assert state.pdsi[0, 1, 1] == 9.0
+
+
+def test_a_resolved_month_keeps_its_value_when_nothing_is_pending_at_the_end():
+    """#1665: the REFIMPL-29 "F" sequence, where the stale ``k8max`` rewrote a resolved month.
+
+    The spell resolves at the fifth month and the sixth resolves directly, so nothing is
+    pending when the record ends. Before the fix the fifth month's PDSI was re-flushed to
+    its provisional -0.618839 and its PMDI to the final month's 1.897. Values are the
+    library's own, pinned to the same contract as the Rust test
+    ``finish_up_leaves_months_of_a_resolved_spell_alone`` in ``palmer_pdi.rs``, which
+    checks month 4 of the six-month series that this test pads to a whole year.
+    """
+    wetm = drym = (1.0 - 0.897) / (1.0 / 3.0)
+    wetb = dryb = 0.897 / (1.0 / 3.0)
+    factors = _palmer_pdi.PdiDurationFactors(wetm, wetb, drym, dryb)
+    z = np.concatenate([np.zeros(6), [-2.0, -1.0, -1.3, -2.0, 3.0, 3.0]])  # whole year, no-op padding
+
+    result = _palmer_pdi.calculate(z.reshape(1, 12, 1), factors)
+
+    # same operation order as the Rust kernel, so agreement is to rounding
+    assert result.pdsi.reshape(-1)[10] == pytest.approx(1.0, abs=1e-12)
+    assert result.phdi.reshape(-1)[10] == pytest.approx(-0.6188390862539994, abs=1e-12)
+    assert result.pmdi.reshape(-1)[10] == pytest.approx(0.9003972913896878, abs=1e-12)
+
+
+def test_resolved_months_survive_truncating_the_record_division_0101():
+    """#1665: truncating division 0101 at December 2002 must not change resolved months.
+
+    Before the fix the stale ``k8max`` re-flushed February-November 2002, replacing their
+    PMDI with the final month's 1.783. Only the months a spell still holds open at the
+    truncation point (here December 2002) may differ from the full-record run.
+    """
+    z = np.load(Path(__file__).parent / "fixture" / "palmer" / "0101" / "zindex.npy")
+    wetm = drym = (1.0 - 0.897) / (1.0 / 3.0)
+    wetb = dryb = 0.897 / (1.0 / 3.0)
+    factors = _palmer_pdi.PdiDurationFactors(wetm, wetb, drym, dryb)
+    end = (2002 - 1895 + 1) * 12
+    full = _palmer_pdi.calculate(z.reshape(-1, 12, 1), factors)
+    cut = _palmer_pdi.calculate(z[:end].reshape(-1, 12, 1), factors)
+
+    resolved = slice(0, end - 1)  # every month before December 2002
+    for name in ("pdsi", "phdi", "pmdi"):
+        # same arithmetic sequence in both runs, so agreement is to rounding only
+        np.testing.assert_allclose(
+            getattr(cut, name).reshape(-1)[resolved],
+            getattr(full, name).reshape(-1)[resolved],
+            rtol=0,
+            atol=1e-12,
+            err_msg=name,
+        )
+    assert not np.allclose(cut.pmdi.reshape(-1)[end - 11 : end - 1], 1.783, atol=1e-3)
 
 
 def test_non_contracting_duration_factor_override_is_attributed_to_pdsi():

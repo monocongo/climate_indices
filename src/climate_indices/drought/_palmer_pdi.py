@@ -132,7 +132,6 @@ class _State:
     phdi: np.ndarray
     wplm: np.ndarray
     k8: np.ndarray
-    k8max: np.ndarray
     year: int
     month: int
     iass: np.ndarray
@@ -174,7 +173,6 @@ def _initialize_state(z_values: np.ndarray) -> _State:
         phdi=np.full((n_years, 12, n_cells), np.nan),
         wplm=np.full((n_years, 12, n_cells), np.nan),
         k8=np.zeros((n_cells,), dtype=int),
-        k8max=np.zeros((n_cells,), dtype=int),
         year=0,
         month=0,
         iass=np.zeros((n_cells,), dtype=int),
@@ -415,7 +413,6 @@ def _statement_200(factors: PdiDurationFactors, state: _State, active: np.ndarra
         state.sx3[rows, defer_cells] = state.px3[y, m][defer]
         state.x[y, m] = np.where(defer, state.px3[y, m], state.x[y, m])
         state.k8 = np.where(defer, state.k8 + 1, state.k8)
-        state.k8max = np.where(defer, state.k8, state.k8max)
 
     _statement_220(state, active)
 
@@ -541,25 +538,28 @@ def _advance_month(factors: PdiDurationFactors, state: _State, year: int, month:
 
 
 def _finish_up(state: _State) -> None:
-    """Flush any spell still open when the record ends, for every cell.
+    """Flush the months still pending when the record ends, for every cell.
 
-    Each flushed month is recorded from its own ``ppr``/``px1``/``px2``/``px3``,
-    so its PMDI is that month's CASE rather than the final month's. This departs
-    from ``pdi.f`` label 240, which gives every flushed month the final month's
-    value (ADR-0030, issue #1666).
+    Only the ``k8`` pending slots are flushed. ``pdi.f`` flushes up to a high-water
+    mark (``k8max``) that its ASSIGN never resets, so it re-flushes months a closed
+    spell had already resolved (#1665, ADR-0030).
+
+    Each flushed month is recorded from its own ``ppr``/``px1``/``px2``/``px3``, so
+    its PMDI is that month's CASE rather than the final month's, departing from
+    ``pdi.f`` label 240 (ADR-0030, issue #1666).
     """
-    if not np.any(state.k8max > 0):
+    if not np.any(state.k8 > 0):
         return
     cells = np.arange(state.k8.shape[0])
-    max_k8max = int(state.k8max.max())
+    max_pending = int(state.k8.max())
 
-    for k8 in range(max_k8max):
-        step = k8 < state.k8max
+    for slot in range(max_pending):
+        step = slot < state.k8
         if not np.any(step):
             continue
         step_cells = cells[step]
-        i = state.indexj[k8][step]
-        j = state.indexm[k8][step]
+        i = state.indexj[slot][step]
+        j = state.indexm[slot][step]
         _record_index_values(state, i, j, state.x[i, j, step_cells], step_cells)
 
 

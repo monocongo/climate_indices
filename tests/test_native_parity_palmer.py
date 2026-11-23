@@ -430,14 +430,15 @@ def test_pdi_recursion_takes_the_same_branches_on_boundary_series(monkeypatch) -
     rust, python, calls = _rust_and_python(monkeypatch, lambda: _pdi_run(z))
     assert calls == {"palmer_pdi"}
     _same_outcome(rust, python)
-    # the record's H3 table measured 28, 14 and 6 live triples for these three outputs.
-    # PMDI's 6 all came from the end-of-record flush copying the final month's CASE into
-    # every pending month; since #1666 each month keeps its own, the CASE is continuous
-    # away from its branch points, and this corpus measures 0. PMDI's liveness is asserted
-    # on the spell-threshold corpus below; here its parity is 1e-10 with an identical
-    # zero and sign pattern.
-    for output in python[:2]:
-        assert _live_triples(output.reshape(_MONTHS, -1)) >= 6
+    # the record's H3 table measured 28, 14 and 6 live triples for these three outputs. With
+    # both flush fixes (#1665, #1666; ADR-0030) this corpus measures 27, 13 and 0: #1665
+    # stopped the resolved months being rewritten, which moved PMDI to 3, and the 3 that
+    # remained all came from the flush copying the final month's CASE into every pending
+    # month. Since #1666 each month keeps its own, the CASE is continuous away from its
+    # branch points. PMDI's liveness is asserted on the spell-threshold corpus below; here
+    # its parity is 1e-10 with an identical zero and sign pattern.
+    for output, floor in zip(python[:2], (27, 13), strict=True):
+        assert _live_triples(output.reshape(_MONTHS, -1)) >= floor
 
 
 def _wells_corpus_outcomes(monkeypatch, corpus: np.ndarray, factors: DurationFactors) -> tuple[np.ndarray, np.ndarray]:

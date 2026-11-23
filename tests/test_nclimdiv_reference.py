@@ -57,9 +57,12 @@ _SERIES = ("pdsi", "phdi", "pmdi", "zindex")
 # the compared sample loudly instead of silently improving the statistics.
 _MIN_COMPARED_MONTHS = 400_000
 
-# Measured across all 344 divisions (calibration period 1931-1990).
+# Measured across all 344 divisions (calibration period 1931-1990), after both end-of-record
+# flush fixes: #1665 stopped the flush rewriting resolved months, and #1666 gave each flushed
+# month its own PMDI (PMDI max 5.5748 -> 1.7026; PDSI mean 0.0432 -> 0.0428, p90 0.0638 ->
+# 0.0636; PMDI median 0.0191 -> 0.0190).
 _PDSI_MEASURED = {
-    "pdsi": {"median": 0.0127, "mean": 0.0432, "p90": 0.0638, "max": 7.6336},
+    "pdsi": {"median": 0.0127, "mean": 0.0428, "p90": 0.0636, "max": 7.6336},
     "phdi": {"median": 0.0156, "max": 3.8524},
     "pmdi": {"median": 0.0190, "max": 1.7026},
     "zindex": {"median": 0.0129, "max": 1.0176},
