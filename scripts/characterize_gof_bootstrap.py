@@ -77,6 +77,39 @@ def _draw(
     return draw, "spei", {"pet_mm": np.zeros(shape)}  # zero PET leaves the water balance equal to the draw
 
 
+def _fit_record(
+    distribution: Distribution,
+    repeat: int,
+    *,
+    rounded: bool,
+    resolution: float | None,
+    naive: bool,
+    zero_heavy: bool,
+    unit: float,
+) -> suitability.GoodnessOfFit:
+    values, index, extra = _draw(distribution, np.random.default_rng([SEED, repeat]), zero_heavy)
+    if rounded:
+        values = np.round(values / unit) * unit
+    gof = suitability.compare_distributions(
+        values,
+        1,
+        index=index,
+        data_start_year=1950,
+        calibration_year_initial=1950,
+        calibration_year_final=1950 + YEARS - 1,
+        periodicity=compute.Periodicity.monthly,
+        candidates=(distribution,),
+        n_bootstrap=0 if naive else N_BOOTSTRAP,
+        resolution=resolution,
+        seed=SEED + repeat,
+        spatial_time_major=True,
+        **extra,
+    ).goodness_of_fit
+    if gof is None:
+        raise RuntimeError("compare_distributions returned no goodness of fit")
+    return gof
+
+
 def _run(
     distribution: Distribution,
     *,
@@ -91,26 +124,15 @@ def _run(
     failed_shares: list[float] = []
     achievable: list[float] = []  # each series' probability of rejecting, given its successful refits
     for repeat in range(REPEATS):
-        values, index, extra = _draw(distribution, np.random.default_rng([SEED, repeat]), zero_heavy)
-        if rounded:
-            values = np.round(values / unit) * unit
-        gof = suitability.compare_distributions(
-            values,
-            1,
-            index=index,
-            data_start_year=1950,
-            calibration_year_initial=1950,
-            calibration_year_final=1950 + YEARS - 1,
-            periodicity=compute.Periodicity.monthly,
-            candidates=(distribution,),
-            n_bootstrap=0 if naive else N_BOOTSTRAP,
+        gof = _fit_record(
+            distribution,
+            repeat,
+            rounded=rounded,
             resolution=resolution,
-            seed=SEED + repeat,
-            spatial_time_major=True,
-            **extra,
-        ).goodness_of_fit
-        if gof is None:
-            raise RuntimeError("compare_distributions returned no goodness of fit")
+            naive=naive,
+            zero_heavy=zero_heavy,
+            unit=unit,
+        )
         if naive:
             p_values = (gof.ks_p_value_naive,)
         else:
