@@ -88,7 +88,7 @@ comparison = suitability.compare_distributions(
 )
 comparison["best"]                 # winning candidate name, or "none"
 comparison["delta_to_runner_up"]   # AICc gap to the second-best candidate
-comparison["fit_failed"]           # True where a family could not be fitted
+comparison["fit_failed"]           # True where a family could not be fitted or scored
 ```
 
 A NumPy call requires the temporal arguments instead of inferring them:
