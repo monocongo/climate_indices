@@ -31,7 +31,8 @@ import contract  # type: ignore[import-not-found]  # pyright: ignore[reportMissi
 
 def _load(name: str, path: Path) -> ModuleType:
     spec = importlib.util.spec_from_file_location(name, path)
-    assert spec is not None and spec.loader is not None
+    assert spec is not None
+    assert spec.loader is not None
     module = importlib.util.module_from_spec(spec)
     sys.modules[name] = module
     spec.loader.exec_module(module)
@@ -280,7 +281,8 @@ def test_diff_method_flags_a_changed_position_and_a_silent_one() -> None:
     assert contract.diff_method(requested, dict(requested)) == []
     warnings = contract.diff_method(requested, {"distribution": "gamma", "estimator": "mle"})
     assert len(warnings) == 2
-    assert "'estimator'" in warnings[0] and "'mle'" in warnings[0]
+    assert "'estimator'" in warnings[0]
+    assert "'mle'" in warnings[0]
     assert "<not reported>" in warnings[1]  # silence is not agreement
 
 
@@ -442,7 +444,9 @@ def test_the_climate_indices_adapter_applies_what_it_is_given_and_reports_it(tmp
     assert result["effective_method"]["scale"] == 6  # an argument of the call: followed
     assert result["effective_method"]["distribution"] == "gamma"  # the adapter only runs gamma
     (warning,) = contract.diff_method(positions, result["effective_method"])
-    assert "'distribution'" in warning and "'pearson'" in warning and "'gamma'" in warning
+    assert "'distribution'" in warning
+    assert "'pearson'" in warning
+    assert "'gamma'" in warning
 
 
 def test_the_climate_indices_adapter_reports_the_calibration_window_the_library_applied(tmp_path: Path) -> None:
@@ -462,7 +466,9 @@ def test_the_climate_indices_adapter_reports_the_calibration_window_the_library_
 
     assert result["effective_method"]["calibration_period"] == "2000/2003"
     (warning,) = contract.diff_method(positions, result["effective_method"])
-    assert "'calibration_period'" in warning and "1981/2010" in warning and "2000/2003" in warning
+    assert "'calibration_period'" in warning
+    assert "1981/2010" in warning
+    assert "2000/2003" in warning
 
 
 def test_the_climate_indices_adapter_refuses_a_series_that_does_not_start_in_january(tmp_path: Path) -> None:
@@ -686,7 +692,9 @@ def test_committed_slice_manifest_is_valid_and_describes_the_committed_fixture(t
     contract.check_store_index(manifest)
     assert {a["implementation"] for a in manifest["arrays"]} == {"climate_indices", "xclim"}
     for array in manifest["arrays"]:
-        assert array["version"] and array["effective_method"] and array["output_sha256"]
+        assert array["version"]
+        assert array["effective_method"]
+        assert array["output_sha256"]
     assert manifest["harness"]["git_dirty"] is False
     by_name = {a["implementation"]: a for a in manifest["arrays"]}
     assert by_name["climate_indices"]["warnings"] == []

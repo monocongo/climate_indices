@@ -31,6 +31,11 @@ ROOT = Path(__file__).resolve().parents[1]
 ADAPTERS_DIR = ROOT / "intercomparison" / "adapters"
 FIXTURE_DIR = ROOT / "tests" / "fixture" / "palmer"
 
+# Artifact names inside a study directory; the writer and the reader must agree.
+PRECIP_CSV = "precip.csv"
+MANIFEST_JSON = "manifest.json"
+STORE_ZARR = "store.zarr"
+
 # One command per adapter; each runs in its own environment.
 ADAPTER_COMMANDS: dict[str, list[str]] = {
     "climate_indices": [sys.executable, str(ADAPTERS_DIR / "climate_indices_adapter.py")],
@@ -78,14 +83,14 @@ def write_request(
     work: Path, *, study: str, unit: str, times: list[str], values: np.ndarray, units: str, positions: dict[str, Any]
 ) -> Path:
     work.mkdir(parents=True, exist_ok=True)
-    digest = contract.write_series(work / "precip.csv", times, values.tolist())
+    digest = contract.write_series(work / PRECIP_CSV, times, values.tolist())
     request = {
         "schema_version": contract.SCHEMA_VERSION,
         "study": study,
         "unit": unit,
         "index": "spi",
         "positions": positions,
-        "inputs": {"precip": {"path": "precip.csv", "sha256": digest, "units": units}},
+        "inputs": {"precip": {"path": PRECIP_CSV, "sha256": digest, "units": units}},
     }
     path = work / "request.json"
     contract.write_json(path, request)
@@ -154,7 +159,6 @@ def build_manifest(
     source_sha256: str,
     times: list[str],
     units: str,
-    store_name: str,
     zeros: int,
     harness: dict[str, Any],
     created: str | None = None,
@@ -214,7 +218,7 @@ def build_manifest(
             }
         },
         "store": {
-            "path": store_name,
+            "path": STORE_ZARR,
             "array": "values",
             "dims": ["implementation", "unit", "time"],
             "shape": [len(names), 1, len(times)],
@@ -226,9 +230,9 @@ def build_manifest(
 def prepare_study_directory(study_dir: Path) -> Path:
     """Claim an empty directory or reopen a directory with harness output."""
     work = study_dir / "work"
-    manifest = study_dir / "manifest.json"
+    manifest = study_dir / MANIFEST_JSON
     marker = work / ".intercomparison"
-    artifacts = (work, manifest, study_dir / "store.zarr", marker, work / "precip.csv", work / "request.json")
+    artifacts = (work, manifest, study_dir / STORE_ZARR, marker, work / PRECIP_CSV, work / "request.json")
     for path in artifacts:
         if path.is_symlink():
             raise contract.ContractError(f"{path}: study artifacts must not be symbolic links")
@@ -255,8 +259,8 @@ def prepare_study_directory(study_dir: Path) -> Path:
 def run_study(study_dir: Path, division: str, scale: int, adapters: dict[str, list[str]]) -> dict[str, Any]:
     harness = harness_state()  # record the checkout before modifying the study
     work = prepare_study_directory(study_dir)
-    (study_dir / "manifest.json").unlink(missing_ok=True)
-    if not re.fullmatch(r"[0-9]{4}", division):
+    (study_dir / MANIFEST_JSON).unlink(missing_ok=True)
+    if not re.fullmatch(r"\d{4}", division, re.ASCII):  # ASCII keeps \d equivalent to [0-9] and rejects Unicode digits
         raise contract.ContractError("division must be a four-digit climate division ID")
     source = FIXTURE_DIR / division / "precips.npy"
     if not source.resolve().is_relative_to(FIXTURE_DIR.resolve()):
@@ -273,7 +277,7 @@ def run_study(study_dir: Path, division: str, scale: int, adapters: dict[str, li
     )
     out_dirs = {name: work / name for name in adapters}
     results = {name: run_adapter(name, command, request, out_dirs[name]) for name, command in adapters.items()}
-    names = write_store(study_dir / "store.zarr", results, out_dirs, division, times)
+    names = write_store(study_dir / STORE_ZARR, results, out_dirs, division, times)
     manifest = build_manifest(
         study=study_dir.name,
         unit=division,
@@ -285,12 +289,11 @@ def run_study(study_dir: Path, division: str, scale: int, adapters: dict[str, li
         source_sha256=source_sha256,
         times=times,
         units="inch",
-        store_name="store.zarr",
         zeros=zero_accumulations(values, scale),
         harness=harness,
     )
     contract.check_store_index(manifest)
-    contract.write_json(study_dir / "manifest.json", manifest)
+    contract.write_json(study_dir / MANIFEST_JSON, manifest)
     return manifest
 
 
