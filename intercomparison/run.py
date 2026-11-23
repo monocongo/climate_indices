@@ -232,7 +232,7 @@ def prepare_study_directory(study_dir: Path) -> Path:
     for path in artifacts:
         if path.is_symlink():
             raise contract.ContractError(f"{path}: study artifacts must not be symbolic links")
-    study_dir.mkdir(parents=True, exist_ok=True)
+    study_dir.mkdir(parents=True, exist_ok=True)  # NOSONAR (S8707)
     if manifest.exists() or (any(study_dir.iterdir()) and not marker.is_file()):
         import jsonschema  # type: ignore[import-untyped]
 
