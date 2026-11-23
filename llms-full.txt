@@ -220,7 +220,7 @@ Their scope limits are in the sections below.
 | Format | `uv run ruff format --check src/ tests/` | No formatting changes needed. |
 | Notebooks | `uv run jupyter nbconvert --execute --to notebook --inplace notebooks/xarray_getting_started.ipynb notebooks/palmer_indices_xarray.ipynb notebooks/eddi_xarray.ipynb notebooks/icechunk_spi_spei.ipynb` | Requires Python 3.12 or later. All four notebooks execute from a clean checkout; the Icechunk notebook uses the optional extra that the `dev` group installs on Python 3.12 or later. |
 | Notebook smoke (Zarr/Dask tutorial, local only) | `bash scripts/smoke_e2e_notebook.sh` | `notebooks/zarr_dask_spi_spei.ipynb` executes end to end from a fresh kernel against the prepared sample inputs. |
-| Notebook (distribution-suitability workflow, local only) | `uv run --group dev jupyter nbconvert --execute --to notebook --inplace notebooks/check_distribution_suitability.ipynb` | Requires the prepared nClimGrid sample (`uv run --group dev scripts/prepare_e2e_inputs.py`); the core suite executes its cells against an offline synthetic prepared store. |
+| Notebook (distribution-suitability workflow, local only) | `uv run --group dev jupyter nbconvert --execute --to notebook --inplace notebooks/check_distribution_suitability.ipynb` | Requires the prepared nClimGrid sample (`uv run --group dev scripts/prepare_e2e_inputs.py`); the core suite executes its cells against an offline synthetic prepared store when matplotlib is installed, and the minimum-dependency job skips that test. |
 
 ## Per-Index Evidence
 
@@ -306,10 +306,11 @@ people, institutions, or code beyond the named sources is unknown.
 `notebooks/check_distribution_suitability.ipynb` runs the ADR-0028 tools on the
 prepared nClimGrid low-resolution sample (1980-2016, calibration 1981-2010).
 The core suite executes all of its code cells against an offline synthetic
-prepared store
-(`tests/test_e2e_with_dask.py::test_distribution_suitability_notebook_runs_on_prepared_sample`),
-and no test downloads data. The real sample comes from
-`scripts/prepare_e2e_inputs.py`, as the notebook documents.
+prepared store when matplotlib is installed
+(`tests/test_e2e_with_dask.py::test_distribution_suitability_notebook_runs_on_prepared_sample`);
+the minimum-dependency job has no matplotlib, so the test skips there. No test
+downloads data. The real sample comes from `scripts/prepare_e2e_inputs.py`, as
+the notebook documents.
 
 **Workflow reproduction; not reference reproduction.**
 The notebook does not reproduce Monish & Rehana (2020) or any published figure.
