@@ -111,7 +111,7 @@ updates this record's status line.
   differ from a compiled `pdi.f` by up to the amounts in decision 1. Every other month
   runs the same recursion as before. The provenance record (`palmer-provenance.md`, row 19 and
   D9) states the departure, so nobody restores it as a "fix". Decision 2 is a further departure
-  (`pdi.f` computes `final_wplm` once) and decision 3 changes every record that does not end in
+  (`pdi.f` computes `final_wplm` once) and decision 3 can change records that do not end in
   December; update the provenance record when each lands.
 - **The standard-Palmer fixtures were regenerated.** `tests/fixture/palmer/` holds this
   library's own PDSI, PHDI and PMDI output, so it now encodes the departure: only the months that
