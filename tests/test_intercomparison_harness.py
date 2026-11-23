@@ -542,7 +542,8 @@ def test_driver_records_a_warning_when_an_adapter_applied_another_method(tmp_pat
 
             raise SystemExit(contract.run_adapter("fake", compute, sys.argv[1:]))
             """
-        )
+        ),
+        encoding="utf-8",
     )
 
     manifest = _run_study(tmp_path / "s", {"fake": [sys.executable, str(fake)]})
@@ -586,7 +587,8 @@ def test_the_manifest_hashes_the_fixture_bytes_the_run_used_even_if_the_file_cha
 
             raise SystemExit(contract.run_adapter("fake", compute, sys.argv[1:]))
             """
-        )
+        ),
+        encoding="utf-8",
     )
 
     manifest = harness.run_study(tmp_path / "s", "0101", 3, {"fake": [sys.executable, str(fake)]})
