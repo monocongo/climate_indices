@@ -433,10 +433,11 @@ def test_pdi_recursion_takes_the_same_branches_on_boundary_series(monkeypatch) -
     # the record's H3 table measured 28, 14 and 6 live triples for these three outputs.
     # PMDI's 6 all came from the end-of-record flush copying the final month's CASE into
     # every pending month; since #1666 each month keeps its own, the CASE is continuous
-    # away from its branch points, and this corpus measures 0. PMDI parity here is exact
-    # equality of the two paths, with no liveness floor.
-    for output, floor in zip(python, (6, 6, 0), strict=True):
-        assert _live_triples(output.reshape(_MONTHS, -1)) >= floor
+    # away from its branch points, and this corpus measures 0. PMDI's liveness is asserted
+    # on the spell-threshold corpus below; here its parity is 1e-10 with an identical
+    # zero and sign pattern.
+    for output in python[:2]:
+        assert _live_triples(output.reshape(_MONTHS, -1)) >= 6
 
 
 def _wells_corpus_outcomes(monkeypatch, corpus: np.ndarray, factors: DurationFactors) -> tuple[np.ndarray, np.ndarray]:
@@ -497,6 +498,8 @@ def test_pdi_recursion_takes_the_same_branches_at_spell_thresholds(monkeypatch) 
     assert calls == {"palmer_pdi"}
     _same_outcome(rust, python)
     assert _live_triples(python[0].reshape(24, -1)) >= 26  # measured 26, record's H3 table
+    # measured 14; since #1666 this corpus, not the straddling one, keeps PMDI's CASE branches live
+    assert _live_triples(python[2].reshape(24, -1)) >= 14
 
 
 def test_wells_recursion_takes_the_same_branches_at_spell_thresholds(monkeypatch) -> None:
