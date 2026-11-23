@@ -1838,7 +1838,8 @@ retroactively.
   parameters or the Z-Index of the calibration-window months (later months have
   their own Z-Index values, which of course follow the later data). They can
   change the PDSI and PHDI of the months in that one open spell, which form a
-  single block ending at the boundary. The end-of-record flush rewrites only the
+  single block ending at the boundary. Their PMDI also takes the final record
+  month's value, so later data can move it. The end-of-record flush rewrites only the
   months still pending when the record ends, so it cannot move a month an earlier,
   closed spell had resolved (ADR-0030, #1665). NCEI's `pdi.f` can, through a stale
   high-water mark; this library deliberately does not.
