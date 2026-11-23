@@ -83,8 +83,8 @@ whose fit fails is standardized with gamma while its neighbours use Pearson — 
 is the full choice workflow: relative comparison with `compare_distributions`,
 goodness of fit, category impact, seasonal uniformity and reference agreement,
 with a [worked notebook](https://github.com/monocongo/climate_indices/blob/main/notebooks/check_distribution_suitability.ipynb).
-A KS p-value flags a fit to inspect, not a calibrated test on independently
-held-out data.
+A KS p-value below 0.05 flags a fit to inspect, not a calibrated test on
+independently held-out data.
 
 To standardize new data against a fit computed once — a projection run, or a rerun
 that must not refit — compute the parameters and pass them as `fitting_params`
