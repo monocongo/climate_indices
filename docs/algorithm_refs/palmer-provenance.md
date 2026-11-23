@@ -181,13 +181,15 @@ recorded in REFIMPL-46 ([#1661](https://github.com/monocongo/climate_indices/iss
   ([#1662](https://github.com/monocongo/climate_indices/issues/1662)).
   The UL denominator at `awc == 0` now matches `pdi.f`
   ([#1664](https://github.com/monocongo/climate_indices/issues/1664)).
-- **Maintainer decisions (2026-11-19 and 2026-11-22), recorded in {doc}`ADR-0030 <../adr/0030-palmer-end-of-record-flush>`.**
+- **Maintainer decisions, recorded in {doc}`ADR-0030 <../adr/0030-palmer-end-of-record-flush>`.**
   The stale `k8max` (row 19), which re-flushed months a closed spell had already resolved,
   is **fixed** ([#1665](https://github.com/monocongo/climate_indices/issues/1665)): the library now flushes only the months still pending, so it
   differs from `pdi.f` on the months the stale flush rewrote. Against nClimDiv the PMDI
   maximum difference fell from 5.5748 to 4.3961. The final-month PMDI of the flushed months
-  ([#1666](https://github.com/monocongo/climate_indices/issues/1666)) is still to change, as is ending the recursion at the last real month
-  ([#1663](https://github.com/monocongo/climate_indices/issues/1663)). The X2 behaviour stays: nClimDiv agrees with it better than with updating X2.
+  ([#1666](https://github.com/monocongo/climate_indices/issues/1666)) is still to change, as is
+  stopping the recursion before calendar padding
+  ([#1663](https://github.com/monocongo/climate_indices/issues/1663)). The X2 behaviour stays:
+  nClimDiv agrees with it better than with updating X2.
 
 ## History
 
