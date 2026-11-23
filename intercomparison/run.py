@@ -62,6 +62,17 @@ def positions_for(scale: int, first_year: int, last_year: int) -> dict[str, Any]
     }
 
 
+def zero_accumulations(values: np.ndarray, scale: int) -> int:
+    """Count the all-zero ``scale``-month windows: the zeros that zero handling sees.
+
+    An isolated zero month is not one at scale > 1. A window with a missing month is not counted.
+    """
+    if len(values) < scale:
+        return 0
+    sums = np.convolve(np.asarray(values, dtype=float), np.ones(scale), mode="valid")
+    return int((sums == 0).sum())
+
+
 def write_request(
     work: Path, *, study: str, unit: str, times: list[str], values: np.ndarray, units: str, positions: dict[str, Any]
 ) -> Path:
@@ -184,7 +195,7 @@ def build_manifest(
         "notes": (
             "Slice of REFIMPL-08 (issue 1610): shows that the harness runs, not that the comparators agree. "
             "Metrics are REFIMPL-16. url and download_date are those of the fixture's provenance.json. "
-            f"The series has {zeros} zero-precipitation months, so the zero_handling position is "
+            f"The series has {zeros} zero {positions['scale']}-month accumulations, so the zero_handling position is "
             f"{'declared but not exercised' if zeros == 0 else 'exercised'}."
         ),
         "index": "spi",
@@ -240,7 +251,7 @@ def run_study(study_dir: Path, division: str, scale: int, adapters: dict[str, li
         times=times,
         units="inch",
         store_name="store.zarr",
-        zeros=int((values == 0).sum()),
+        zeros=zero_accumulations(values, scale),
         harness=harness,
     )
     contract.write_json(study_dir / "manifest.json", manifest)

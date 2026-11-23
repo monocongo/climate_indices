@@ -262,6 +262,18 @@ def test_adapter_command_line_rejects_bad_usage() -> None:
     assert contract.run_adapter("x", lambda r, i: {}, ["run", "only-one-argument"]) == 2
 
 
+def test_zero_handling_is_judged_on_accumulations_not_on_raw_months() -> None:
+    isolated = np.array([1.0, 0.0, 2.0, 0.0, 3.0, 4.0])  # two zero months, no zero three-month sum
+    assert harness.zero_accumulations(isolated, 1) == 2
+    assert harness.zero_accumulations(isolated, 3) == 0
+
+    dry_spell = np.array([1.0, 0.0, 0.0, 0.0, 0.0, 2.0])  # four zero months: two all-zero three-month windows
+    assert harness.zero_accumulations(dry_spell, 3) == 2
+
+    assert harness.zero_accumulations(np.array([0.0, np.nan, 0.0, 0.0]), 2) == 1  # a window with a gap is not counted
+    assert harness.zero_accumulations(np.array([0.0, 0.0]), 3) == 0  # shorter than one window
+
+
 def test_warnings_raised_inside_compute_are_recorded_in_the_result(tmp_path: Path) -> None:
     request = harness.write_request(
         tmp_path / "work",
