@@ -358,6 +358,21 @@ mod tests {
         assert_eq!(out.ssudat[[0, 0, 0]], 2.625);
     }
 
+    /// A dry month at zero AWC with water still in the underlying layer: the loss
+    /// denominator is the combined capacity, so the loss stays finite and below `su`.
+    ///
+    /// `water_balance` cannot reach this state at `awc == 0` (the underlying layer
+    /// starts empty), so this pins `recharge`'s denominator directly. The old
+    /// `/ awc` denominator makes the quotient infinite and `py_min` keeps all of `su`.
+    #[test]
+    fn zero_awc_uses_the_combined_capacity_denominator() {
+        let outcome = recharge(0.5, 2.0, 1.0, 0.5, 0.0);
+
+        assert_eq!(outcome.tl, 1.25);
+        assert_eq!(outcome.et, 1.75);
+        assert_eq!(outcome.ssu, 0.25);
+    }
+
     /// The sums only accrue over the inclusive calibration years, while the
     /// monthly arrays cover every year.
     #[test]
