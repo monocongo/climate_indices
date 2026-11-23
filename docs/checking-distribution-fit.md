@@ -81,9 +81,11 @@ fit with a zero mass, mark all accumulated values below 0.0005 where
 fractions of finite probabilities. `n_valid` counts the probabilities that
 enter the statistics. An unmasked mixed-CDF probability below `p0` raises a
 mask error. A masked probability must match a supported point-mass placement
-at the input precision. Pearson Type III also permits 1 at its upper support
-limit. Check `distribution_used` from `fit_diagnostics()` for fallback before
-specifying the distribution and mask.
+at the input precision. For an all-zero gamma calibration step, the diagnostic
+accepts a masked probability of 0 with `prob_zero=1`. That step has
+`zero_share=1`, `n_valid=0`, and missing test statistics. Pearson Type III also
+permits 1 at its upper support limit. Check `distribution_used` from
+`fit_diagnostics()` for fallback before specifying the distribution and mask.
 
 Removing Pearson traces truncates the continuous sample at 0.0005. Check the
 fitted CDF at that cutoff before interpreting the results. The uniform

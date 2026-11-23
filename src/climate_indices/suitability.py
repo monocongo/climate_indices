@@ -29,7 +29,7 @@ import json
 import math
 import secrets
 import warnings
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, Hashable, Mapping, Sequence
 from typing import Any, Literal, get_args
 
 import numpy as np
@@ -2143,6 +2143,48 @@ def _fold_pit(values: np.ndarray, steps: int, fill: float | bool, positions: np.
     return values.reshape(years, steps, *values.shape[1:])
 
 
+def _continuous_mixed_pit(
+    sample: np.ndarray,
+    valid: np.ndarray,
+    prob_zero: np.ndarray,
+    zero_mask: np.ndarray | None,
+    trace_mask: np.ndarray | None,
+    distribution: Distribution,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    p0 = _bounded_pit_array(prob_zero, "prob_zero").astype(float, copy=False)
+    if p0.shape != sample.shape[1:]:
+        raise _invalid(
+            "prob_zero must match the (calendar step, *cells) shape.",
+            "prob_zero",
+            p0.shape,
+            str(sample.shape[1:]),
+        )
+    mass = _pit_mask(zero_mask, sample.shape, "zero_mask")
+    trace = np.asarray(False) if trace_mask is None else _pit_mask(trace_mask, sample.shape, "trace_mask")
+    if np.any(trace & ~mass):
+        raise ValueError("trace_mask must mark a subset of zero_mask.")
+    # Compare at input precision so rounding the mixed CDF to float32 does not change the boundary.
+    boundary = p0.astype(sample.dtype, copy=False)
+    # Probability-scale center_of_mass and mean_zero both use p0 / 2.
+    placement = (sample == boundary) | ((p0 > 0) & (p0 < 1) & (sample == (p0 / 2).astype(sample.dtype, copy=False)))
+    if distribution is Distribution.pearson:
+        # A classic Pearson upper-support limit overrides the point mass with 1.
+        placement |= sample == 1
+    elif distribution is Distribution.gamma:
+        # Gamma SPI emits 0 for all-zero steps, but fit_diagnostics reports the fitted mass of 1.
+        placement |= (p0 == 1) & (sample == 0)
+    if np.any(valid & mass & (~np.isfinite(p0) | ~placement)):
+        raise ValueError("zero_mask marks a probability incompatible with the point-mass placement.")
+    continuous = valid & ~mass
+    if np.any(continuous & (sample < boundary)):
+        raise ValueError("zero_mask misses a point-mass observation: an unmasked probability is below prob_zero.")
+    if np.any(continuous & ~(p0 < 1)):
+        raise ValueError("An unmasked probability requires finite prob_zero strictly below 1.")
+    with np.errstate(invalid="ignore", divide="ignore"):
+        pit = np.where(continuous, np.maximum(sample.astype(float, copy=False) - p0, 0) / (1 - p0), np.nan)
+    return pit, (valid & mass & ~trace).sum(axis=0), (valid & trace).sum(axis=0)
+
+
 def _seasonal_pit_statistics(
     sample: np.ndarray,
     prob_zero: np.ndarray | None,
@@ -2156,37 +2198,9 @@ def _seasonal_pit_statistics(
         pit = sample.astype(float, copy=False)
         zero_count = trace_count = np.zeros(sample.shape[1:], dtype=np.int64)
     else:
-        p0 = _bounded_pit_array(prob_zero, "prob_zero").astype(float, copy=False)
-        if p0.shape != sample.shape[1:]:
-            raise _invalid(
-                "prob_zero must match the (calendar step, *cells) shape.",
-                "prob_zero",
-                p0.shape,
-                str(sample.shape[1:]),
-            )
-        mass = _pit_mask(zero_mask, sample.shape, "zero_mask")
-        trace = np.asarray(False) if trace_mask is None else _pit_mask(trace_mask, sample.shape, "trace_mask")
-        if np.any(trace & ~mass):
-            raise ValueError("trace_mask must mark a subset of zero_mask.")
-        # Probability-scale center_of_mass and mean_zero both use p0 / 2.
-        placement = (sample == p0.astype(sample.dtype, copy=False)) | (
-            (p0 > 0) & (p0 < 1) & (sample == (p0 / 2).astype(sample.dtype, copy=False))
+        pit, zero_count, trace_count = _continuous_mixed_pit(
+            sample, valid, prob_zero, zero_mask, trace_mask, distribution
         )
-        if distribution is Distribution.pearson:
-            # A classic Pearson upper-support limit overrides the point mass with 1.
-            placement |= sample == 1
-        if np.any(valid & mass & (~np.isfinite(p0) | ~placement)):
-            raise ValueError("zero_mask marks a probability incompatible with the point-mass placement.")
-        continuous = valid & ~mass
-        # Compare at the input precision so rounding the mixed CDF to float32 cannot move p0 below itself.
-        if np.any(continuous & (sample < p0.astype(sample.dtype, copy=False))):
-            raise ValueError("zero_mask misses a point-mass observation: an unmasked probability is below prob_zero.")
-        if np.any(continuous & ~(p0 < 1)):
-            raise ValueError("An unmasked probability requires finite prob_zero strictly below 1.")
-        with np.errstate(invalid="ignore", divide="ignore"):
-            pit = np.where(continuous, np.maximum(sample.astype(float, copy=False) - p0, 0) / (1 - p0), np.nan)
-        zero_count = (valid & mass & ~trace).sum(axis=0)
-        trace_count = (valid & trace).sum(axis=0)
     ks, ad, count = _pit_statistics(pit, clip_endpoints=False, statistics=statistics)
     total = valid.sum(axis=0)
     denominator = np.where(total > 0, total, np.nan)
@@ -2198,6 +2212,46 @@ def _seasonal_pit_statistics(
         ks_p_value_naive=_ks_naive_p_value(ks, count) if "ks" in statistics else None,
         ad_statistic=ad if "ad" in statistics else None,
     )
+
+
+def _validate_pit_coordinates(
+    probabilities: xr.DataArray, array: xr.DataArray, name: str, time_dim: str, dims: Sequence[Hashable]
+) -> None:
+    for dim in dims:
+        if (dim in array.xindexes) != (dim in probabilities.xindexes):
+            raise ValueError(f"{name} and probabilities must both label dimension {dim!r} or both leave it unlabeled.")
+    shared_indexes = probabilities.xindexes.keys() & array.xindexes.keys()
+    for coord_name, coord in probabilities.coords.items():
+        if coord_name in array.coords and coord_name not in shared_indexes and time_dim not in coord.dims:
+            if not coord.variable.equals(array.coords[coord_name].variable):
+                raise ValueError(f"{name} and probabilities have different coordinates for {coord_name!r}.")
+
+
+def _pit_companions(
+    probabilities: xr.DataArray,
+    inputs: dict[str, Any],
+    time_dim: str,
+    step_dim: str,
+    steps: np.ndarray,
+    cell_dims: tuple[Hashable, ...],
+) -> tuple[list[xr.DataArray], list[list[str]]]:
+    companions = []
+    core_dims = [[time_dim]]
+    for name, array in inputs.items():
+        core_dim = step_dim if name == "prob_zero" else time_dim
+        if not isinstance(array, xr.DataArray) or set(array.dims) != {core_dim, *cell_dims}:
+            raise _invalid(f"{name} must be a DataArray with matching dimensions.", name, type(array), str(core_dim))
+        dims = cell_dims if name == "prob_zero" else probabilities.dims
+        _validate_pit_coordinates(probabilities, array, name, time_dim, dims)
+        if core_dim == time_dim and array.chunks is not None:
+            validate_dask_chunks(array, time_dim)
+        if core_dim == step_dim and not np.array_equal(array[step_dim].values, steps):
+            raise _invalid(
+                f"prob_zero needs {step_dim} coordinates 1 to {len(steps)}.", name, "invalid steps", str(steps)
+            )
+        companions.append(array.reset_coords(drop=True))
+        core_dims.append([core_dim])
+    return companions, core_dims
 
 
 def _pit_xarray(
@@ -2220,30 +2274,7 @@ def _pit_xarray(
         fields += ("ad_statistic",)
     _reject_output_name_clashes({step_dim, *fields}, time_dim, probabilities)
     cell_dims = tuple(dim for dim in probabilities.dims if dim != time_dim)
-    companions = []
-    core_dims = [[time_dim]]
-    for name, array in inputs.items():
-        core_dim = step_dim if name == "prob_zero" else time_dim
-        if not isinstance(array, xr.DataArray) or set(array.dims) != {core_dim, *cell_dims}:
-            raise _invalid(f"{name} must be a DataArray with matching dimensions.", name, type(array), str(core_dim))
-        for dim in cell_dims if name == "prob_zero" else probabilities.dims:
-            if (dim in array.xindexes) != (dim in probabilities.xindexes):
-                raise ValueError(
-                    f"{name} and probabilities must both label dimension {dim!r} or both leave it unlabeled."
-                )
-        shared_indexes = probabilities.xindexes.keys() & array.xindexes.keys()
-        for coord_name, coord in probabilities.coords.items():
-            if coord_name in array.coords and coord_name not in shared_indexes and time_dim not in coord.dims:
-                if not coord.variable.equals(array.coords[coord_name].variable):
-                    raise ValueError(f"{name} and probabilities have different coordinates for {coord_name!r}.")
-        if core_dim == time_dim and array.chunks is not None:
-            validate_dask_chunks(array, time_dim)
-        if core_dim == step_dim and not np.array_equal(array[step_dim].values, steps):
-            raise _invalid(
-                f"prob_zero needs {step_dim} coordinates 1 to {len(steps)}.", name, "invalid steps", str(steps)
-            )
-        companions.append(array.reset_coords(drop=True))
-        core_dims.append([core_dim])
+    companions, core_dims = _pit_companions(probabilities, inputs, time_dim, step_dim, steps, cell_dims)
     input_names = tuple(inputs)
 
     # Map observed days onto the all-leap layout without interpolating the PIT on February 29.
@@ -2256,7 +2287,7 @@ def _pit_xarray(
 
     def score(values: np.ndarray, *arrays: np.ndarray) -> tuple[np.ndarray, ...]:
         sample = fold(_bounded_pit_array(values, "probabilities"), np.nan)
-        kwargs = dict.fromkeys(("prob_zero", "zero_mask", "trace_mask"))
+        kwargs: dict[str, np.ndarray | None] = {"prob_zero": None, "zero_mask": None, "trace_mask": None}
         for name, array in zip(input_names, arrays, strict=True):
             kwargs[name] = (
                 np.moveaxis(array, -1, 0) if name == "prob_zero" else fold(_pit_mask(array, values.shape, name), False)
@@ -2301,6 +2332,86 @@ def _pit_xarray(
         },
         coords={step_dim: steps},
         attrs=attrs,
+    )
+
+
+def _pit_inputs(
+    distribution: Distribution,
+    prob_zero: np.ndarray | xr.DataArray | None,
+    zero_mask: np.ndarray | xr.DataArray | None,
+    trace_mask: np.ndarray | xr.DataArray | None,
+) -> dict[str, np.ndarray | xr.DataArray]:
+    if (prob_zero is None) != (zero_mask is None) or (trace_mask is not None and zero_mask is None):
+        raise ValueError("Supply prob_zero and zero_mask together, with an optional trace_mask.")
+    if trace_mask is not None and distribution is not Distribution.pearson:
+        raise ValueError("trace_mask applies only to Pearson Type III.")
+    if prob_zero is not None and distribution not in _ZERO_MASS_FAMILIES:
+        raise ValueError("prob_zero and zero_mask apply only to gamma or Pearson Type III.")
+    return {
+        name: array
+        for name, array in (("prob_zero", prob_zero), ("zero_mask", zero_mask), ("trace_mask", trace_mask))
+        if array is not None
+    }
+
+
+def _pit_calibration_period(
+    scale: int,
+    periodicity: compute.Periodicity,
+    first: int,
+    last: int,
+    calibration_years: tuple[int | None, int | None],
+) -> CalibrationPeriod:
+    _indices._validate_scale(scale, periodicity)
+    initial, final = calibration_years
+    return resolve_calibration_period(
+        first, last - first + 1, first if initial is None else initial, last if final is None else final, policy="clamp"
+    )
+
+
+def _pit_numpy(
+    probabilities: np.ndarray,
+    scale: int,
+    periodicity: compute.Periodicity,
+    distribution: Distribution,
+    statistics: tuple[GofStatistic, ...],
+    inputs: dict[str, np.ndarray | xr.DataArray],
+    first: int,
+    calibration_years: tuple[int | None, int | None],
+    spatial_time_major: bool,
+) -> PitUniformity:
+    _indices._validate_periodicity(periodicity)
+    values = _bounded_pit_array(probabilities, "probabilities")
+    if values.ndim == 0 or values.size == 0:
+        raise ValueError("probabilities must be a nonempty array with a time axis.")
+    if any(isinstance(array, xr.DataArray) for array in inputs.values()):
+        raise ValueError("NumPy probabilities require NumPy masks and prob_zero.")
+    steps = periodicity.period_length
+    folded = values.ndim == 2 and not spatial_time_major
+    if folded and values.shape[1] != steps:
+        raise ValueError("A (years, periods) array must have a complete calendar-step axis.")
+    if values.ndim > 2:
+        compute.prepare_input_shape(values, spatial_time_major)
+    years = values.shape[0] if folded else -(-values.shape[0] // steps)
+    period = _pit_calibration_period(scale, periodicity, first, first + years - 1, calibration_years)
+    _warn_overlapping_windows(scale, periodicity, stacklevel=4)
+
+    def select(array: np.ndarray, fill: float | bool) -> np.ndarray:
+        return (array if folded else _fold_pit(array, steps, fill))[period.rows]
+
+    def fold_mask(name: str) -> np.ndarray | None:
+        mask = inputs.get(name)
+        if mask is None:
+            return None
+        return select(_pit_mask(mask, values.shape, name), False)
+
+    prob_zero = inputs.get("prob_zero")
+    return _seasonal_pit_statistics(
+        select(values, np.nan),
+        None if prob_zero is None else np.asanyarray(prob_zero),
+        fold_mask("zero_mask"),
+        fold_mask("trace_mask"),
+        statistics,
+        distribution,
     )
 
 
@@ -2377,17 +2488,8 @@ def pit_uniformity(
     selected = _validate_gof_statistics(statistics, name="statistics")
     if not selected:
         raise _invalid("Choose at least one statistic.", "statistics", statistics, "ks or ad")
-    if (prob_zero is None) != (zero_mask is None) or (trace_mask is not None and zero_mask is None):
-        raise ValueError("Supply prob_zero and zero_mask together, with an optional trace_mask.")
-    if trace_mask is not None and distribution is not Distribution.pearson:
-        raise ValueError("trace_mask applies only to Pearson Type III.")
-    if prob_zero is not None and distribution not in _ZERO_MASS_FAMILIES:
-        raise ValueError("prob_zero and zero_mask apply only to gamma or Pearson Type III.")
-    inputs = {
-        name: array
-        for name, array in (("prob_zero", prob_zero), ("zero_mask", zero_mask), ("trace_mask", trace_mask))
-        if array is not None
-    }
+    inputs = _pit_inputs(distribution, prob_zero, zero_mask, trace_mask)
+    calibration_years = (calibration_year_initial, calibration_year_final)
     if isinstance(probabilities, xr.DataArray):
         if not probabilities.size:
             raise ValueError("probabilities must be a nonempty array with a time axis.")
@@ -2399,53 +2501,24 @@ def pit_uniformity(
             periodicity = _infer_periodicity(probabilities[time_dim])
         _indices._validate_periodicity(periodicity)
         calendar_plan = _build_calendar_plan(probabilities[time_dim], periodicity)
-    else:
-        if data_start_year is None or periodicity is None:
-            raise ValueError("NumPy probabilities require data_start_year and periodicity.")
-        _indices._validate_periodicity(periodicity)
-        first = data_start_year
-        values = _bounded_pit_array(probabilities, "probabilities")
-        if values.ndim == 0 or values.size == 0:
-            raise ValueError("probabilities must be a nonempty array with a time axis.")
-        if any(isinstance(array, xr.DataArray) for array in inputs.values()):
-            raise ValueError("NumPy probabilities require NumPy masks and prob_zero.")
-        folded = values.ndim == 2 and not spatial_time_major
-        if folded and values.shape[1] != periodicity.period_length:
-            raise ValueError("A (years, periods) array must have a complete calendar-step axis.")
-        if values.ndim > 2:
-            compute.prepare_input_shape(values, spatial_time_major)
-        years = values.shape[0] if folded else -(-values.shape[0] // periodicity.period_length)
-        last = first + years - 1
-
-    _indices._validate_scale(scale, periodicity)
-    period = resolve_calibration_period(
-        first,
-        last - first + 1,
-        first if calibration_year_initial is None else calibration_year_initial,
-        last if calibration_year_final is None else calibration_year_final,
-        policy="clamp",
-    )
-    _warn_overlapping_windows(scale, periodicity, stacklevel=3)
-    if isinstance(probabilities, xr.DataArray):
+        period = _pit_calibration_period(scale, periodicity, first, last, calibration_years)
+        _warn_overlapping_windows(scale, periodicity, stacklevel=3)
         return _pit_xarray(
             probabilities, period, periodicity, scale, distribution, time_dim, selected, inputs, calendar_plan
         )
 
-    sample = (values if folded else _fold_pit(values, periodicity.period_length, np.nan))[period.rows]
-
-    def fold_mask(mask: np.ndarray | xr.DataArray | None, name: str) -> np.ndarray | None:
-        if mask is None:
-            return None
-        array = _pit_mask(mask, values.shape, name)
-        return (array if folded else _fold_pit(array, periodicity.period_length, False))[period.rows]
-
-    return _seasonal_pit_statistics(
-        sample,
-        None if prob_zero is None else np.asanyarray(prob_zero),
-        fold_mask(zero_mask, "zero_mask"),
-        fold_mask(trace_mask, "trace_mask"),
-        selected,
+    if data_start_year is None or periodicity is None:
+        raise ValueError("NumPy probabilities require data_start_year and periodicity.")
+    return _pit_numpy(
+        probabilities,
+        scale,
+        periodicity,
         distribution,
+        selected,
+        inputs,
+        data_start_year,
+        calibration_years,
+        spatial_time_major,
     )
 
 

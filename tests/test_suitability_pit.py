@@ -1,5 +1,6 @@
 """Seasonal calibration of probability-scale index outputs (#1588)."""
 
+import functools
 import warnings
 
 import numpy as np
@@ -8,7 +9,7 @@ import pytest
 import scipy.stats
 import xarray as xr
 
-from climate_indices import compute, provenance, suitability
+from climate_indices import compute, fit_diagnostics, provenance, spi, suitability
 from climate_indices.drought import indices
 from climate_indices.exceptions import BetaFeatureWarning, ClimateIndicesWarning, InvalidArgumentError
 from climate_indices.vocabulary import Distribution
@@ -98,7 +99,8 @@ def test_calibration_slice_and_statistics_match_independent_references(dtype):
     assert result.ad_statistic[0] == pytest.approx(expected_ad, abs=1e-14)
     np.testing.assert_array_equal(result.n_valid[:3], [3, 2, 0])
     assert np.isposinf(result.ad_statistic[1])
-    assert np.isnan(result.ad_statistic[2]) and np.isnan(result.zero_share[2])
+    assert np.isnan(result.ad_statistic[2])
+    assert np.isnan(result.zero_share[2])
 
 
 def test_small_continuous_probability_is_not_clipped():
@@ -123,7 +125,8 @@ def test_float32_zero_mass_preserves_the_upper_probability_endpoint():
         prob_zero=np.full(12, 0.1, dtype=np.float32),
         zero_mask=np.zeros(24, dtype=bool),
     )
-    assert result.ks_statistic is not None and result.ad_statistic is not None
+    assert result.ks_statistic is not None
+    assert result.ad_statistic is not None
     assert (result.ks_statistic == 1).all()
     assert np.isposinf(result.ad_statistic).all()
 
@@ -173,13 +176,18 @@ def test_pearson_trace_mask_must_include_point_mass_and_reports_both_shares():
     assert result.ks_statistic[0] == pytest.approx(1 - scipy.stats.gamma.cdf(3, a=4), abs=1e-14)
 
 
-@pytest.mark.parametrize("distribution", [Distribution.gamma, Distribution.pearson])
+@pytest.mark.parametrize(
+    ("distribution", "p0", "probability"),
+    [(Distribution.gamma, 0.4, 0.9), (Distribution.pearson, 0.4, 0.9), (Distribution.gamma, 1.0, 0.5)],
+)
 @pytest.mark.parametrize("all_masked", [False, True])
-def test_incompatible_masked_probabilities_are_rejected(distribution, all_masked):
+def test_incompatible_masked_probabilities_are_rejected(distribution, p0, probability, all_masked):
     mask = np.full(24, all_masked, dtype=bool)
     mask[0] = True
+    values = np.full(24, probability)
+    prob_zero = np.full(12, p0)
     with pytest.raises(ValueError, match="zero_mask.*incompatible"):
-        _pit(np.full(24, 0.9), distribution=distribution, prob_zero=np.full(12, 0.4), zero_mask=mask)
+        _pit(values, distribution=distribution, prob_zero=prob_zero, zero_mask=mask)
 
 
 @pytest.mark.parametrize("dtype", [np.float32, np.float64])
@@ -247,10 +255,43 @@ def test_xarray_rejects_incompatible_point_mass_mask(lazy):
     p0 = xr.DataArray(np.full(12, 0.4), dims="month", coords={"month": np.arange(1, 13)})
     if lazy:
         values = values.chunk({"time": -1})
-    with pytest.raises(ValueError, match="zero_mask.*incompatible"):
-        result = suitability.pit_uniformity(values, 1, distribution=Distribution.gamma, prob_zero=p0, zero_mask=mask)
+    diagnose = functools.partial(
+        suitability.pit_uniformity, values, 1, distribution=Distribution.gamma, prob_zero=p0, zero_mask=mask
+    )
+    if lazy:
+        result = diagnose()
         assert isinstance(result, xr.Dataset)
-        result.compute()
+        with pytest.raises(ValueError, match="zero_mask.*incompatible"):
+            result.compute()
+    else:
+        with pytest.raises(ValueError, match="zero_mask.*incompatible"):
+            diagnose()
+
+
+@pytest.mark.filterwarnings("ignore:Mean of empty slice:RuntimeWarning:climate_indices.compute")
+def test_gamma_spi_all_zero_month_has_share_but_no_statistics():
+    times = pd.date_range(f"{START}-01-01", periods=60, freq="MS")
+    values = np.repeat(np.arange(1.0, 6.0), 12)
+    values[::12] = 0
+    precipitation = xr.DataArray(values, dims="time", coords={"time": times}, attrs={"units": "mm"})
+    fit = fit_diagnostics(precipitation, 1, Distribution.gamma)
+    probabilities = spi(precipitation, 1, Distribution.gamma, output_scale="probability")
+    result = suitability.pit_uniformity(
+        probabilities, 1, distribution=Distribution.gamma, prob_zero=fit.prob_zero, zero_mask=precipitation == 0
+    )
+
+    assert isinstance(result, xr.Dataset)
+    assert fit.prob_zero.sel(month=1).item() == 1
+    assert (probabilities.isel(time=slice(None, None, 12)) == 0).all()
+    january = result.sel(month=1)
+    assert january.n_valid.item() == 0
+    assert january.zero_share.item() == 1
+    assert january.trace_share.item() == 0
+    assert np.isnan(january.ks_statistic.item())
+    assert np.isnan(january.ks_p_value_naive.item())
+    assert np.isnan(january.ad_statistic.item())
+    assert (result.n_valid.sel(month=slice(2, 12)) == 5).all()
+    assert np.isfinite(result.ks_statistic.sel(month=slice(2, 12))).all()
 
 
 def test_all_point_mass_has_share_but_no_statistics():
