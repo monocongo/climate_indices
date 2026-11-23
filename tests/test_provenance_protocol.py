@@ -155,6 +155,31 @@ class TestProvenanceChecksum:
             f"Regenerate the checksum if the transcription was intentionally updated."
         )
 
+    def test_flood_hickman_checksum_matches(self) -> None:
+        """Verify the Hickman PRCP and Table 5 CSVs match provenance.json.
+
+        The two CSVs hold a reconstructed series and a paper transcription rather
+        than arrays, so they are hashed as their sorted concatenation. This runs
+        unmarked so the transcription is guarded by the core suite as well as by the
+        validation run.
+        """
+        fixture_dir = FIXTURE_DIR / "flood_hickman"
+        provenance_path = fixture_dir / "provenance.json"
+        assert provenance_path.exists(), "flood_hickman provenance.json missing"
+
+        with provenance_path.open() as f:
+            provenance = json.load(f)
+
+        hasher = hashlib.sha256()
+        for path in sorted(fixture_dir.glob("*.csv")):
+            hasher.update(path.read_bytes())
+        assert hasher.hexdigest() == provenance["checksum_sha256"], (
+            f"flood_hickman fixture checksum mismatch. "
+            f"Expected: {provenance['checksum_sha256']}, "
+            f"Actual: {hasher.hexdigest()}. "
+            f"Regenerate the checksum if the data or transcription was intentionally updated."
+        )
+
     def test_pet_literature_checksum_matches(self) -> None:
         """Verify PET literature fixture checksum matches provenance.json."""
         fixture_dir = FIXTURE_DIR / "pet_literature"

@@ -27,6 +27,7 @@ from pathlib import Path
 
 OUT_DIR = Path(__file__).parent.parent / "tests" / "fixture" / "flood_hickman"
 URL = "https://www.ncei.noaa.gov/pub/data/ghcn/daily/all/USC00253825.dly"
+APPROVED_ORIGIN = "https://www.ncei.noaa.gov/"
 FIRST_YEAR, LAST_YEAR = 1960, 1996
 _MAX_BYTES = 8 * 1024 * 1024
 
@@ -53,7 +54,9 @@ def parse_dly(text: str) -> dict[dt.date, float]:
 
 
 def main() -> None:
-    with urllib.request.urlopen(URL, timeout=60) as response:  # noqa: S310 - fixed https URL
+    with urllib.request.urlopen(URL, timeout=60) as response:  # noqa: S310  # nosec B310 # pinned https URL
+        if not response.geturl().startswith(APPROVED_ORIGIN):
+            raise SystemExit(f"unexpected redirect origin: {response.geturl()}")
         raw = response.read(_MAX_BYTES + 1)
     if len(raw) > _MAX_BYTES:
         raise SystemExit("download exceeds size cap")
@@ -80,10 +83,18 @@ def main() -> None:
     writer.writerow(("date", "prcp_mm", "filled_with_calendar_day_mean"))
     writer.writerows(rows)
     data = buffer.getvalue().encode()
-    (OUT_DIR / "hickman_prcp_1960_1996.csv").write_bytes(data)
+    # Replace rather than truncate, so an interrupted write leaves the old fixture intact.
+    target = OUT_DIR / "hickman_prcp_1960_1996.csv"
+    temporary = target.with_name(target.name + ".tmp")
+    temporary.write_bytes(data)
+    temporary.replace(target)
+    # The provenance checksum covers both canonical CSVs, in sorted filename order
+    # (tests/fixture/README.md). table5.csv is transcribed from the paper, not written here.
+    hasher = hashlib.sha256(data)
+    hasher.update((OUT_DIR / "table5.csv").read_bytes())
     print(f"days={len(rows)} filled={filled}")
     print(f"raw_dly_sha256={hashlib.sha256(raw).hexdigest()}")
-    print(f"csv_sha256={hashlib.sha256(data).hexdigest()}")
+    print(f"fixture_sha256={hasher.hexdigest()}")
 
 
 if __name__ == "__main__":

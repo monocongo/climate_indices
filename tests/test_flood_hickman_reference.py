@@ -59,7 +59,11 @@ def hickman_edi() -> np.ndarray:
 def test_fixture_matches_provenance_and_paper_missing_data_limit() -> None:
     provenance = json.loads((_DIR / "provenance.json").read_text())
     data = (_DIR / "hickman_prcp_1960_1996.csv").read_bytes()
-    assert hashlib.sha256(data).hexdigest() == provenance["checksum_sha256"]
+    # The checksum covers both canonical CSVs, so a changed Table 5 transcription fails here too.
+    hasher = hashlib.sha256()
+    for path in sorted(_DIR.glob("*.csv")):
+        hasher.update(path.read_bytes())
+    assert hasher.hexdigest() == provenance["checksum_sha256"]
     rows = list(csv.DictReader(data.decode().splitlines()))
     assert len(rows) == 13515
     # The paper discarded stations missing more than 1% of the record.
