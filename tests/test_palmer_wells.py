@@ -191,3 +191,14 @@ def test_dry_candidate_clamp_does_not_bound_magnitude():
 
     assert magnitudes == sorted(magnitudes)
     assert magnitudes[-1] > magnitudes[0]
+
+
+@pytest.mark.parametrize("probability", [0.0, 50.0, 100.0])
+def test_pmdi_exact_tie_goes_to_x1(probability):
+    # With x3 == 0 the probability is ignored; |X1| == |X2| returns X1 (pdi.f CASE, getWPLM).
+    assert _palmer_wells._pmdi(probability, 0.5, -0.5, 0.0) == 0.5
+
+
+def test_pmdi_selects_x2_only_when_strictly_larger():
+    assert _palmer_wells._pmdi(0.0, 0.3, -0.7, 0.0) == -0.7
+    assert _palmer_wells._pmdi(0.0, 0.7, -0.3, 0.0) == 0.7
