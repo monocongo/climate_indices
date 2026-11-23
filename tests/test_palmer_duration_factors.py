@@ -785,7 +785,7 @@ def test_pdi_recursion_rejects_an_n_months_outside_the_record(n_months):
         _palmer_pdi.calculate(np.zeros((2, 12, 1)), _PDI_FIXTURE_FACTORS, n_months=n_months)
 
 
-@pytest.mark.parametrize("n_months", [5.0, 36.0, "5"])
+@pytest.mark.parametrize("n_months", [5.0, 36.0, "5", True, False, np.True_])
 def test_pdi_recursion_rejects_a_non_integer_n_months(n_months):
     with pytest.raises(TypeError):
         _palmer_pdi.calculate(np.zeros((3, 12, 1)), _PDI_FIXTURE_FACTORS, n_months=n_months)

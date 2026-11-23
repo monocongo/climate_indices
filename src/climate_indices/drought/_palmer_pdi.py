@@ -564,6 +564,16 @@ def _finish_up(state: _State) -> None:
         _record_index_values(state, i, j, state.x[i, j, step_cells], step_cells)
 
 
+def _real_months(n_months: int | None, total_months: int) -> int:
+    """The count of real months, rejecting a non-integer or out-of-range count."""
+    if isinstance(n_months, (bool, np.bool_)):
+        raise TypeError("n_months must be an integer")
+    real = total_months if n_months is None else operator.index(n_months)
+    if not 0 <= real <= total_months:
+        raise ValueError(f"n_months must lie in 0..{total_months}, got {real}")
+    return real
+
+
 def calculate(z_values: np.ndarray, factors: PdiDurationFactors, n_months: int | None = None) -> PdiResult:
     """Run the ``pdi.f`` Palmer recursion over a precomputed Z-index series.
 
@@ -594,9 +604,7 @@ def calculate(z_values: np.ndarray, factors: PdiDurationFactors, n_months: int |
     if z.ndim != 3 or z.shape[1] != 12:
         raise ValueError(f"z_values must have shape (years, 12, n_cells), got {z.shape}")
     total_months = z.shape[0] * 12
-    real_months = total_months if n_months is None else operator.index(n_months)
-    if not 0 <= real_months <= total_months:
-        raise ValueError(f"n_months must lie in 0..{total_months}, got {real_months}")
+    real_months = _real_months(n_months, total_months)
     years, months = divmod(real_months, 12)
     if np.isinf(z[:years]).any() or (months and np.isinf(z[years, :months]).any()):
         raise ConvergenceError(

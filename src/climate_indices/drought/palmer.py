@@ -1,6 +1,5 @@
 """Compute palmer drought indices"""
 
-import operator
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -903,9 +902,7 @@ def _pdi_recursion(z: np.ndarray, factors: PdiDurationFactors, n_months: int | N
     if native is None or z.ndim != 3 or z.shape[1] != 12:
         return _palmer_pdi.calculate(z, factors, n_months=n_months)
     total_months = z.shape[0] * 12
-    real_months = total_months if n_months is None else operator.index(n_months)
-    if not 0 <= real_months <= total_months:
-        return _palmer_pdi.calculate(z, factors, n_months=real_months)
+    real_months = _palmer_pdi._real_months(n_months, total_months)
     flat = z.reshape(total_months, z.shape[-1])
     real = flat[:real_months]
     if np.isinf(real).any():
