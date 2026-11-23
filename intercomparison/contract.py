@@ -25,6 +25,7 @@ import os
 import platform
 import sys
 import time
+import warnings
 from collections.abc import Callable, Mapping, Sequence
 from pathlib import Path
 from typing import Any
@@ -211,6 +212,7 @@ def run_adapter(
     ``version``, ``effective_method``, ``software`` (versions), optional ``warnings``, and
     ``series``: ``{output name: (times, values)}``. Only ``compute`` is timed, so import time is
     not in ``wall_time_s`` as long as the adapter imports its comparator at module level.
+    Python warnings raised inside ``compute`` are recorded after the ones it returns.
     """
     if len(argv) != 3 or argv[0] != "run":
         print(f"usage: {comparator} run <request.json> <out_dir>", file=sys.stderr)
@@ -222,9 +224,13 @@ def run_adapter(
         for name, entry in request["inputs"].items()
     }
     out_dir.mkdir(parents=True, exist_ok=True)
-    started = time.perf_counter()
-    computed = compute(request, inputs)
-    wall = time.perf_counter() - started
+    # warnings raised inside compute (fit quality, clamped windows) belong in the result, not only on stderr
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        started = time.perf_counter()
+        computed = compute(request, inputs)
+        wall = time.perf_counter() - started
+    raised = [str(w.message) for w in caught]
     outputs = {}
     for name, (times, values) in computed["series"].items():
         outputs[name] = {"path": f"{name}.csv", "sha256": write_series(out_dir / f"{name}.csv", times, values)}
@@ -238,7 +244,7 @@ def run_adapter(
             "software": computed["software"],
             "platform": platform.platform(),
             "wall_time_s": wall,
-            "warnings": list(computed.get("warnings", [])),
+            "warnings": [*computed.get("warnings", []), *raised],
             "outputs": outputs,
         },
     )

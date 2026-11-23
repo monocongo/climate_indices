@@ -13,6 +13,7 @@ import math
 import shutil
 import sys
 import textwrap
+import warnings
 from collections.abc import Callable
 from pathlib import Path
 from types import ModuleType
@@ -233,6 +234,34 @@ def test_consecutive_months_are_checked() -> None:
 
 def test_adapter_command_line_rejects_bad_usage() -> None:
     assert contract.run_adapter("x", lambda r, i: {}, ["run", "only-one-argument"]) == 2
+
+
+def test_warnings_raised_inside_compute_are_recorded_in_the_result(tmp_path: Path) -> None:
+    request = harness.write_request(
+        tmp_path / "work",
+        study="t",
+        unit="u",
+        times=harness.monthly_times(2000, 24),
+        values=np.arange(1.0, 25.0),
+        units="mm",
+        positions=harness.positions_for(3, 2000, 2001),
+    )
+
+    def compute(request: dict[str, Any], inputs: dict[str, Any]) -> dict[str, Any]:
+        warnings.warn("poor gamma fit", UserWarning, stacklevel=1)
+        times, values = inputs["precip"]
+        return {
+            "version": "1",
+            "effective_method": {"a": 1},
+            "software": {},
+            "warnings": ["returned"],
+            "series": {"spi": (times, values)},
+        }
+
+    out = tmp_path / "out"
+    assert contract.run_adapter("c", compute, ["run", str(request), str(out)]) == 0
+
+    assert contract.read_result(out / "result.json")["warnings"] == ["returned", "poor gamma fit"]
 
 
 @needs_git
