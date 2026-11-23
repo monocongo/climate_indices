@@ -328,8 +328,9 @@ verified methods are not available, and OQ-5 of
 
 The notebook's numbers are not frozen, so a run records what the sample shows
 rather than asserting a target. The committed fixtures and tolerances for the
-tools themselves remain in the `validation` tests listed in the per-index
-evidence rows above.
+suitability tools are in the core suite (`tests/test_suitability_*.py`), which
+`uv run pytest` runs; the `validation`-marked tests in the per-index evidence
+rows above cover the indices, not these tools.
 
 ## Reliability Benchmark Relationships
 
