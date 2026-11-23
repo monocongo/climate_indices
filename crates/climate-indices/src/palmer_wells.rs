@@ -122,7 +122,7 @@ fn backtrack(pdsi: &mut Array1<f64>, tentative: &mut Vec<Tentative>, mut selecti
 /// Python: `climate_indices.drought._palmer_wells._pmdi`.
 fn pmdi(probability: f64, x1: f64, x2: f64, x3: f64) -> f64 {
     if x3 == 0.0 {
-        return if x1.abs() > x2.abs() { x1 } else { x2 };
+        return if x2.abs() > x1.abs() { x2 } else { x1 };
     }
     if probability <= 0.0 || probability >= 100.0 {
         return x3;
@@ -469,5 +469,15 @@ mod tests {
         let f = factors(1.0, 1.0);
         let error = calculate(array![2.0, 0.0].view(), &f).unwrap_err();
         assert!(matches!(error, ClimateError::NoConvergence { .. }));
+    }
+
+    #[test]
+    fn an_exact_pmdi_tie_goes_to_x1() {
+        // getWPLM and pdi.f CASE give |X1| == |X2| to X1; the probability is unused at x3 == 0.
+        for probability in [0.0, 50.0, 100.0] {
+            assert_eq!(pmdi(probability, 0.5, -0.5, 0.0), 0.5);
+        }
+        assert_eq!(pmdi(0.0, 0.3, -0.7, 0.0), -0.7);
+        assert_eq!(pmdi(0.0, 0.7, -0.3, 0.0), 0.7);
     }
 }

@@ -103,9 +103,9 @@ def _backtrack(pdsi: np.ndarray, tentative: list[_Tentative], selection: int) ->
 
 def _pmdi(probability: float, x1: float, x2: float, x3: float) -> float:
     if _is_exact_zero(x3):
-        if abs(x1) > abs(x2):
-            return x1
-        return x2
+        if abs(x2) > abs(x1):
+            return x2
+        return x1
     if probability <= 0.0 or probability >= 100.0:
         return x3
 
