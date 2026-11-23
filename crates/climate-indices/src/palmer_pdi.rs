@@ -414,7 +414,9 @@ impl<'a> Cell<'a> {
 /// use the dimensionless Palmer convention; factors must use compatible units.
 /// Input and output arrays have shape `(n_months, n_cells)`, with consecutive
 /// chronological months and independent cells. No year boundary resets the
-/// state, and no calendar padding occurs. Empty axes retain their shapes.
+/// state, and no calendar padding occurs. Empty axes retain their shapes. The
+/// flush at the end of the record happens at the last row given, so a caller
+/// whose record was NaN-padded to whole years passes only the real months.
 ///
 /// Zero Z is a valid observation. Exact zero candidates denote absent indices,
 /// and probability endpoints are exactly 0 and 100; these tests use no tolerance.

@@ -885,23 +885,38 @@ def _palmer_cafec_params(prepared: _PalmerPrepared) -> dict[str, Any]:
     return {"alpha": alpha[:, 0], "beta": beta[:, 0], "gamma": gamma[:, 0], "delta": delta[:, 0]}
 
 
-def _pdi_recursion(z: np.ndarray, factors: PdiDurationFactors) -> _palmer_pdi.PdiResult:
+def _pdi_recursion(z: np.ndarray, factors: PdiDurationFactors, n_months: int | None = None) -> _palmer_pdi.PdiResult:
     """The ``pdi.f`` recursion, on the Rust kernel when it can take the Z series.
 
-    A Z series that is not (years, 12, n_cells) or holds an infinite value keeps the
-    Python path, which raises its ValueError or ConvergenceError. The kernel does not
-    reject infinities itself, so the guard scans ``z`` only here, where the kernel is
-    about to take it; the Python path scans for its own error.
+    The Python path reports invalid shapes and month counts. The Rust kernel does
+    not reject infinities, so the dispatch checks the real months before it calls
+    the kernel. If it finds an infinity, the Python path raises ConvergenceError.
+
+    ``n_months`` is the count of real months at the start of ``z``: a record that ends
+    before December is padded to whole years, and the recursion stops at its last real
+    month, as ``pdi.f`` does, so the padding never enters it. The padded months of the
+    result are NaN. ``None`` runs every month. A non-integer ``n_months`` raises
+    TypeError and an out-of-range value raises ValueError, from either path.
     """
     native = _palmer_native("palmer_pdi", z)
     if native is None or z.ndim != 3 or z.shape[1] != 12:
-        return _palmer_pdi.calculate(z, factors)
-    if np.any(np.isinf(z)):
-        return _palmer_pdi.calculate(z, factors)
-    pdsi, phdi, pmdi = native.palmer_pdi(
-        z.reshape(z.shape[0] * 12, z.shape[-1]), factors.wetm, factors.wetb, factors.drym, factors.dryb
-    )
-    return _palmer_pdi.PdiResult(pdsi=pdsi.reshape(z.shape), phdi=phdi.reshape(z.shape), pmdi=pmdi.reshape(z.shape))
+        return _palmer_pdi.calculate(z, factors, n_months=n_months)
+    total_months = z.shape[0] * 12
+    real_months = _palmer_pdi._real_months(n_months, total_months)
+    flat = z.reshape(total_months, z.shape[-1])
+    real = flat[:real_months]
+    if np.isinf(real).any():
+        return _palmer_pdi.calculate(z, factors, n_months=real_months)
+    outputs = list(native.palmer_pdi(real, factors.wetm, factors.wetb, factors.drym, factors.dryb))
+    if real_months != total_months:
+        # Release each native output before allocating the next padded output.
+        for i in range(len(outputs)):
+            full = np.empty(flat.shape)
+            full[real_months:] = np.nan
+            full[:real_months] = outputs[i]
+            outputs[i] = full
+    pdsi, phdi, pmdi = (values.reshape(z.shape) for values in outputs)
+    return _palmer_pdi.PdiResult(pdsi=pdsi, phdi=phdi, pmdi=pmdi)
 
 
 def _wells_recursion(z_values: np.ndarray, factors: DurationFactors) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
@@ -956,7 +971,7 @@ def _calculate_pdsi_prepared(prepared: _PalmerPrepared, original_length: int) ->
     _calc_kfactors(prepared)
     z = _calc_raw_zindex(prepared)
     factors = PdiDurationFactors.from_fitted(prepared.wetm, prepared.wetb, prepared.drym, prepared.dryb)
-    recursion = _pdi_recursion(z, factors)
+    recursion = _pdi_recursion(z, factors, n_months=original_length)
 
     pdsi_result = _trim_time_major(recursion.pdsi, original_length)
     phdi = _trim_time_major(recursion.phdi, original_length)

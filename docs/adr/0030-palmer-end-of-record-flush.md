@@ -2,7 +2,7 @@
 
 ## Status
 
-Approved for implementation. The maintainer made decisions 1 and 2 on 2026-11-19 after
+Accepted. The maintainer made decisions 1 and 2 on 2026-11-19 after
 [REFIMPL-46 (#1661)](https://github.com/monocongo/climate_indices/issues/1661) compared the
 standard Palmer path with NCEI `pdi.f`. The maintainer recorded decision 3 in
 [#1689](https://github.com/monocongo/climate_indices/pull/1689) and linked it from
@@ -10,8 +10,7 @@ standard Palmer path with NCEI `pdi.f`. The maintainer recorded decision 3 in
 This update addresses [#1678](https://github.com/monocongo/climate_indices/issues/1678).
 [#1665](https://github.com/monocongo/climate_indices/issues/1665) implemented decision 1.
 [#1666](https://github.com/monocongo/climate_indices/issues/1666) implemented decision 2.
-Decision 3 is pending in [#1663](https://github.com/monocongo/climate_indices/issues/1663).
-When decision 3 lands, promote this record to `Accepted`.
+[#1663](https://github.com/monocongo/climate_indices/issues/1663) implemented decision 3.
 
 ## Context
 
@@ -82,7 +81,7 @@ record, or truncating it, could change months a spell had long since resolved.
    PDSI = PHDI = X3 and take their own PMDI (decision 2). This decision does not change the
    treatment of NaNs supplied by the caller, including interior gaps and trailing NaNs in
    individual cells. `pdi.f` requires complete data. This decision leaves December-ending
-   records unchanged (their changes come from decisions 1 and 2). *Pending,
+   records unchanged (their changes come from decisions 1 and 2). *Implemented by
    [#1663](https://github.com/monocongo/climate_indices/issues/1663); relies on decision 2.*
 
 ## Scope
@@ -118,8 +117,7 @@ updates this record's status line.
   not change a pending month's PMDI because spell resolution uses the same monthly state.
 - **The library deliberately differs from `pdi.f` in two cases.** It does not re-flush
   resolved months, and it uses each pending month's own state for PMDI. The provenance
-  record (`palmer-provenance.md`, rows 19 and 22 and D9) describes both differences.
-  Update the provenance record when decision 3 lands.
+  record (`palmer-provenance.md`, rows 19 and 22 and D9) describes all three changes.
 - **The standard-Palmer fixtures were regenerated.** `tests/fixture/palmer/` holds the
   library's PDSI, PHDI and PMDI output. Compared with fixture 1.1.1, fixture 1.2.0 reflects
   both decisions: 177 PDSI months in 51 divisions, 24 PHDI months in 14 divisions, and
@@ -135,12 +133,13 @@ updates this record's status line.
 - **Test decision 2 without padding.** Cut the same Z-Index fixture at December 1900.
   August through December 1900 are still pending, and their `CASE` values differ. Check both
   kernels against the expected per-month PMDI, not just against each other.
-- **Test decision 3 by cutting the division 0101 precipitation and PET inputs at June 2022.**
+- **Test decision 3 by cutting the division 1102 precipitation and PET inputs at June 2022.**
   Use the same 1931-1990 calibration period and AWC for the full and cut runs. Compare the cut
-  run with the matching prefix of the full run on months already resolved at the cut. Check
-  the pending months against their own provisional PDSI, PHDI, and PMDI. Require finite PMDI
-  throughout the cut fixture. Run these checks on both backends. Also check that decision 3
-  leaves the December-ending case unchanged from decision 2.
+  run with the zero-prefixed reference: the same Z series with Z = 0 months prepended, which
+  moves the run's year boundary so its last real month is the twelfth. A longer run truncated
+  at the cut keeps its pending-spell state, so it is not a valid reference. Check the pending
+  months against their own provisional PDSI, PHDI, and PMDI. Require finite PMDI throughout
+  the cut fixture. Run these checks on both backends. Also check that decision 3 leaves the December-ending case unchanged from decision 2.
 - **REFIMPL-29's mechanism F is retired.** The divergence study counted this bug as
   Pdi-vs-Wells class F. With decision 1 the library follows the Wells rule there, so the F
   case no longer diverges, and the pinned study results remain the record of the pinned commit.

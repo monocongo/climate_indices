@@ -1,3 +1,4 @@
+import json
 import types
 from pathlib import Path
 
@@ -647,3 +648,173 @@ def test_case_zero_tie_keeps_x1_sign():
     result = _palmer_pdi._case(np.array([0.0]), np.array([0.0]), np.array([-0.0]), np.array([0.0]))
 
     assert not np.signbit(result[0])
+
+
+# --- records that end before December (#1663) ---------------------------------------------------
+
+_FIXTURE_PALMER = Path(__file__).parent / "fixture" / "palmer"
+_PDI_FIXTURE_FACTORS = _palmer_pdi.PdiDurationFactors.from_fitted(0.3, 2.7, 0.3, 2.7)
+# 1530 months, January 1895 through June 2022: the record shape REFIMPL-46 measured against pdi.f
+_JUNE_ENDING_MONTHS = 1530
+# 1521 months, January 1895 through September 2021: a second partial final year
+_SEPTEMBER_ENDING_MONTHS = 1521
+
+
+def _division_z(months: int) -> np.ndarray:
+    """Load divisions 1102 and 1407, which reproduce the June and September errors."""
+    return np.stack(
+        [np.load(_FIXTURE_PALMER / division / "zindex.npy")[:months] for division in ("1102", "1407")], axis=1
+    )
+
+
+def _nan_padded(z: np.ndarray) -> np.ndarray:
+    """Pad (months, n_cells) with NaN to whole years, as ``_reshape_palmer_input`` does."""
+    months, n_cells = z.shape
+    padded = np.full((-(-months // 12) * 12, n_cells), np.nan)
+    padded[:months] = z
+    return padded.reshape(-1, 12, n_cells)
+
+
+def _zero_prefixed_reference(z: np.ndarray, factors: _palmer_pdi.PdiDurationFactors) -> _palmer_pdi.PdiResult:
+    """The recursion over ``z`` with the record's start padded by Z = 0 until it ends in December.
+
+    A Z = 0 month leaves x1, x2, x3, pro, and v at zero. Leading zeros therefore
+    preserve the initial state but let the run end in December without NaN padding.
+    The months after the prefix are an internal regression reference, not a new
+    comparison with ``pdi.f``. See ADR-0030 for the deliberate differences.
+    """
+    months, n_cells = z.shape
+    prefix = -months % 12
+    prefixed = np.concatenate([np.zeros((prefix, n_cells)), z]).reshape(-1, 12, n_cells)
+    result = _palmer_pdi.calculate(prefixed, factors)
+    return _palmer_pdi.PdiResult(
+        pdsi=result.pdsi.reshape(-1, n_cells)[prefix:],
+        phdi=result.phdi.reshape(-1, n_cells)[prefix:],
+        pmdi=result.pmdi.reshape(-1, n_cells)[prefix:],
+    )
+
+
+@pytest.mark.parametrize(
+    "months", [_JUNE_ENDING_MONTHS, _SEPTEMBER_ENDING_MONTHS], ids=["june-ending", "september-ending"]
+)
+def test_pdi_recursion_ends_at_the_last_real_month(months: int) -> None:
+    """A record ending before December equals the same record run through a December end.
+
+    The padded months must not drive the recursion: on the 344 fixture divisions
+    they changed PDSI and PHDI by up to 0.67 on 14 divisions, while PMDI was
+    unaffected (#1663). The reference is the zero-prefixed run rather than the full
+    record truncated at the end month, because truncating a longer run keeps the
+    longer record's pending-spell state at the cut. Both sides run the same
+    operation sequence on the same values, so the comparison is exact.
+    """
+    z = _division_z(months)
+    padded = _nan_padded(z)
+
+    result = _palmer_pdi.calculate(padded, _PDI_FIXTURE_FACTORS, n_months=months)
+    reference = _zero_prefixed_reference(z, _PDI_FIXTURE_FACTORS)
+
+    n_cells = z.shape[1]
+    for name in ("pdsi", "phdi", "pmdi"):
+        actual = getattr(result, name).reshape(-1, n_cells)[:months]
+        assert np.isfinite(actual).all(), name
+        np.testing.assert_array_equal(actual, getattr(reference, name), err_msg=name)
+        # the padding is never filled in: the caller trims it
+        assert np.isnan(getattr(result, name).reshape(-1, n_cells)[months:]).all(), name
+
+
+def test_pdi_recursion_default_runs_every_month_like_the_explicit_full_length() -> None:
+    """The default and the explicit full length agree, and are finite for a December-ending record.
+
+    That December-ending output is unchanged by the fix is pinned against the committed
+    fixtures by ``test_palmer.py`` (the ``validation`` marker), not here.
+    """
+    rng = np.random.default_rng(1663)
+    z = rng.normal(0.0, 1.5, size=(2, 12, 3))
+
+    default = _palmer_pdi.calculate(z, _PDI_FIXTURE_FACTORS)
+    explicit = _palmer_pdi.calculate(z, _PDI_FIXTURE_FACTORS, n_months=z.shape[0] * 12)
+
+    for name in ("pdsi", "phdi", "pmdi"):
+        np.testing.assert_array_equal(getattr(default, name), getattr(explicit, name), err_msg=name)
+        assert np.isfinite(getattr(default, name)).all(), name
+
+
+@pytest.mark.parametrize("months", [1, 5, 11, 12, 13, 23])
+def test_pdi_recursion_short_records_end_at_the_last_real_month(months):
+    """Records of one to two years: the flush reads the last real month, never a padded one."""
+    rng = np.random.default_rng(1663)
+    z = rng.normal(0.0, 1.5, size=(months, 3))
+
+    result = _palmer_pdi.calculate(_nan_padded(z), _PDI_FIXTURE_FACTORS, n_months=months)
+    reference = _zero_prefixed_reference(z, _PDI_FIXTURE_FACTORS)
+
+    for name in ("pdsi", "phdi", "pmdi"):
+        actual = getattr(result, name).reshape(-1, 3)[:months]
+        assert np.isfinite(actual).all(), name
+        np.testing.assert_array_equal(actual, getattr(reference, name), err_msg=name)
+
+
+def test_pdi_recursion_stops_at_n_months_even_when_the_tail_is_not_nan():
+    """``n_months`` ends the record even when the months after it are finite numbers.
+
+    The caller pads with NaN, but the bound must be the month count rather than a
+    scan for a trailing NaN, so a finite tail is never run.
+    """
+    z = np.r_[np.full(18, -2.0), np.full(6, 1.5)].reshape(2, 12, 1)
+
+    result = _palmer_pdi.calculate(z, _PDI_FIXTURE_FACTORS, n_months=18)
+    reference = _zero_prefixed_reference(z.reshape(-1, 1)[:18], _PDI_FIXTURE_FACTORS)
+
+    for name in ("pdsi", "phdi", "pmdi"):
+        actual = getattr(result, name).reshape(-1)[:18]
+        np.testing.assert_array_equal(actual, getattr(reference, name)[:, 0], err_msg=name)
+        assert np.isnan(getattr(result, name).reshape(-1)[18:]).all(), name
+
+
+def test_pdi_recursion_zero_months_runs_nothing():
+    """No real month: every output stays NaN and nothing is flushed."""
+    result = _palmer_pdi.calculate(np.zeros((2, 12, 2)), _PDI_FIXTURE_FACTORS, n_months=0)
+
+    for name in ("pdsi", "phdi", "pmdi"):
+        assert np.isnan(getattr(result, name)).all(), name
+
+
+@pytest.mark.parametrize("n_months", [-1, 25])
+def test_pdi_recursion_rejects_an_n_months_outside_the_record(n_months):
+    with pytest.raises(ValueError, match="n_months"):
+        _palmer_pdi.calculate(np.zeros((2, 12, 1)), _PDI_FIXTURE_FACTORS, n_months=n_months)
+
+
+@pytest.mark.parametrize("n_months", [5.0, 36.0, "5", True, False, np.True_])
+def test_pdi_recursion_rejects_a_non_integer_n_months(n_months):
+    with pytest.raises(TypeError):
+        _palmer_pdi.calculate(np.zeros((3, 12, 1)), _PDI_FIXTURE_FACTORS, n_months=n_months)
+    with pytest.raises(TypeError):
+        palmer._pdi_recursion(np.zeros((3, 12, 1)), _PDI_FIXTURE_FACTORS, n_months=n_months)
+
+
+def test_pdsi_on_a_june_ending_record_matches_the_zero_prefixed_reference():
+    """End to end: ``pdsi()`` on a record the NaN padding would change.
+
+    Division 1102 is one of the 14 of the 344 fixture divisions where the padded run
+    differed from the reference, by 0.6706 in PDSI and PHDI. Division 0101 is not
+    affected after #1666, so it would not catch a regression.
+    """
+    division = "1102"
+    folder = _FIXTURE_PALMER / division
+    precips = np.load(folder / "precips.npy")[:_JUNE_ENDING_MONTHS]
+    pet = np.load(folder / "pet.npy")[:_JUNE_ENDING_MONTHS]
+    with (Path(__file__).parent / "fixture" / "palmer_awc.json").open() as handle:
+        awc = json.load(handle)[division]
+
+    pdsi, phdi, pmdi, z, params = palmer.pdsi(precips, pet, awc, 1895, 1931, 1990)
+    assert params is not None
+
+    factors = _palmer_pdi.PdiDurationFactors.from_fitted(params["wetm"], params["wetb"], params["drym"], params["dryb"])
+    reference = _zero_prefixed_reference(z.reshape(-1, 1), factors)
+    for name, actual in (("pdsi", pdsi), ("phdi", phdi), ("pmdi", pmdi)):
+        assert actual.shape == (_JUNE_ENDING_MONTHS,), name
+        assert np.isfinite(actual).all(), name
+        # the run may take the native kernel; its parity contract is 1e-10, and the
+        # reference is exact in pure Python, so this is not a loosened regression bound
+        np.testing.assert_allclose(actual, getattr(reference, name)[:, 0], rtol=0, atol=1e-10, err_msg=name)
