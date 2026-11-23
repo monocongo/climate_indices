@@ -143,6 +143,7 @@ its **naive** p-value and the Anderson-Darling A^2 of each candidate's
 probability integral transform, over the calibration sample:
 
 ```python
+# xarray route: the fields arrive as Dataset variables.
 comparison = suitability.compare_distributions(
     precip,
     3,
@@ -152,15 +153,25 @@ comparison = suitability.compare_distributions(
     calibration_year_final=2010,
     gof=("ks", "ad"),
 )
-# NumPy route: a GoodnessOfFit dataclass.
-gof = comparison.goodness_of_fit
-gof.ks_statistic
-gof.ks_p_value_naive
-gof.ad_statistic
-# xarray route: the same fields as Dataset variables.
 comparison["ks_statistic"]
 comparison["ks_p_value_naive"]
 comparison["ad_statistic"]
+
+# NumPy route: the fields arrive in a GoodnessOfFit dataclass.
+comparison = suitability.compare_distributions(
+    precip_values,
+    3,
+    index="spei",
+    pet_mm=pet_values,
+    data_start_year=1980,
+    periodicity=compute.Periodicity.monthly,
+    calibration_year_initial=1981,
+    calibration_year_final=2010,
+    gof=("ks", "ad"),
+)
+comparison.goodness_of_fit.ks_statistic
+comparison.goodness_of_fit.ks_p_value_naive
+comparison.goodness_of_fit.ad_statistic
 ```
 
 Defaults and limits:

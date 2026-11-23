@@ -244,6 +244,11 @@ def test_distribution_suitability_notebook_runs_on_prepared_sample(
         if concordance.hits + concordance.misses:
             assert concordance.pod == pytest.approx(concordance.hits / (concordance.hits + concordance.misses))
         assert len(plt.get_fignums()) - len(previous_figures) == 4
+        # Pin the fixes that this fixture's values cannot distinguish (#1591 review).
+        source = "\n".join(_code_cells())
+        assert "(ks_naive <= 0.05).where(ks_naive.notnull())" in source
+        assert "np.where(valid, series.values, np.nan)" in source
+        assert "np.where(valid, water.values, np.nan)" in source
     finally:
         for number in set(plt.get_fignums()) - previous_figures:
             plt.close(number)
