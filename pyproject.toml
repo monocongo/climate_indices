@@ -254,6 +254,7 @@ exclude = [
     "notebooks/",
     "assets/",
     "docs/",
+    "intercomparison/",
     "htmlcov/",
     ".github/",
     ".venv/",

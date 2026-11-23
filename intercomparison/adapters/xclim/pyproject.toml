@@ -1,0 +1,10 @@
+# Environment of the xclim adapter only (REFIMPL-08, issue 1610). Not a package and not a member
+# of the repository's uv project: xclim's NumPy and Numba pins must not touch the root uv.lock.
+[project]
+name = "intercomparison-xclim-adapter"
+version = "0.0.0"
+requires-python = ">=3.12,<3.13"
+dependencies = ["xclim==1.0.0"]
+
+[tool.uv]
+package = false
