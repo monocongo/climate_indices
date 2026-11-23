@@ -7,7 +7,8 @@ Usage:
 Downloads the GHCN-Daily file for ``USC00253825`` (HICKMAN) from NCEI, keeps
 daily PRCP for 1960-1996 (the Byun & Wilhite 1999 record), fills each missing
 or quality-flagged day with that station's mean for the same calendar day, and
-writes ``tests/fixture/flood_hickman/hickman_prcp_1960_1996.csv``.
+writes ``tests/fixture/flood_hickman/hickman_prcp_1960_1996.csv`` only if
+both resulting CSVs match the committed provenance checksum.
 
 The paper first substitutes the nearest station within 100 km and only then the
 calendar-day average; this script does the second step only, because the
@@ -21,15 +22,31 @@ import csv
 import datetime as dt
 import hashlib
 import io
+import json
+import tempfile
+import urllib.error
 import urllib.request
 from collections import defaultdict
+from http.client import HTTPMessage
 from pathlib import Path
+from typing import IO
 
 OUT_DIR = Path(__file__).parent.parent / "tests" / "fixture" / "flood_hickman"
 URL = "https://www.ncei.noaa.gov/pub/data/ghcn/daily/all/USC00253825.dly"
 APPROVED_ORIGIN = "https://www.ncei.noaa.gov/"
 FIRST_YEAR, LAST_YEAR = 1960, 1996
 _MAX_BYTES = 8 * 1024 * 1024
+
+
+class _ApprovedOriginRedirectHandler(urllib.request.HTTPRedirectHandler):
+    """Reject redirects before they contact any other origin."""
+
+    def redirect_request(
+        self, req: urllib.request.Request, fp: IO[bytes], code: int, msg: str, headers: HTTPMessage, newurl: str
+    ) -> urllib.request.Request | None:
+        if not newurl.startswith(APPROVED_ORIGIN):
+            raise urllib.error.URLError(f"refusing redirect off {APPROVED_ORIGIN}: {newurl}")
+        return super().redirect_request(req, fp, code, msg, headers, newurl)
 
 
 def parse_dly(text: str) -> dict[dt.date, float]:
@@ -53,8 +70,29 @@ def parse_dly(text: str) -> dict[dt.date, float]:
     return out
 
 
+def _publish_fixture(out_dir: Path, data: bytes) -> str:
+    # Hash both CSVs in filename order before replacing the precipitation fixture.
+    table = (out_dir / "table5.csv").read_bytes()
+    checksum = hashlib.sha256(data + table).hexdigest()
+    expected = json.loads((out_dir / "provenance.json").read_text(encoding="utf-8"))["checksum_sha256"]
+    if checksum != expected:
+        raise SystemExit(f"fixture checksum mismatch: expected {expected}, got {checksum}")
+
+    target = out_dir / "hickman_prcp_1960_1996.csv"
+    with tempfile.NamedTemporaryFile(dir=out_dir, delete=False) as handle:
+        temporary = Path(handle.name)
+        try:
+            handle.write(data)
+            handle.close()
+            temporary.replace(target)
+        finally:
+            temporary.unlink(missing_ok=True)
+    return checksum
+
+
 def main() -> None:
-    with urllib.request.urlopen(URL, timeout=60) as response:  # noqa: S310  # nosec B310 # pinned https URL
+    opener = urllib.request.build_opener(_ApprovedOriginRedirectHandler)
+    with opener.open(URL, timeout=60) as response:
         if not response.geturl().startswith(APPROVED_ORIGIN):
             raise SystemExit(f"unexpected redirect origin: {response.geturl()}")
         raw = response.read(_MAX_BYTES + 1)
@@ -73,28 +111,20 @@ def main() -> None:
             rows.append((date.isoformat(), f"{observed[date]:.1f}", 0))
         else:
             values = by_calendar_day[(date.month, date.day)]
+            if not values:
+                raise SystemExit(f"no valid precipitation observations for calendar day {date:%m-%d}")
             rows.append((date.isoformat(), f"{sum(values) / len(values):.4f}", 1))
             filled += 1
         date += dt.timedelta(days=1)
 
-    OUT_DIR.mkdir(parents=True, exist_ok=True)
     buffer = io.StringIO()
     writer = csv.writer(buffer, lineterminator="\n")
     writer.writerow(("date", "prcp_mm", "filled_with_calendar_day_mean"))
     writer.writerows(rows)
-    data = buffer.getvalue().encode()
-    # Replace rather than truncate, so an interrupted write leaves the old fixture intact.
-    target = OUT_DIR / "hickman_prcp_1960_1996.csv"
-    temporary = target.with_name(target.name + ".tmp")
-    temporary.write_bytes(data)
-    temporary.replace(target)
-    # The provenance checksum covers both canonical CSVs, in sorted filename order
-    # (tests/fixture/README.md). table5.csv is transcribed from the paper, not written here.
-    hasher = hashlib.sha256(data)
-    hasher.update((OUT_DIR / "table5.csv").read_bytes())
-    print(f"days={len(rows)} filled={filled}")
     print(f"raw_dly_sha256={hashlib.sha256(raw).hexdigest()}")
-    print(f"fixture_sha256={hasher.hexdigest()}")
+    checksum = _publish_fixture(OUT_DIR, buffer.getvalue().encode())
+    print(f"days={len(rows)} filled={filled}")
+    print(f"fixture_sha256={checksum}")
 
 
 if __name__ == "__main__":

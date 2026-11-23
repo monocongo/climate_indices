@@ -44,10 +44,10 @@ specification checks, not external scientific validation.
 **characterization** against Byun and Wilhite (1999) Table 5 on the Hickman,
 Nebraska record in `tests/fixture/flood_hickman/`: 1995–1996 EDI is at or below
 −1 on the table's minimum-EDI day, and its minimum lies inside the table's
-Eq. (2) drought duration. It is not an exact reference. Table 5 uses
-variable-duration EDI and one-decimal summary rows, the library's 1995–1996
-minimum is −2.10 against the paper's −2.5, and the fixture is a single candidate
-station with calendar-day-mean gap fill. `VALIDATION.md` records the evidence
+Eq. (2) drought duration. It is not an exact reference. Table 5 gives summary
+statistics for variable-duration EDI, not daily values. The library's 1995–1996
+minimum is −2.10 against the paper's −2.5. The fixture uses one candidate station
+with calendar-day-mean gap fill. `VALIDATION.md` records the evidence
 limits in its Flood Evidence Classification section.
 
 ## Reference

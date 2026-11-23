@@ -531,8 +531,9 @@ observed data.
   library minimum is −2.10 against the paper's −2.5 and its last EDI ≤ −1 day is 492
   against 493; no tolerance is claimed on either.
 - **Hickman input audit (#1135)**: The [NCEI GHCN-Daily file](https://www.ncei.noaa.gov/pub/data/ghcn/daily/all/USC00253825.dly)
-  for `USC00253825` contains all months from 1960–1996. The file retrieved on
-  2026-11-22 had SHA-256 `db4bb8219a83d2925eb02d222193305f0157b677d7e293b715e937a52ee345f9`.
+  for `USC00253825` contains all months from 1960–1996. The 2026-11-22 audit
+  recorded SHA-256 `db4bb8219a83d2925eb02d222193305f0157b677d7e293b715e937a52ee345f9`.
+  The fixture preparation used the same source bytes on 2026-11-23.
   Parsing civil days from `PRCP` (tenths of mm) gives 68 missing (`-9999`) days
   and no nonblank quality flags. The missing days include 2–3 March 1960 and
   1 February 1996. This is a station candidate, not the verified processed input.
@@ -543,9 +544,9 @@ observed data.
   193-station archive or its 113-station retained subset. The exact station identity,
   nearest-station substitutions within 100 km, calendar-day fills, and exact
   calibration and warm-up inputs remain unconfirmed. No digitized figure is committed;
-  reuse permission for a figure derivative is unresolved. Table 5's ten transcribed
-  values are facts from an AMS-copyrighted table, and their reuse terms are also
-  unresolved.
+  reuse permission for a figure derivative is unresolved. The fixture transcribes
+  numerical facts from ten entries in the AMS-copyrighted Table 5. The reuse terms
+  for the transcription are not confirmed.
 - **I_F**: The [Deo et al. (2015) abstract](https://doi.org/10.1007/s11269-015-1046-3)
   calls the weighting "exponentially decaying", but the full text's Eq. (1) is the
   selected harmonic double sum, and Eq. (4) standardizes by annual maxima. The

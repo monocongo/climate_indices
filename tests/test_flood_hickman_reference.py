@@ -1,7 +1,7 @@
 """EDI characterization, with PE as its input, against Byun and Wilhite (1999) Table 5 (#1135).
 
 This is **characterization, not exact-reference validation**. Table 5 reports
-one-decimal summary rows for a variable-duration EDI over a 113-station record,
+summary statistics for a variable-duration EDI over a 113-station record,
 while the library implements the fixed 365-day Eq. (2) window (ADR-0014) and
 this fixture is the single GHCN-Daily station ``USC00253825``. The two criteria
 below were declared before the library was run on the record; the measured
@@ -56,7 +56,7 @@ def hickman_edi() -> np.ndarray:
     return edi[positions]
 
 
-def test_fixture_matches_provenance_and_paper_missing_data_limit() -> None:
+def test_fixture_matches_provenance_and_reconstruction_fill_limit() -> None:
     provenance = json.loads((_DIR / "provenance.json").read_text())
     data = (_DIR / "hickman_prcp_1960_1996.csv").read_bytes()
     # The checksum covers both canonical CSVs, so a changed Table 5 transcription fails here too.
@@ -66,13 +66,15 @@ def test_fixture_matches_provenance_and_paper_missing_data_limit() -> None:
     assert hasher.hexdigest() == provenance["checksum_sha256"]
     rows = list(csv.DictReader(data.decode().splitlines()))
     assert len(rows) == 13515
-    # The paper discarded stations missing more than 1% of the record.
-    assert sum(int(row["filled_with_calendar_day_mean"]) for row in rows) / len(rows) < 0.01
+    # The fill fraction measures the reconstruction, not the paper's station selection.
+    assert sum(int(row["filled_with_calendar_day_mean"]) for row in rows) / len(rows) <= 0.01
 
 
 def test_edi_is_in_drought_on_table5_minimum_day(hickman_edi: np.ndarray) -> None:
     """Criterion (a): EDI <= -1 on Table 5's Eq. (2) minimum-EDI day (469)."""
     day, _, _ = _table5("2", "min_edi")
+    provenance = json.loads((_DIR / "provenance.json").read_text())
+    assert provenance["validation_tolerance"]["edi_drought_threshold"] == -1.0
     assert hickman_edi[day - 1] <= -1.0
 
 
