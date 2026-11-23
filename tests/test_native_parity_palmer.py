@@ -192,6 +192,16 @@ def test_every_division_matches_for_pdsi(monkeypatch, palmer_division_dir: Path,
     _assert_parity(rust, python, rtol=PINNED_RTOL, atol=PINNED_ATOL)
 
 
+def test_pdsi_june_cut_matches_between_paths(monkeypatch, palmer_division_inputs) -> None:
+    """A record ending in June reaches the kernel with only its real months (#1663)."""
+    precips, pet, awc = palmer_division_inputs["1102"]
+    cut = 1530
+    rust, python, calls = _rust_and_python(monkeypatch, _pdsi(precips[:cut], pet[:cut], awc))
+    assert calls == _PDSI_KERNELS
+    assert np.isfinite(python[2]).all()
+    _assert_parity(rust, python, rtol=PINNED_RTOL, atol=PINNED_ATOL)
+
+
 def test_every_division_matches_for_scpdsi(monkeypatch, palmer_division_dir: Path, palmer_division_inputs) -> None:
     precips, pet, awc = palmer_division_inputs[palmer_division_dir.name]
     rust, python, calls = _rust_and_python(monkeypatch, _scpdsi(precips, pet, awc))
@@ -345,7 +355,8 @@ def test_pdi_dispatch_scans_z_for_infinities_only_when_the_kernel_can_take_it(mo
     monkeypatch.setattr(_palmer_pdi, "calculate", lambda *args, **kwargs: "python path")
     monkeypatch.setattr(np, "isinf", lambda values: pytest.fail("the dispatch guard scanned z"))
 
-    assert palmer._pdi_recursion(np.zeros(shape), _PDI_FACTORS) == "python path"
+    result: Any = palmer._pdi_recursion(np.zeros(shape), _PDI_FACTORS)
+    assert result == "python path"
 
 
 # --- branch stability (REFIMPL-34, #1636) ---------------------------------------------
@@ -469,6 +480,19 @@ def test_pdi_recursion_rejects_an_n_months_outside_the_record_on_both_paths(monk
     rust, python, _ = _rust_and_python(monkeypatch, lambda: _pdi_run_to(z, n_months))
     _same_outcome(rust, python)
     assert python[0] is ValueError
+
+
+def test_pdi_recursion_ignores_a_finite_tail_beyond_n_months(monkeypatch) -> None:
+    """``n_months`` is a month count, not a scan for a trailing NaN (#1663)."""
+    corpus = _straddling_corpus(series=100)
+    z = corpus.reshape(_MONTHS // 12, 12, corpus.shape[1])
+    rust, python, calls = _rust_and_python(monkeypatch, lambda: _pdi_run_to(z, 18))
+    assert calls == {"palmer_pdi"}
+    _same_outcome(rust, python)
+    for output in python:
+        flat = output.reshape(_MONTHS, -1)
+        assert np.isfinite(flat[:18]).all()
+        assert np.isnan(flat[18:]).all()
 
 
 def _wells_corpus_outcomes(monkeypatch, corpus: np.ndarray, factors: DurationFactors) -> tuple[np.ndarray, np.ndarray]:

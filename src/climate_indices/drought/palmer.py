@@ -889,15 +889,17 @@ def _palmer_cafec_params(prepared: _PalmerPrepared) -> dict[str, Any]:
 def _pdi_recursion(z: np.ndarray, factors: PdiDurationFactors, n_months: int | None = None) -> _palmer_pdi.PdiResult:
     """The ``pdi.f`` recursion, on the Rust kernel when it can take the Z series.
 
-    A Z series that is not (years, 12, n_cells) or holds an infinite value keeps the
-    Python path, which raises its ValueError or ConvergenceError. The kernel does not
-    reject infinities itself, so the guard scans ``z`` only here, where the kernel is
-    about to take it; the Python path scans for its own error.
+    A Z series that is not (years, 12, n_cells), holds an infinite value, or has an
+    ``n_months`` outside the record keeps the Python path, which raises its ValueError
+    or ConvergenceError. The kernel does not reject infinities itself, so the guard
+    scans ``z`` only here, where the kernel is about to take it; the Python path scans
+    for its own error.
 
     ``n_months`` is the count of real months at the start of ``z``: a record that ends
     before December is padded to whole years, and the recursion stops at its last real
     month, as ``pdi.f`` does, so the padding never enters it. The padded months of the
-    result are NaN. ``None`` runs every month.
+    result are NaN. ``None`` runs every month. A non-integer ``n_months`` raises
+    TypeError and an out-of-range value raises ValueError, from either path.
     """
     if n_months is not None:
         n_months = operator.index(n_months)
