@@ -1,23 +1,19 @@
 """Reproduce the synthetic characterization of the goodness-of-fit bootstrap (#1586, ADR-0028 section 5).
 
-Under the null hypothesis, a Monte-Carlo test that rejects at ``p <= alpha`` rejects with probability
-exactly ``alpha`` when ``(B + 1) * alpha`` is an integer. This script draws records whose every calendar
-step and cell is an independent sample from one candidate family, runs ``compare_distributions`` with that
-family as the only candidate, and counts how often the bootstrap p-values of the Kolmogorov-Smirnov and
-Anderson-Darling statistics reject at ``alpha = 0.05``.
+This script draws records whose every calendar step and cell is an independent sample from one candidate
+family. It runs ``compare_distributions`` with that family as the only candidate and counts how often
+the Kolmogorov-Smirnov and Anderson-Darling bootstrap p-values reject at ``alpha = 0.05``.
 
-Gate, declared before the run. With ``B = 99`` a series whose refits all succeed has expected size 0.05. A
-refit that fails leaves the p-value's denominator, so a series with ``B_ok`` successful refits has a p-value that
-is a multiple of ``1 / (B_ok + 1)`` and rejects with probability ``floor(alpha (B_ok + 1)) / (B_ok + 1)``, which
-is below alpha unless ``(B_ok + 1) alpha`` is an integer. The gate therefore compares each statistic's rejection
-count with the sum of those probabilities over the series that carry a p-value, and passes it inside the 99.9%
-normal band of that sum (the sum of the variances ``q (1 - q)``). The nominal exact-binomial band for alpha
-is reported beside it. A case that fails is reported as failed, not tuned. Series whose observed fit failed carry
-no p-value and are left out.
+For a series with ``B_ok`` successful refits, the fraction of p-value grid points at or below alpha is
+``floor(alpha * (B_ok + 1)) / (B_ok + 1)``. The report averages this grid fraction over series with finite
+p-values. Estimation, ties, and the filtering of failed refits can affect rank probabilities, so size
+is measured from observed rejection frequencies. The 99.9% exact-binomial count band is a reference
+for independent tests with rejection probability alpha. The report also gives Wilson intervals for
+the measured rates. Series without a p-value leave the rejection denominator.
+
 The cases are the four candidate families on a continuous record, gamma on a record rounded to 10 and
-bootstrapped with ``resolution=10``, and two controls that are expected not to pass: the naive K-S p-value
-(estimated parameters make it conservative) and the same rounded record bootstrapped without a resolution.
-One further case probes a harder regime and is reported whether or not it passes: a zero-heavy gamma of shape
+bootstrapped with ``resolution=10``, and two controls: the naive K-S p-value for gamma and the same
+rounded record bootstrapped without a resolution. One further case probes a harder regime: a zero-heavy gamma of shape
 0.8 and scale 3 with 15% exact zeros, rounded to a unit of 1, where 35% of the record is zero and the unit is
 comparable to the mean.
 
@@ -122,7 +118,7 @@ def _run(
     rejected = np.zeros(2, dtype=np.int64)
     series = 0
     failed_shares: list[float] = []
-    achievable: list[float] = []  # each series' probability of rejecting, given its successful refits
+    grid_fractions: list[float] = []
     for repeat in range(REPEATS):
         gof = _fit_record(
             distribution,
@@ -145,16 +141,14 @@ def _run(
             p_values = (gof.ks_p_value_bootstrap, gof.ad_p_value_bootstrap)
             shares = gof.bootstrap_failed_share[np.isfinite(gof.bootstrap_failed_share)]
             failed_shares += [float(share) for share in shares]
-            succeeded = np.round(N_BOOTSTRAP * (1.0 - shares))
-            achievable += list(np.floor(ALPHA * (succeeded + 1) + 1e-9) / (succeeded + 1))
+            share_with_p = gof.bootstrap_failed_share[np.isfinite(p_values[0])]
+            grid_size = np.rint(N_BOOTSTRAP * (1.0 - share_with_p)) + 1
+            grid_fractions.extend(np.floor(ALPHA * grid_size) / grid_size)
         series += int(np.isfinite(p_values[0]).sum())
         for position, p in enumerate(p_values):
             rejected[position] += int((p <= ALPHA).sum())
     names = ["ks"] if naive else ["ks", "ad"]
     low, high = (float(bound) for bound in binom.interval(CONFIDENCE, series, ALPHA))
-    q = np.full(series, ALPHA) if naive else np.array(achievable)
-    expected, spread = float(q.sum()), float(np.sqrt((q * (1.0 - q)).sum()))
-    z = float(scipy.stats.norm.ppf(0.5 + CONFIDENCE / 2))
     return {
         "rounding_unit": unit if rounded else None,
         "resolution": resolution,
@@ -166,13 +160,11 @@ def _run(
                 "wilson_95": [
                     float(b) for b in binomtest(int(rejected[position]), series).proportion_ci(method="wilson")
                 ],
-                "z_against_achievable": float((rejected[position] - expected) / spread),
-                "within_achievable_band": bool(abs(rejected[position] - expected) <= z * spread),
                 "within_nominal_band": bool(low <= rejected[position] <= high),
             }
             for position, name in enumerate(names)
         },
-        "achievable_expected_rejections": expected,
+        "mean_grid_fraction_at_or_below_alpha": None if naive else float(np.mean(grid_fractions)),
         "nominal_band": [low, high],
         "bootstrap_failed_share": None
         if naive

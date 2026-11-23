@@ -32,8 +32,6 @@
             0.04360676141280878,
             0.057907542976266796
           ],
-          "z_against_achievable": 0.07647191129018725,
-          "within_achievable_band": true,
           "within_nominal_band": true
         },
         "ad": {
@@ -43,12 +41,10 @@
             0.04516109594611085,
             0.05968298866141163
           ],
-          "z_against_achievable": 0.5353033790313108,
-          "within_achievable_band": true,
           "within_nominal_band": true
         }
       },
-      "achievable_expected_rejections": 180.0,
+      "mean_grid_fraction_at_or_below_alpha": 0.05,
       "nominal_band": [
         138.0,
         224.0
@@ -57,7 +53,7 @@
         "mean": 0.0,
         "max": 0.0
       },
-      "seconds": 4.8
+      "seconds": 5.5
     },
     "pearson": {
       "rounding_unit": null,
@@ -71,8 +67,6 @@
             0.04116838282799452,
             0.05617626769918175
           ],
-          "z_against_achievable": 1.1524819966164597,
-          "within_achievable_band": true,
           "within_nominal_band": true
         },
         "ad": {
@@ -82,21 +76,19 @@
             0.034997737899350054,
             0.04897895611236126
           ],
-          "z_against_achievable": -0.6774752263636731,
-          "within_achievable_band": true,
           "within_nominal_band": true
         }
       },
-      "achievable_expected_rejections": 137.77448760822296,
+      "mean_grid_fraction_at_or_below_alpha": 0.043905059057392094,
       "nominal_band": [
         118.0,
         199.0
       ],
       "bootstrap_failed_share": {
-        "mean": 0.11968312828733478,
+        "mean": 0.11967990935486154,
         "max": 0.4545454545454546
       },
-      "seconds": 5.1
+      "seconds": 5.8
     },
     "loglogistic": {
       "rounding_unit": null,
@@ -110,8 +102,6 @@
             0.03572057999757305,
             0.04926759034356868
           ],
-          "z_against_achievable": -0.3286475296785738,
-          "within_achievable_band": true,
           "within_nominal_band": true
         },
         "ad": {
@@ -121,12 +111,10 @@
             0.031099981509349988,
             0.04384933687683815
           ],
-          "z_against_achievable": -1.7676452468249821,
-          "within_achievable_band": true,
           "within_nominal_band": false
         }
       },
-      "achievable_expected_rejections": 145.88256905342075,
+      "mean_grid_fraction_at_or_below_alpha": 0.043122249202902974,
       "nominal_band": [
         129.0,
         212.0
@@ -135,7 +123,7 @@
         "mean": 0.04842990949996565,
         "max": 0.18181818181818177
       },
-      "seconds": 0.8
+      "seconds": 1.1
     },
     "gev": {
       "rounding_unit": null,
@@ -149,8 +137,6 @@
             0.0410210481172636,
             0.05494362257440046
           ],
-          "z_against_achievable": -0.31709936340540174,
-          "within_achievable_band": true,
           "within_nominal_band": true
         },
         "ad": {
@@ -160,21 +146,19 @@
             0.03330530877972948,
             0.04601046081970003
           ],
-          "z_against_achievable": -2.641795634754182,
-          "within_achievable_band": true,
           "within_nominal_band": true
         }
       },
-      "achievable_expected_rejections": 175.09213926972174,
+      "mean_grid_fraction_at_or_below_alpha": 0.048687236171088444,
       "nominal_band": [
         138.0,
         224.0
       ],
       "bootstrap_failed_share": {
-        "mean": 0.002205387205387201,
+        "mean": 0.0021492704826038115,
         "max": 0.11111111111111116
       },
-      "seconds": 1.0
+      "seconds": 1.5
     },
     "gamma_rounded_with_resolution": {
       "rounding_unit": 10.0,
@@ -188,8 +172,6 @@
             0.03921488150981551,
             0.05286504559366049
           ],
-          "z_against_achievable": -1.223550580642996,
-          "within_achievable_band": true,
           "within_nominal_band": true
         },
         "ad": {
@@ -199,12 +181,10 @@
             0.03509952950179265,
             0.048100983685824925
           ],
-          "z_against_achievable": -2.447101161285992,
-          "within_achievable_band": true,
           "within_nominal_band": true
         }
       },
-      "achievable_expected_rejections": 180.0,
+      "mean_grid_fraction_at_or_below_alpha": 0.05,
       "nominal_band": [
         138.0,
         224.0
@@ -213,7 +193,7 @@
         "mean": 0.0,
         "max": 0.0
       },
-      "seconds": 5.0
+      "seconds": 5.5
     },
     "control_gamma_rounded_without_resolution": {
       "rounding_unit": 10.0,
@@ -227,8 +207,6 @@
             0.2225239498311659,
             0.25026084891474004
           ],
-          "z_against_achievable": 51.23618056442546,
-          "within_achievable_band": false,
           "within_nominal_band": false
         },
         "ad": {
@@ -238,12 +216,10 @@
             0.14596650588298699,
             0.1697636592261731
           ],
-          "z_against_achievable": 29.594629669302467,
-          "within_achievable_band": false,
           "within_nominal_band": false
         }
       },
-      "achievable_expected_rejections": 180.0,
+      "mean_grid_fraction_at_or_below_alpha": 0.05,
       "nominal_band": [
         138.0,
         224.0
@@ -252,7 +228,7 @@
         "mean": 0.0,
         "max": 0.0
       },
-      "seconds": 4.7
+      "seconds": 5.2
     },
     "control_gamma_naive_k_s": {
       "rounding_unit": null,
@@ -266,12 +242,10 @@
             0.0001523665946796532,
             0.0020234946107297908
           ],
-          "z_against_achievable": -13.612000209653331,
-          "within_achievable_band": false,
           "within_nominal_band": false
         }
       },
-      "achievable_expected_rejections": 180.0,
+      "mean_grid_fraction_at_or_below_alpha": null,
       "nominal_band": [
         138.0,
         224.0
@@ -291,8 +265,6 @@
             0.06999875262146718,
             0.0875668521114647
           ],
-          "z_against_achievable": 7.8001349515991,
-          "within_achievable_band": false,
           "within_nominal_band": false
         },
         "ad": {
@@ -302,12 +274,10 @@
             0.08796953947379253,
             0.10733357440153767
           ],
-          "z_against_achievable": 13.000224919331833,
-          "within_achievable_band": false,
           "within_nominal_band": false
         }
       },
-      "achievable_expected_rejections": 180.0,
+      "mean_grid_fraction_at_or_below_alpha": 0.05,
       "nominal_band": [
         138.0,
         224.0
@@ -316,7 +286,7 @@
         "mean": 0.0,
         "max": 0.0
       },
-      "seconds": 5.8
+      "seconds": 6.3
     }
   }
 }

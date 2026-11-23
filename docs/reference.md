@@ -875,13 +875,16 @@ Goodness of fit (`gof`, on by default) answers a different question from the cri
 candidate fits best, but whether it fits at all. Each candidate's probability integral transform over
 the calibration values gives a Kolmogorov–Smirnov statistic and an Anderson–Darling statistic
 (`GoodnessOfFit`). Gamma and Pearson Type III leave out exact zeros, because the zero mass is not part of the
-continuous distribution tested; log-logistic and GEV, which have none, keep them. The parameters were estimated from the same sample, so the **naive K–S p-value is
-uncalibrated and far too high** (a synthetic gamma record rejected 2 of 3,600 series at a nominal 0.05),
-and Anderson–Darling has none. `n_bootstrap` runs a parametric bootstrap: it draws samples of the observed
-size and missing-value pattern from each fitted mixed distribution (zero mass included), refits each with
-the library's own estimator and scores it. The p-value is `(1 + #{statistic* >= statistic}) / (B_ok + 1)`
+continuous distribution tested; log-logistic and GEV, which have none, keep them. The **naive K–S p-value
+is uncalibrated for estimated parameters**. In the synthetic gamma experiment it rejected 2 of 3,600 series
+at a nominal 0.05. Anderson–Darling has no naive p-value. With `n_bootstrap`, the parametric bootstrap
+draws samples of the observed size and missing-value pattern from each fitted mixed distribution (zero
+mass included), refits each with the library's own estimator, and scores it. The p-value is
+`(1 + #{statistic* >= statistic}) / (B_ok + 1)`
 over the `B_ok` refits that succeeded; a refit that fails is counted in `bootstrap_failed_share` and left
-out, so with failures a series cannot reach the nominal size exactly. Pass the rounding unit of the prepared
+out. The exceedance count includes floating-point ties. For a series with a p-value, `alpha` lies on its
+grid when `(B_ok + 1) * alpha` is an integer. The actual rejection rate also depends on the probabilities of those
+grid points. Pass the rounding unit of the prepared
 sample as `resolution` if the record was rounded (the record's own unit for SPI; with `aggregation="mean"` that unit
 divided by the Timescale): without it a record rounded to 10 mm was rejected in 24% of series at a nominal 5%. A unit
 comparable to the mean of a zero-heavy record (35% zeros, unit 1 on a mean of 2.4) still leaves the bootstrap
@@ -936,7 +939,7 @@ assert (comparison["best"] != "none").all()
 assert set(np.unique(comparison["best"].values)) <= {"pearson", "gamma"}
 assert comparison["best"].attrs["climate_indices_log_likelihood_at"] == "fitted_estimates"
 
-# goodness of fit: the naive K-S p-value is there by default; a seeded bootstrap calibrates it
+# Goodness of fit uses the naive K-S p-value by default. The bootstrap accounts for refitting.
 assert comparison["ks_p_value_naive"].dims == ("candidate", "month", "lat", "lon")
 tested = suitability.compare_distributions(precipitation, 3, index="spi", n_bootstrap=19, seed=7, bh_adjust=True)
 assert float(tested["ks_p_value_bootstrap"].min()) >= 1 / 20  # the floor is 1 / (B_ok + 1)

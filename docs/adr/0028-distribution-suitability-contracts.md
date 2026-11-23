@@ -128,8 +128,9 @@ Implementation decisions of SUIT-05 ([#1586](https://github.com/monocongo/climat
 - **A refit fails by the rule that fails the observed fit.** A refit with no usable parameters, or with a value outside its fitted
   support (zero likelihood), is left out of the p-value, whose denominator is the number of refits that succeeded plus one.
   The share that failed is returned as `bootstrap_failed_share`. Counting a refit that scores a value beyond its own support
-  would inflate the null distribution of A², which has no such value in an observed fit that ranks. Because a p-value is a
-  multiple of `1 / (B_ok + 1)`, a series with fewer than `B` refits cannot reach the nominal size exactly.
+  would inflate the null distribution of A², which has no such value in an observed fit that ranks. The p-value is a
+  multiple of `1 / (B_ok + 1)`. For a series with a p-value, `alpha` lies on that grid when `(B_ok + 1) * alpha` is an
+  integer. The measured rejection rate also depends on how often each grid point occurs.
 - **Streams are keyed on the data.** Each calendar step and cell draws from its own stream, seeded by the seed and a digest of that
   column's calibration values, each value written one way (every NaN alike, `-0.0` as `0.0`, little-endian). A result therefore
   does not depend on a cell's position, on its neighbours, on the batching of replicates, on the Dask chunking, or on how a
@@ -139,15 +140,14 @@ Implementation decisions of SUIT-05 ([#1586](https://github.com/monocongo/climat
   log events of its fitting functions, describe a real series, so a context variable (`compute._fit_warnings_suppressed`)
   turns them off for the refits. It is scoped to the calling thread or task, unlike `warnings.catch_warnings`, which would race
   with concurrent Dask blocks. The gamma fit's `np.nanmean` empty-slice warning, which no context variable controls, stays
-  as the documented outcome for a column with no value; inside the refits an explicit count and sum give the same means
-  without it.
+  as the documented outcome for a column with no value. In refits, Rust can fit the block with empty columns present, and the
+  NumPy path uses explicit counts and sums to avoid the warning. Anderson–Darling uses the same summation order across
+  layouts, and the exceedance count includes ties within a numerical tolerance.
 - **Across cells.** `rejection_share` and the Benjamini–Hochberg p-values are computed from the bootstrap p-value when one was
   run and otherwise from the naive K–S p-value. `rejection_share` counts cells with `p <= alpha`, the decision rule of a
-  Monte-Carlo test: when `(B_ok + 1) alpha` is an integer, `alpha` is a value the p-value can take, so the rule loses no size to the
-  p-value grid. That is the attainable resolution, not a calibration; the size of the bootstrap is measured (`VALIDATION.md`),
-  and exchangeability, ties and the filtering of failed refits can move it. The Benjamini–Hochberg family is
-  the cells of one candidate and one calendar step, with NaN p-values left out. These need every cell, so the xarray route adds
-  them after its blocks are joined. A series without a cell axis has neither, and `bh_adjust=True` raises there, as it does for
+  Monte-Carlo test. The xarray route sums rejection counts and finite counts over the existing cell chunks.
+  The optional Benjamini–Hochberg adjustment gathers the cells of one candidate and one calendar step into one chunk,
+  with NaN p-values left out of the family. A series without a cell axis has neither, and `bh_adjust=True` raises there, as it does for
   `gof=("ad",)` without a bootstrap, which leaves nothing to adjust.
 
 ### 6. Result types and provenance
