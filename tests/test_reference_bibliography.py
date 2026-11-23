@@ -3,6 +3,7 @@
 import importlib.util
 import io
 import json
+from datetime import date
 from pathlib import Path
 from types import ModuleType
 from typing import Any, cast
@@ -76,7 +77,9 @@ def verification() -> dict[str, Any]:
 
 def test_the_bibliography_is_the_verified_set(bibliography: dict[str, dict[str, str]]) -> None:
     """The bibliography holds exactly the entries this ticket verified."""
-    assert frozenset(bibliography) == EXPECTED_KEYS
+    assert frozenset(bibliography) == EXPECTED_KEYS, (
+        "adding or removing a reference means updating EXPECTED_KEYS in this test file"
+    )
 
 
 def test_every_entry_has_a_verification_record(
@@ -108,28 +111,52 @@ def test_a_doi_less_entry_records_what_the_page_states(verification: dict[str, A
         assert record["checked"]
 
 
+def test_the_verification_file_names_its_source(verification: dict[str, Any]) -> None:
+    """The record file states where its data came from and when it was checked."""
+    assert verification["source"].startswith("Crossref REST API")
+    assert date.fromisoformat(verification["issued"])
+
+
 @pytest.mark.parametrize(
-    ("key", "field", "value", "expected"),
+    ("key", "side", "field", "value", "expected"),
     [
-        ("spade2020", "title", "Unrelated text about something else", "title"),
-        ("guttman1999", "journal", "Nature", "journal or booktitle"),
-        ("guttman1999", "author", "Guttmann, Nathaniel B.", "first author"),
-        ("allen2025", "author", "Allender, Sam and Otero, Noelia", "first author"),
-        ("carbone2018", "author", "Carbonell, Gregory J. and Lu, Junyu", "first author"),
+        ("spade2020", "entry", "title", "Unrelated text about something else", "title"),
+        ("guttman1999", "entry", "journal", "Nature", "journal or booktitle"),
+        ("guttman1999", "entry", "author", "Guttmann, Nathaniel B.", "first author"),
+        ("allen2025", "entry", "author", "Allender, Sam and Otero, Noelia", "first author"),
+        ("carbone2018", "entry", "author", "Carbonell, Gregory J. and Lu, Junyu", "first author"),
+        ("guttman1999", "entry", "doi", "", "no doi field"),
+        ("guttman1999", "entry", "doi", "10.1111/not-the-doi", "doi"),
+        ("guttman1999", "entry", "year", "1998", "year"),
+        ("guttman1999", "entry", "volume", "36", "volume"),
+        ("guttman1999", "entry", "number", "3", "number"),
+        ("guttman1999", "entry", "pages", "311--323", "pages"),
+        ("mckee1993", "entry", "pages", "999--999", "pages"),
+        ("wmo1090", "entry", "number", "77", "number"),
+        ("mckee1993", "entry", "author", "", "needs author"),
+        ("mckee1993", "entry", "doi", "10.1/foo", "not a Crossref check"),
+        ("mckee1993", "record", "record_url", "http://example.invalid/a", "not https"),
+        ("mckee1993", "record", "record_states", "too short", "does not say"),
+        ("mckee1993", "record", "year", "1994", "year"),
+        ("guttman1999", "record", "check", "openalex", "unknown check"),
     ],
 )
-def test_a_substantive_change_is_reported(
+def test_a_wrong_field_no_longer_certifies(
     bibliography: dict[str, dict[str, str]],
     verification: dict[str, Any],
     verifier: ModuleType,
     key: str,
+    side: str,
     field: str,
     value: str,
     expected: str,
 ) -> None:
-    """A wrong title, container or first-author family name no longer certifies."""
-    entry = {**bibliography[key], field: value}
-    problems = cast(Any, verifier).mismatches(key, entry, verification["entries"][key])
+    """Every field or record value the check compares is reported when it disagrees."""
+    entry = dict(bibliography[key])
+    record = dict(verification["entries"][key])
+    target = {"entry": entry, "record": record}[side]
+    target[field] = value
+    problems = cast(Any, verifier).mismatches(key, entry, record)
     assert any(expected in problem for problem in problems), problems
 
 
@@ -166,11 +193,57 @@ def test_an_unbalanced_field_value_is_rejected(verifier: ModuleType) -> None:
         parse_bib(f"@article{{spade2020,\n  title   = {{{title}}},\n}}\n")
 
 
+def test_a_duplicate_field_is_rejected(verifier: ModuleType) -> None:
+    """BibTeX rejects a repeated field, so the parser must not keep only the last value."""
+    parse_bib = cast(Any, verifier).parse_bib
+    with pytest.raises(ValueError, match="duplicate field year"):
+        parse_bib("@article{a,\n  year = {1999},\n  Year = {1900},\n}\n")
+
+
+def test_an_unparsed_line_is_rejected(verifier: ModuleType) -> None:
+    """A line that is neither an entry, a field nor a closing brace is malformed."""
+    parse_bib = cast(Any, verifier).parse_bib
+    with pytest.raises(ValueError, match="unparsed line"):
+        parse_bib("@article{a,\n  title = {One},\n  stray text\n}\n")
+
+
+def test_a_superscript_exponent_still_counts(verifier: ModuleType) -> None:
+    """A superscript that follows a word holds content, so it must not be dropped."""
+    plain = cast(Any, verifier)._plain
+    assert plain("An R<sup>2</sup> model") == plain("An R2 model")
+    assert plain("An R<sup>2</sup> model") != plain("An R model")
+    assert plain("A title                     <sup>1</sup>") == plain("A title")
+
+
+def test_a_dotless_i_spelling_matches(verifier: ModuleType) -> None:
+    """The dotless-letter accent spelling is the same name as the plain accented one."""
+    plain = cast(Any, verifier)._plain
+    assert plain(r"Beguer{\'{\i}}a") == plain("Beguería")
+
+
+class _Response(io.BytesIO):
+    """A Crossref reply that reports its final URL, as urlopen returns it."""
+
+    url = "https://api.crossref.org/works/10.1175/jamc-d-19-0272.1"
+
+    def geturl(self) -> str:
+        return self.url
+
+
 @pytest.mark.parametrize("payload", [b"[]", b'{"message": null}', b'{"message": {}}'], ids=["list", "null", "no-doi"])
 def test_a_malformed_crossref_response_is_a_lookup_failure(
     verifier: ModuleType, monkeypatch: pytest.MonkeyPatch, payload: bytes
 ) -> None:
     """A response that is not a work record raises the error the retry path handles."""
-    monkeypatch.setattr(verifier.urllib.request, "urlopen", lambda *args, **kwargs: io.BytesIO(payload))
+    monkeypatch.setattr(verifier.urllib.request, "urlopen", lambda *args, **kwargs: _Response(payload))
+    with pytest.raises(RuntimeError, match="Crossref lookup"):
+        cast(Any, verifier).fetch("10.1175/JAMC-D-19-0272.1")
+
+
+def test_a_redirect_off_crossref_is_a_lookup_failure(verifier: ModuleType, monkeypatch: pytest.MonkeyPatch) -> None:
+    """A redirect leaves the fixed Crossref endpoint, so its body is not trusted."""
+    redirect = _Response(b'{"message": {"DOI": "10.1175/jamc-d-19-0272.1"}}')
+    redirect.url = "https://example.invalid/works/10.1175/jamc-d-19-0272.1"
+    monkeypatch.setattr(verifier.urllib.request, "urlopen", lambda *args, **kwargs: redirect)
     with pytest.raises(RuntimeError, match="Crossref lookup"):
         cast(Any, verifier).fetch("10.1175/JAMC-D-19-0272.1")

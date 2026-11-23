@@ -40,6 +40,7 @@ BIB = HERE / "references.bib"
 VERIFICATION = HERE / "references-verification.json"
 CROSSREF = "https://api.crossref.org/works/"
 USER_AGENT = "climate_indices-refimpl-bibliography/1.0 (https://github.com/monocongo/climate_indices)"
+MAX_RESPONSE = 4_000_000
 PRESERVED = ("note", "cited_year")
 ENTRY = re.compile(r"@(\w+)\{([^,]+),")
 FIELD = re.compile(r"^\s+(\w+)\s*=\s*\{(.*)\},?\s*$")
@@ -68,7 +69,10 @@ def parse_bib(text: str) -> dict[str, dict[str, str]]:
         value = field.group(2).strip()
         if value.count("{") != value.count("}"):
             raise ValueError(f"{key}: {field.group(1)} value has unbalanced braces")
-        entries[key][field.group(1).lower()] = value
+        name = field.group(1).lower()
+        if name in entries[key]:
+            raise ValueError(f"{key}: duplicate field {name}")
+        entries[key][name] = value
     if key is not None:
         raise ValueError(f"{key}: entry is not closed at the end of the file")
     return entries
@@ -87,11 +91,15 @@ def _start_entry(new_key: str, key: str | None, entries: dict[str, dict[str, str
 def _plain(value: object) -> str:
     """Compare key for a title, container or name: lower-case ASCII letters and digits only.
 
-    Drops HTML superscripts and tags, HTML entities, LaTeX commands and braces, accents and punctuation, so
-    ``Computers \\& Geosciences`` equals ``Computers &amp; Geosciences`` and ``{SPI}`` equals ``<scp>SPI</scp>``.
+    Drops HTML superscripts that hold a whitespace-separated title footnote, all other HTML tags and entities,
+    LaTeX commands and braces, accents and punctuation, so ``Computers \\& Geosciences`` equals
+    ``Computers &amp; Geosciences`` and ``{SPI}`` equals ``<scp>SPI</scp>``. A superscript that follows a word is
+    kept, so ``R<sup>2</sup>`` still differs from ``R``.
     """
-    text = re.sub(r"<sup>.*?</sup>", "", str(value), flags=re.IGNORECASE | re.DOTALL)
+    text = re.sub(r"(?<=\s)<sup>.*?</sup>", "", str(value), flags=re.IGNORECASE | re.DOTALL)
     text = html.unescape(re.sub(r"<[^>]+>", "", text))
+    # The dotless-letter spelling, as in Beguer{\'{\i}}a, must keep its letter.
+    text = re.sub(r"\\[ij](?![A-Za-z])", lambda match: match.group(0)[1], text)
     text = re.sub(r"\\(?:[A-Za-z]+|.)", "", text)
     return re.sub(r"[^a-z0-9]", "", unicodedata.normalize("NFKD", text).lower())
 
@@ -103,7 +111,10 @@ def fetch(doi: str) -> dict[str, Any]:
     )
     try:
         with urllib.request.urlopen(request, timeout=60) as response:  # noqa: S310  # nosec B310 # fixed https endpoint
-            message = json.load(response)["message"]
+            final = response.geturl()
+            if not final.startswith(CROSSREF):
+                raise OSError(f"Crossref redirected the {doi} lookup to {final}")
+            message = json.loads(response.read(MAX_RESPONSE))["message"]
     except (OSError, ValueError, KeyError, TypeError) as error:
         raise RuntimeError(f"Crossref lookup for {doi} failed") from error
     if not isinstance(message, dict) or not message.get("DOI"):
@@ -213,6 +224,11 @@ def _record_problems(key: str, entry: dict[str, str], record: dict[str, Any]) ->
         found.append(f"{key}: the record needs a check date and a year")
     elif str(record["year"]) != entry.get("year"):
         found.append(f"{key}: year {entry.get('year')!r} != record {record['year']!r}")
+    stated = str(record.get("record_states", "")).replace("--", "-")
+    for name in ("pages", "number"):
+        value = entry.get(name, "").replace("--", "-")
+        if value and value not in stated:
+            found.append(f"{key}: {name} {entry.get(name)!r} is not stated in the record")
     return found
 
 
