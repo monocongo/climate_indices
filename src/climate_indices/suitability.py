@@ -1074,6 +1074,16 @@ def _rejection_share(p: xr.DataArray, alpha: float, cell_dims: list[str]) -> xr.
     return share
 
 
+def _across_cell_output_names(gof: _GofOptions) -> set[str]:
+    """Names reserved for across-cell goodness-of-fit outputs."""
+    names = {"rejection_share", "statistic"}
+    if gof.bh_adjust:
+        names.add("ks_p_value_bh")
+        if gof.n_bootstrap > 0:
+            names.add("ad_p_value_bh")
+    return names
+
+
 def _add_across_cell_variables(
     data_vars: dict[str, xr.DataArray],
     cell_dims: list[str],
@@ -1942,11 +1952,7 @@ def _compare_xarray(
         fields = fields + _GOF_FIELDS + (_GOF_BOOTSTRAP_FIELDS if gof.n_bootstrap > 0 else ())
     reserved = {"candidate", period_dim, *fields, *_STEP_FIELDS, *(name for name, _ in slots)}
     if gof.statistics and cell_dims:
-        reserved.update(("rejection_share", "statistic"))
-        if gof.bh_adjust:
-            reserved.add("ks_p_value_bh")
-            if gof.n_bootstrap > 0:
-                reserved.add("ad_p_value_bh")
+        reserved.update(_across_cell_output_names(gof))
     _reject_output_name_clashes(reserved, time_dim, input_da, pet_da)
 
     first_year, last_year = _effective_calibration_years(
