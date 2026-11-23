@@ -134,3 +134,7 @@ docs/research/reference-papers/sources/external/*
 !docs/research/reference-papers/sources/external/.gitkeep
 # left behind by an interrupted verify_references.py run
 docs/research/reference-papers/*.json.tmp
+
+# Intercomparison harness outputs (REFIMPL-08): manifests and derived metrics are committed, bulk outputs are not
+intercomparison/**/*.zarr/
+intercomparison/studies/*/work/

@@ -69,6 +69,9 @@ def _project(tmp_path: Path) -> tuple[Path, str]:
     ):
         (root / name).parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(ROOT / name, root / name)
+    # the intercomparison harness (REFIMPL-08) must stay out of both artifacts
+    (root / "intercomparison").mkdir()
+    shutil.copy2(ROOT / "intercomparison" / "contract.py", root / "intercomparison" / "contract.py")
     return root, _repository(root)
 
 
@@ -107,6 +110,7 @@ def test_the_sdist_and_the_wheel_built_from_it_report_the_commit_without_git(tmp
             legal_member = archive.extractfile(f"{prefix}/{name}")
             assert legal_member is not None
             assert legal_member.read() == (ROOT / name).read_bytes()
+        assert not [n for n in archive.getnames() if n.startswith(f"{prefix}/intercomparison")]
         member = archive.extractfile(f"{sdist.name.removesuffix('.tar.gz')}/src/climate_indices/_build_info.json")
         assert member is not None
         assert json.loads(member.read()) == {"git_commit": head, "git_dirty": False}
@@ -120,6 +124,7 @@ def test_the_sdist_and_the_wheel_built_from_it_report_the_commit_without_git(tmp
     wheel = _build(unrelated / sdist.name.removesuffix(".tar.gz"), "build_wheel", tmp_path / "wheel")
     assert _wheel_build_info(wheel) == {"git_commit": head, "git_dirty": False}
     with zipfile.ZipFile(wheel) as archive:
+        assert not [n for n in archive.namelist() if "intercomparison" in n]
         metadata = next(name for name in archive.namelist() if name.endswith(".dist-info/METADATA"))
         wheel_metadata = archive.read(metadata).decode()
         assert "License-Expression: BSD-3-Clause AND BSL-1.0\n" in wheel_metadata
