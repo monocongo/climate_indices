@@ -575,29 +575,38 @@ def _continuous_ppf(distribution: Distribution, u: np.ndarray, p: dict[str, np.n
     return quantile
 
 
-def _pit_statistics(pit: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+def _pit_statistics(
+    pit: np.ndarray, *, clip_endpoints: bool = True, statistics: tuple[GofStatistic, ...] = ("ks", "ad")
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """Kolmogorov-Smirnov D, Anderson-Darling A^2 and the count of finite PIT values, along axis 0.
 
     ``D = max_i max(i/m - u_(i), u_(i) - (i-1)/m)`` and
     ``A^2 = -m - (1/m) sum_i (2i - 1) (ln u_(i) + ln(1 - u_(m+1-i)))`` over the ``m`` ordered finite
-    values, each held within ``_PIT_MARGIN`` of 0 and 1. Both are NaN where ``m`` is 0.
+    values. With ``clip_endpoints=True``, values are held at least ``_PIT_MARGIN`` from 0 and 1.
+    Otherwise A² is infinite for exact endpoints. Unrequested or empty statistics are NaN.
     """
     finite = np.isfinite(pit)
     count = finite.sum(axis=0)
-    ordered = np.sort(np.where(finite, np.clip(pit, _PIT_MARGIN, 1.0 - _PIT_MARGIN), np.nan), axis=0)
+    if clip_endpoints:
+        pit = np.clip(pit, _PIT_MARGIN, 1.0 - _PIT_MARGIN)
+    ordered = np.sort(np.where(finite, pit, np.nan), axis=0)
     rank = np.arange(1, pit.shape[0] + 1).reshape((-1,) + (1,) * (pit.ndim - 1))
     inside = rank <= count
     size = np.maximum(count, 1)
+    ks = anderson_darling = np.full(count.shape, np.nan)
     with np.errstate(all="ignore"):
-        d_plus = np.where(inside, rank / size - ordered, -np.inf).max(axis=0)
-        d_minus = np.where(inside, ordered - (rank - 1) / size, -np.inf).max(axis=0)
-        mirrored = np.take_along_axis(ordered, np.clip(count - rank, 0, pit.shape[0] - 1), axis=0)
-        terms = np.where(inside, (2 * rank - 1) * (np.log(ordered) + np.log1p(-mirrored)), 0.0)
-        # Sum the years in the same order for a single series and for stacked replicates.
-        total = np.ascontiguousarray(np.moveaxis(terms, 0, -1)).sum(axis=-1)
-        anderson_darling = -count - total / size
+        if "ks" in statistics:
+            d_plus = np.where(inside, rank / size - ordered, -np.inf).max(axis=0)
+            d_minus = np.where(inside, ordered - (rank - 1) / size, -np.inf).max(axis=0)
+            ks = np.maximum(d_plus, d_minus)
+        if "ad" in statistics:
+            mirrored = np.take_along_axis(ordered, np.clip(count - rank, 0, pit.shape[0] - 1), axis=0)
+            terms = np.where(inside, (2 * rank - 1) * (np.log(ordered) + np.log1p(-mirrored)), 0.0)
+            # Sum the years in the same order for a single series and for stacked replicates.
+            total = np.ascontiguousarray(np.moveaxis(terms, 0, -1)).sum(axis=-1)
+            anderson_darling = -count - total / size
     return (
-        np.where(count > 0, np.maximum(d_plus, d_minus), np.nan),
+        np.where(count > 0, ks, np.nan),
         np.where(count > 0, anderson_darling, np.nan),
         count,
     )
@@ -2092,7 +2101,8 @@ class PitUniformity:
     and ``trace_share`` divide the respective counts by all finite probabilities
     in that step and cell. Empty denominators give NaN. Unrequested statistics
     are None. Only K–S has a naive p-value, which assumes independent draws
-    from a fully specified CDF.
+    from a fully specified CDF. A continuous PIT of exactly 0 or 1 gives an
+    infinite Anderson–Darling statistic.
     """
 
     n_valid: np.ndarray
@@ -2107,6 +2117,8 @@ _PIT_COUNTS = ("n_valid", "zero_share", "trace_share")
 
 
 def _bounded_pit_array(values: np.ndarray, name: str) -> np.ndarray:
+    if isinstance(values, np.ma.MaskedArray) and values.dtype.kind == "f":
+        values = values.filled(np.nan)
     array = _as_float_array(values, name)
     if np.any((array < 0) | (array > 1)):
         raise _invalid(f"{name} must be in [0, 1] or missing.", name, "outside [0, 1]", "[0, 1] or NaN")
@@ -2162,10 +2174,10 @@ def _seasonal_pit_statistics(
         if np.any(continuous & ~(p0 < 1)):
             raise ValueError("An unmasked probability requires finite prob_zero strictly below 1.")
         with np.errstate(invalid="ignore", divide="ignore"):
-            pit = np.where(continuous, np.maximum(sample.astype(float) - p0, 0) / (1 - p0), np.nan)
+            pit = np.where(continuous, np.maximum(sample.astype(float, copy=False) - p0, 0) / (1 - p0), np.nan)
         zero_count = (valid & mass & ~trace).sum(axis=0)
         trace_count = (valid & trace).sum(axis=0)
-    ks, ad, count = _pit_statistics(pit)
+    ks, ad, count = _pit_statistics(pit, clip_endpoints=False, statistics=statistics)
     total = valid.sum(axis=0)
     denominator = np.where(total > 0, total, np.nan)
     return PitUniformity(
@@ -2204,14 +2216,24 @@ def _pit_xarray(
         core_dim = step_dim if name == "prob_zero" else time_dim
         if not isinstance(array, xr.DataArray) or set(array.dims) != {core_dim, *cell_dims}:
             raise _invalid(f"{name} must be a DataArray with matching dimensions.", name, type(array), str(core_dim))
+        for dim in cell_dims if name == "prob_zero" else probabilities.dims:
+            if (dim in array.xindexes) != (dim in probabilities.xindexes):
+                raise ValueError(
+                    f"{name} and probabilities must both label dimension {dim!r} or both leave it unlabeled."
+                )
+        for coord_name, coord in probabilities.coords.items():
+            if coord_name in array.coords and coord_name not in probabilities.xindexes and time_dim not in coord.dims:
+                if not coord.variable.equals(array.coords[coord_name].variable):
+                    raise ValueError(f"{name} and probabilities have different coordinates for {coord_name!r}.")
         if core_dim == time_dim and array.chunks is not None:
             validate_dask_chunks(array, time_dim)
         if core_dim == step_dim and not np.array_equal(array[step_dim].values, steps):
             raise _invalid(
                 f"prob_zero needs {step_dim} coordinates 1 to {len(steps)}.", name, "invalid steps", str(steps)
             )
-        companions.append(array)
+        companions.append(array.reset_coords(drop=True))
         core_dims.append([core_dim])
+    input_names = tuple(inputs)
 
     # Map observed days onto the all-leap layout without interpolating the PIT on February 29.
     positions = None
@@ -2224,7 +2246,7 @@ def _pit_xarray(
     def score(values: np.ndarray, *arrays: np.ndarray) -> tuple[np.ndarray, ...]:
         sample = fold(_bounded_pit_array(values, "probabilities"), np.nan)
         kwargs = dict.fromkeys(("prob_zero", "zero_mask", "trace_mask"))
-        for name, array in zip(inputs, arrays, strict=True):
+        for name, array in zip(input_names, arrays, strict=True):
             kwargs[name] = (
                 np.moveaxis(array, -1, 0) if name == "prob_zero" else fold(_pit_mask(array, values.shape, name), False)
             )
@@ -2240,6 +2262,7 @@ def _pit_xarray(
         output_dtypes=[np.int64] + [float] * (len(fields) - 1),
         dask="parallelized",
         dask_gufunc_kwargs={"output_sizes": {step_dim: len(steps)}, "allow_rechunk": True},
+        keep_attrs=False,
     )
     metadata = {
         "distribution": distribution.value,
@@ -2259,8 +2282,12 @@ def _pit_xarray(
     )
     for name in _RANGE_ATTRS:
         attrs.pop(name, None)
+    variable_attrs = {key: attrs[key] for key in provenance.OWN_ATTRS if key in attrs}
     return xr.Dataset(
-        {name: array.transpose(step_dim, *cell_dims) for name, array in zip(fields, arrays, strict=True)},
+        {
+            name: array.transpose(step_dim, *cell_dims).assign_attrs(units="1", **variable_attrs)
+            for name, array in zip(fields, arrays, strict=True)
+        },
         coords={step_dim: steps},
         attrs=attrs,
     )

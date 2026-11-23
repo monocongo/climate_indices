@@ -83,9 +83,11 @@ enter the statistics. An unmasked mixed-CDF probability below `p0` raises a
 mask error. Check `distribution_used` for fallback before specifying the
 distribution and mask.
 
-Removing Pearson traces truncates the continuous sample at 0.0005. The uniform
-reference assumes the fitted CDF at that cutoff is negligible, as it generally
-is for precipitation measured in millimetres. A p-value from the fit's own
+Removing Pearson traces truncates the continuous sample at 0.0005. Check the
+fitted CDF at that cutoff before interpreting the results. The uniform
+reference approximates the retained sample only when that probability is
+negligible. An exact probability of 0 or 1 gives an infinite Anderson–Darling
+statistic. A p-value from the fit's own
 Calibration Period can be conservative and is useful for screening. Above a
 Timescale of 12 months or 365 days, overlapping accumulation windows invalidate
 the naive p-values and produce a warning.

@@ -8,7 +8,7 @@ import pytest
 import scipy.stats
 import xarray as xr
 
-from climate_indices import compute, suitability
+from climate_indices import compute, provenance, suitability
 from climate_indices.drought import indices
 from climate_indices.exceptions import BetaFeatureWarning, ClimateIndicesWarning, InvalidArgumentError
 from climate_indices.vocabulary import Distribution
@@ -25,19 +25,50 @@ def _pit(values, scale=1, *, distribution=Distribution.normal, **kwargs):
     )
 
 
-@pytest.mark.parametrize("distribution", [Distribution.normal, Distribution.gamma, Distribution.pearson])
-def test_known_cdf_has_nominal_size(distribution):
+@pytest.mark.parametrize(
+    ("distribution", "zero_handling"),
+    [
+        (Distribution.normal, "classic"),
+        (Distribution.gamma, "classic"),
+        (Distribution.pearson, "classic"),
+        (Distribution.pearson, "center_of_mass"),
+    ],
+)
+def test_known_cdf_has_nominal_size(distribution, zero_handling):
     rng = np.random.default_rng(1588)
     sample = rng.uniform(size=(40 * 12, 300))
     kwargs = {}
     if distribution is not Distribution.normal:
         exact_zero = rng.random(sample.shape) < 0.4
-        trace = (sample < 1e-3) & ~exact_zero if distribution is Distribution.pearson else np.zeros_like(exact_zero)
+        trace = np.zeros_like(exact_zero)
+        mixed = np.where(exact_zero, 0.4, 0.4 + 0.6 * sample)
+        kwargs["prob_zero"] = np.full((12, 300), 0.4)
+        if distribution is Distribution.pearson:
+            # Gamma(4, 0.001) is Pearson Type III with skew=1 and a small trace fraction.
+            precipitation = np.where(exact_zero, 0, scipy.stats.gamma.ppf(sample, a=4, scale=0.001))
+            trace = (precipitation < 0.0005) & ~exact_zero
+            shape = (12, 300, 1)
+            mixed = indices.spi(
+                precipitation[..., None],
+                1,
+                distribution,
+                START,
+                START,
+                START + 39,
+                MONTHLY,
+                fitting_params={
+                    "prob_zero": np.full(shape, 0.4),
+                    "loc": np.full(shape, 0.004),
+                    "scale": np.full(shape, 0.002),
+                    "skew": np.ones(shape),
+                },
+                output_scale="probability",
+                zero_handling=zero_handling,
+            )[..., 0]
+            assert trace.any()
+            kwargs["trace_mask"] = trace
         zero_mask = exact_zero | trace
-        mixed = np.where(zero_mask, 0.2, 0.4 + 0.6 * sample)
-        kwargs = {"prob_zero": np.full((12, 300), 0.4), "zero_mask": zero_mask, "trace_mask": trace}
-        if distribution is Distribution.gamma:
-            del kwargs["trace_mask"]
+        kwargs["zero_mask"] = zero_mask
     else:
         mixed = sample
 
@@ -66,8 +97,23 @@ def test_calibration_slice_and_statistics_match_independent_references(dtype):
     assert result.ks_p_value_naive[0] == pytest.approx(expected.pvalue, abs=1e-14)
     assert result.ad_statistic[0] == pytest.approx(expected_ad, abs=1e-14)
     np.testing.assert_array_equal(result.n_valid[:3], [3, 2, 0])
-    assert np.isfinite(result.ad_statistic[1])
+    assert np.isposinf(result.ad_statistic[1])
     assert np.isnan(result.ad_statistic[2]) and np.isnan(result.zero_share[2])
+
+
+def test_small_continuous_probability_is_not_clipped():
+    probability = 1e-100
+    result = _pit(np.array([probability]))
+    assert result.ad_statistic[0] == pytest.approx(-1 - np.log(probability) - np.log1p(-probability), rel=1e-14)
+
+
+def test_masked_float32_uses_original_precision_at_the_zero_mass_boundary():
+    values = np.ma.array(np.full(24, 0.7, dtype=np.float32), mask=np.arange(24) == 0)
+    result = _pit(
+        values, distribution=Distribution.gamma, prob_zero=np.full(12, 0.7), zero_mask=np.zeros(24, dtype=bool)
+    )
+    assert result.n_valid[0] == 1
+    assert result.n_valid[1] == 2
 
 
 def test_seasonal_variance_in_spai_is_detected():
@@ -181,6 +227,35 @@ def test_xarray_refuses_misaligned_zero_mask():
     p0 = xr.DataArray(np.zeros(12), dims="month", coords={"month": np.arange(1, 13)})
     with pytest.raises(ValueError, match="join='exact'"):
         suitability.pit_uniformity(values, 1, distribution=Distribution.gamma, prob_zero=p0, zero_mask=mask)
+
+
+def test_xarray_refuses_mismatched_auxiliary_spatial_coordinates():
+    times = pd.date_range(f"{START}-01-01", periods=24, freq="MS")
+    values = xr.DataArray(
+        np.full((24, 2), 0.4), dims=("time", "cell"), coords={"time": times, "latitude": ("cell", [5, 10])}
+    )
+    mask = values.copy(data=np.zeros((24, 2), dtype=bool)).assign_coords(latitude=("cell", [10, 5]))
+    p0 = xr.DataArray(np.zeros((12, 2)), dims=("month", "cell"), coords={"month": np.arange(1, 13)})
+    with pytest.raises(ValueError, match="zero_mask.*latitude"):
+        suitability.pit_uniformity(values, 1, distribution=Distribution.gamma, prob_zero=p0, zero_mask=mask)
+
+
+def test_xarray_retains_primary_coordinates_and_records_diagnostic_metadata():
+    times = pd.date_range(f"{START}-01-01", periods=24, freq="MS")
+    values = xr.DataArray(
+        np.full((24, 2), 0.4),
+        dims=("time", "cell"),
+        coords={"time": times, "latitude": ("cell", [5, 10])},
+        attrs={"valid_max": 1, "long_name": "Source index probability scale"},
+    )
+    mask = values.copy(data=np.zeros((24, 2), dtype=bool)).assign_coords(n_valid=("cell", [0, 0]))
+    p0 = xr.DataArray(np.zeros((12, 2)), dims=("month", "cell"), coords={"month": np.arange(1, 13)})
+    result = suitability.pit_uniformity(values, 1, distribution=Distribution.gamma, prob_zero=p0, zero_mask=mask)
+    assert result.latitude.identical(values.latitude)
+    assert (result.n_valid == 2).all()
+    assert "valid_max" not in result.n_valid.attrs
+    assert "long_name" not in result.n_valid.attrs
+    assert result.n_valid.attrs[provenance.PROVENANCE_ATTR] == result.attrs[provenance.PROVENANCE_ATTR]
 
 
 def test_daily_calendar_scores_only_observed_dates():
