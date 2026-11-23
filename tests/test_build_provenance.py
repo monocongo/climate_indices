@@ -69,6 +69,9 @@ def _project(tmp_path: Path) -> tuple[Path, str]:
     ):
         (root / name).parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(ROOT / name, root / name)
+    # the intercomparison harness (REFIMPL-08) must stay out of both artifacts
+    (root / "intercomparison").mkdir()
+    shutil.copy2(ROOT / "intercomparison" / "contract.py", root / "intercomparison" / "contract.py")
     return root, _repository(root)
 
 
@@ -107,6 +110,7 @@ def test_the_sdist_and_the_wheel_built_from_it_report_the_commit_without_git(tmp
             legal_member = archive.extractfile(f"{prefix}/{name}")
             assert legal_member is not None
             assert legal_member.read() == (ROOT / name).read_bytes()
+        assert not [n for n in archive.getnames() if n.startswith(f"{prefix}/intercomparison")]
         member = archive.extractfile(f"{sdist.name.removesuffix('.tar.gz')}/src/climate_indices/_build_info.json")
         assert member is not None
         assert json.loads(member.read()) == {"git_commit": head, "git_dirty": False}
@@ -209,3 +213,14 @@ def test_the_script_writes_build_info_for_maturin_only_in_a_checkout(tmp_path: P
     assert _git(root, "status", "--porcelain") == ""  # git-ignored, so the tree stays clean
     assert refused.returncode != 0
     assert "not its own Git checkout" in refused.stderr
+
+
+def test_the_wheel_built_straight_from_the_source_tree_leaves_out_the_intercomparison_harness(tmp_path: Path) -> None:
+    """The wheel packages only `src/climate_indices` (hatch's default for this layout), not the harness (REFIMPL-08)."""
+    root, _ = _project(tmp_path)
+    assert (root / "intercomparison" / "contract.py").is_file()
+
+    wheel = _build(root, "build_wheel", tmp_path / "wheel")
+
+    with zipfile.ZipFile(wheel) as archive:
+        assert not [name for name in archive.namelist() if "intercomparison" in name]
