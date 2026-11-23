@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import sys
 import threading
 import types
 import warnings
@@ -259,6 +260,7 @@ class TestBootstrap:
         gof = _gof(values, candidates=(Distribution.pearson,), n_bootstrap=60, seed=2, spatial_time_major=True)
         share = gof.bootstrap_failed_share
         assert np.nanmax(share) > 0
+        assert ((share > 0) & (share < 1)).any()  # a column that lost some refits and kept others
         succeeded = np.round(60 * (1 - np.nan_to_num(share, nan=1.0))).astype(int)  # no fit, no refit
         p = gof.ks_p_value_bootstrap
         defined = succeeded > 0
@@ -358,6 +360,8 @@ class TestBootstrap:
 
     @pytest.mark.parametrize("use_native", [False, True], ids=["python", "native"])
     def test_rounded_gamma_counts_are_independent_of_batches_and_chunks(self, monkeypatch, use_native):
+        if use_native and getattr(sys.flags, "context_aware_warnings", False):
+            pytest.skip("context-aware warnings disable native dispatch")
         backend = conftest.NativeRecorder(conftest.import_native()) if use_native else None
         monkeypatch.setattr(compute, "_native", backend)
         grid = np.rint(_grid(seed=3) / 10.0) * 10.0
