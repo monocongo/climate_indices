@@ -13,7 +13,7 @@ from __future__ import annotations
 import argparse
 import datetime
 import shutil
-import subprocess
+import subprocess  # nosec B404 # runs the fixed adapter commands and git
 import sys
 from pathlib import Path
 from typing import Any
@@ -84,7 +84,7 @@ def run_adapter(name: str, command: list[str], request: Path, out_dir: Path) -> 
     credited with a previous run's files.
     """
     shutil.rmtree(out_dir, ignore_errors=True)
-    subprocess.run([*command, "run", str(request), str(out_dir)], check=True)
+    subprocess.run([*command, "run", str(request), str(out_dir)], check=True)  # nosec B603 # argv is ADAPTER_COMMANDS plus harness-built paths
     if not (out_dir / "result.json").is_file():
         raise contract.ContractError(f"{name}: exited 0 but wrote no result.json")
     result = contract.read_result(out_dir / "result.json")
@@ -117,7 +117,7 @@ def write_store(
 
 
 def _git(*args: str) -> str:
-    return subprocess.run(["git", *args], cwd=ROOT, check=True, capture_output=True, text=True).stdout.strip()
+    return subprocess.run(["git", *args], cwd=ROOT, check=True, capture_output=True, text=True).stdout.strip()  # nosec B603 B607 # fixed git argv
 
 
 def harness_state() -> dict[str, Any]:

@@ -103,7 +103,8 @@ def read_json(path: Path) -> dict[str, Any]:
 
 
 def write_json(path: Path, document: Mapping[str, Any]) -> None:
-    path.write_text(json.dumps(document, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    # the paths are the operator's own: normalised by path_arg, or built by the harness
+    path.write_text(json.dumps(document, indent=2, sort_keys=True) + "\n", encoding="utf-8")  # NOSONAR (S2083, S8707)
 
 
 def _require(document: Mapping[str, Any], keys: Sequence[str], what: str) -> None:
