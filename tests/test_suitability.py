@@ -86,6 +86,26 @@ class TestSurface:
         with pytest.raises(dataclasses.FrozenInstanceError):
             result.best = None  # type: ignore[misc]
 
+    def test_result_constructor_accepts_the_original_positional_arguments(self):
+        result = _compare(_precip())
+        rebuilt = suitability.DistributionComparison(
+            result.candidates,
+            result.criterion,
+            result.n,
+            result.n_parameters,
+            result.log_likelihood,
+            result.aic,
+            result.aicc,
+            result.bic,
+            result.best,
+            result.delta_to_runner_up,
+            result.fit_failed,
+            result.parameters,
+            result.metadata,
+        )
+        assert rebuilt.metadata is result.metadata
+        assert rebuilt.goodness_of_fit is None
+
     def test_results_do_not_compare_by_value(self):
         # the provenance record carries a creation timestamp, so value equality is not defined
         first, second = _compare(_precip()), _compare(_precip())

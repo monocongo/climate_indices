@@ -236,11 +236,11 @@ class DistributionComparison:
     #: Per candidate, the fitted parameters keyed as ``fitting_params`` accepts them, each
     #: ``(step, *cell)``; passing one to the matching index reproduces the fit exactly.
     parameters: dict[Distribution, dict[str, np.ndarray]]
-    #: Goodness of fit of every candidate (:class:`GoodnessOfFit`), or ``None`` when ``gof`` is empty.
-    goodness_of_fit: GoodnessOfFit | None
     #: Provenance strings: the ``climate_indices_*`` attributes of ADR-0028 section 6 that apply
     #: to the NumPy core, plus the provenance record.
     metadata: Mapping[str, str]
+    #: Goodness of fit of every candidate (:class:`GoodnessOfFit`), or ``None`` when ``gof`` is empty.
+    goodness_of_fit: GoodnessOfFit | None = None
 
 
 def _invalid(message: str, name: str, value: Any, valid: str) -> InvalidArgumentError:
@@ -585,8 +585,10 @@ def _pit_statistics(pit: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray
         d_plus = np.where(inside, rank / size - ordered, -np.inf).max(axis=0)
         d_minus = np.where(inside, ordered - (rank - 1) / size, -np.inf).max(axis=0)
         mirrored = np.take_along_axis(ordered, np.clip(count - rank, 0, pit.shape[0] - 1), axis=0)
-        terms = np.where(inside, (2 * rank - 1) * (np.log(ordered) + np.log1p(-mirrored)), 0.0).sum(axis=0)
-        anderson_darling = -count - terms / size
+        terms = np.where(inside, (2 * rank - 1) * (np.log(ordered) + np.log1p(-mirrored)), 0.0)
+        # Sum the years in the same order for a single series and for stacked replicates.
+        total = np.ascontiguousarray(np.moveaxis(terms, 0, -1)).sum(axis=-1)
+        anderson_darling = -count - total / size
     return (
         np.where(count > 0, np.maximum(d_plus, d_minus), np.nan),
         np.where(count > 0, anderson_darling, np.nan),
@@ -742,6 +744,10 @@ def _refit_statistics(
     # 0 or 1 is not that rule's evidence, since it also underflows inside the support
     outside = (covered & ~np.isfinite(_log_density(distribution, draws, p))).any(axis=0)
     usable = _usable(distribution, p) & ~outside
+    if distribution is Distribution.gamma:
+        # Thom's fit is undefined for a constant positive sample. Roundoff can leave a finite shape.
+        positive = draws > 0.0
+        usable &= draws.max(axis=0, where=positive, initial=-np.inf) > draws.min(axis=0, where=positive, initial=np.inf)
     ks, ad, count = _pit_statistics(np.where(usable, pit, np.nan))
     return {"ks": ks, "ad": ad}, usable & (count > 0)
 
@@ -793,7 +799,9 @@ def _bootstrap_p_values(
             statistics, succeeded_here = _refit_statistics(distribution, draws, period, periodicity)
             succeeded[position] += succeeded_here.sum(axis=-1)
             for name, reference in observed.items():
-                reached = statistics[name] >= reference[position][..., np.newaxis]
+                target = reference[position][..., np.newaxis]
+                # Also count floating-point ties between refitted and observed statistics.
+                reached = (statistics[name] >= target) | np.isclose(statistics[name], target, rtol=1e-12, atol=1e-12)
                 exceeded[name][position] += (reached & succeeded_here).sum(axis=-1)
         done += size
     defined = scored & (succeeded > 0)
@@ -1540,8 +1548,8 @@ def _compare_numpy(
         delta_to_runner_up=delta,
         fit_failed=fit_failed,
         parameters=parameters,
-        goodness_of_fit=goodness_of_fit,
         metadata=metadata,
+        goodness_of_fit=goodness_of_fit,
     )
 
 
@@ -1553,8 +1561,6 @@ _STEP_FIELDS = ("n", "best", "delta_to_runner_up")
 # GoodnessOfFit fields a block computes per candidate; the bootstrap ones exist only when n_bootstrap > 0
 _GOF_FIELDS = ("ks_statistic", "ks_p_value_naive", "ad_statistic")
 _GOF_BOOTSTRAP_FIELDS = ("ks_p_value_bootstrap", "ad_p_value_bootstrap", "bootstrap_failed_share")
-# GoodnessOfFit fields that need every cell, so they are added after the blocks are joined
-_GOF_ACROSS_CELL_FIELDS = ("ks_p_value_bh", "ad_p_value_bh", "rejection_share")
 
 _FIELD_METADATA: dict[str, dict[str, str]] = {
     "ks_statistic": {
@@ -1935,8 +1941,12 @@ def _compare_xarray(
     if gof.statistics:
         fields = fields + _GOF_FIELDS + (_GOF_BOOTSTRAP_FIELDS if gof.n_bootstrap > 0 else ())
     reserved = {"candidate", period_dim, *fields, *_STEP_FIELDS, *(name for name, _ in slots)}
-    if gof.statistics:
-        reserved |= {*_GOF_ACROSS_CELL_FIELDS, "statistic"}
+    if gof.statistics and cell_dims:
+        reserved.update(("rejection_share", "statistic"))
+        if gof.bh_adjust:
+            reserved.add("ks_p_value_bh")
+            if gof.n_bootstrap > 0:
+                reserved.add("ad_p_value_bh")
     _reject_output_name_clashes(reserved, time_dim, input_da, pet_da)
 
     first_year, last_year = _effective_calibration_years(

@@ -1854,10 +1854,13 @@ def _native_gamma_parameters(calibration_values: np.ndarray) -> tuple[np.ndarray
     """The Rust Thom (1958) closed-form gamma fit, shaped like the NumPy block it mirrors, or None.
 
     np.nanmean emits an empty-slice warning even when floating-point errors are
-    ignored, so a column with no positive value (all missing, zero, or negative)
-    keeps the Python reductions, whose log mean is then empty.
+    ignored, so when fit warnings are enabled a column with no positive value
+    keeps the Python reductions. The warning-free bootstrap can use Rust for
+    those columns too, so empty columns cannot change how neighbours are fitted.
     """
-    if not _native_float64(calibration_values) or not np.all(np.any(calibration_values > 0.0, axis=0)):
+    if not _native_float64(calibration_values):
+        return None
+    if _FIT_WARNINGS_ENABLED.get() and not np.all(np.any(calibration_values > 0.0, axis=0)):
         return None
     native = _native_backend.kernels(_native, "gamma_parameters")
     if native is None:
@@ -2046,9 +2049,11 @@ def _nanmean_axis0(values: np.ndarray) -> np.ndarray:
     There an explicit count and sum give the same values, and NaN for an empty column, with no warning.
     """
     if _FIT_WARNINGS_ENABLED.get():
-        return np.asarray(np.nanmean(values, axis=0))
-    counts = np.count_nonzero(~np.isnan(values), axis=0)
-    return np.where(counts > 0, np.nansum(values, axis=0) / np.maximum(counts, 1), np.nan)
+        return cast("np.ndarray", np.nanmean(values, axis=0))
+    # A contiguous year axis keeps the summation order independent of the batch shape.
+    columns = np.ascontiguousarray(np.moveaxis(values, 0, -1))
+    counts = np.count_nonzero(~np.isnan(columns), axis=-1)
+    return np.where(counts > 0, np.nansum(columns, axis=-1) / np.maximum(counts, 1), np.nan)
 
 
 def gamma_parameters(
