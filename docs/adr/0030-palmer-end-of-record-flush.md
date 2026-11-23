@@ -123,7 +123,7 @@ updates this record's status line.
   0101 at December 2002 must not change any month before it (decision 1; fixture
   `tests/fixture/palmer/0101`, 1895-2022, cut at December 2002;
   `test_resolved_months_survive_truncating_the_record_division_0101`). That test exercises the
-  Python kernel only; #1665 left the Rust twin to the parity tests.
+  Python kernel only, so the Rust kernel needs its own truncation check.
 - **June-ending records verify decisions 2 and 3.** A fixture record cut at June 2022 must equal
   the full-record run on every month except those still pending at the cut, which carry
   PDSI = PHDI = X3 and their own PMDI; no PMDI is NaN. The check runs in Python and in Rust,
