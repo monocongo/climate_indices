@@ -157,11 +157,15 @@ CANDIDATE=<full 40-character sha of the frozen candidate>
 TAG=vX.Y.Z                        # the real release tag, not an rc
 TARGET=<owner>/climate_indices-rehearsal   # or <fork-owner>/climate_indices for an equivalent fork
 
-: "${CANDIDATE:?set CANDIDATE to the full 40-character SHA of the frozen candidate}"
-: "${TAG:?set TAG to the release tag}"
-: "${TARGET:?set TARGET to the rehearsal repository}"
+# explicit tests: in an interactive shell, ${VAR:?} reports the error but does not exit
+[[ -n ${CANDIDATE:-} ]] \
+  || { echo "set CANDIDATE to the full 40-character SHA of the frozen candidate"; exit 1; }
+[[ -n ${TAG:-} ]] || { echo "set TAG to the release tag"; exit 1; }
+[[ -n ${TARGET:-} ]] || { echo "set TARGET to the rehearsal repository"; exit 1; }
 [[ "$CANDIDATE" =~ ^[0-9a-f]{40}$ ]] \
   || { echo "CANDIDATE is not a full 40-character SHA: $CANDIDATE"; exit 1; }
+[[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] \
+  || { echo "TAG is not a vX.Y.Z release tag: $TAG"; exit 1; }
 
 git fetch -q origin || { echo "cannot fetch origin"; exit 1; }
 git checkout --detach "$CANDIDATE"
@@ -172,10 +176,8 @@ git merge-base --is-ancestor "$SHA" origin/main \
 git status --short                # must be empty
 ```
 
-The guard rejects an empty or placeholder value before any push runs. An empty ref
-source in a push refspec deletes the destination ref, so an unset `CANDIDATE` would
-erase the rehearsal repository's `main` instead of failing. The `[0-9a-f]{40}` test
-rejects the unfilled placeholder as well as an empty value.
+These checks stop the setup before any push when a value is empty, or when
+`CANDIDATE` or `TAG` is still a placeholder or otherwise malformed.
 
 1. Push the candidate as the rehearsal repository's `main`, then its tag. The
    `validate-release-tag` job requires the tagged commit to be reachable from
