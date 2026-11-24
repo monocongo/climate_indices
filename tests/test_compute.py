@@ -732,26 +732,31 @@ def test_sum_to_scale_masked_input(scale, expected):
     np.testing.assert_equal(np.ma.filled(np.ma.asarray(computed, dtype=float), np.nan), expected)
 
 
-def test_sum_to_scale_scale_longer_than_series():
-    """
-    A Timescale longer than a 1-D series has no complete window, so the result is all NaN
-    and keeps the input's length, as for any other Timescale (#933).
-    """
-    computed = compute.sum_to_scale(np.array([1.0, 2.0, 3.0]), 4)
+@pytest.mark.parametrize(
+    ("scale", "input_dtype", "output_dtype"),
+    [(4, np.float32, np.float64), (np.int64(4), np.complex64, np.complex128)],
+)
+def test_sum_to_scale_scale_longer_than_series(scale, input_dtype, output_dtype):
+    """An overlong Timescale preserves the length and the convolution result dtype."""
+    computed = compute.sum_to_scale(np.array([1, 2, 3], dtype=input_dtype), scale)
     assert computed.shape == (3,)
+    assert computed.dtype == output_dtype
     assert np.isnan(computed).all()
 
 
-def test_sum_to_scale_overlong_scale_still_rejects_invalid_input():
-    """
-    The all-NaN result for an overlong Timescale applies to 1-D series with an integer
-    scale only: a 2-D layout and a non-integer scale are still rejected, as at any other
-    scale.
-    """
-    with pytest.raises(ValueError):
-        compute.sum_to_scale(np.ones((3, 2)), 4)
-    with pytest.raises(TypeError):
-        compute.sum_to_scale(np.ones(3), 4.5)
+@pytest.mark.parametrize(
+    ("values", "scale", "error"),
+    [
+        (np.empty(0), 4, ValueError),
+        (np.ones((3, 2)), 4, ValueError),
+        (np.ones(3), 4.5, TypeError),
+        (np.array(["a", "b", "c"]), 4, (TypeError, ValueError)),
+    ],
+)
+def test_sum_to_scale_overlong_scale_still_rejects_invalid_input(values, scale, error):
+    """An overlong Timescale does not make invalid input valid."""
+    with pytest.raises(error):
+        compute.sum_to_scale(values, scale)
 
 
 def test_periodicity_period_length():

@@ -348,11 +348,15 @@ def sum_to_scale(
         window_sums: np.ndarray = np.lib.stride_tricks.sliding_window_view(padded, scale, axis=0).sum(axis=-1)
         return window_sums
 
-    # a Timescale longer than a 1-D series leaves no complete window, so every position is
-    # padding; np.convolve would otherwise swap its arguments and return the wrong length.
-    # Other ranks and non-integer scales still reach np.convolve/np.ones and are rejected.
-    if values.ndim == 1 and isinstance(scale, (int, np.integer)) and scale > values.shape[0]:
-        return np.full(values.shape, np.nan)
+    # np.convolve swaps its arguments when no complete window fits. Keep its dtype
+    # promotion and leave validation of other inputs to the usual convolution path.
+    if (
+        values.ndim == 1
+        and isinstance(scale, (int, np.integer))
+        and 0 < values.size < scale
+        and values.dtype.kind in "buifcO"
+    ):
+        return np.full(values.shape, np.nan, dtype=np.result_type(values.dtype, np.float64))
 
     # get the valid sliding summations with 1D convolution
     sliding_sums = np.convolve(values, np.ones(scale), mode="valid")
