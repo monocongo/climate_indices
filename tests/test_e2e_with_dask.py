@@ -222,8 +222,16 @@ def test_distribution_suitability_notebook_runs_on_prepared_sample(
         shares = namespace["shares"]
         assert list(shares.columns) == [*candidates, "none"]
         np.testing.assert_allclose(shares.sum(axis=1), 1.0)
-        best = namespace["comparisons"][3]["best"].values
-        assert shares.loc[3, "none"] == pytest.approx(float(np.count_nonzero(best == "none")) / best.size)
+        comparison = namespace["comparisons"][3]
+        best = comparison["best"].values
+        # A masked cell is not evaluable and leaves the denominator; its rows would otherwise
+        # land in "none". Counting each candidate on its own pins a misassigned share.
+        evaluable = comparison["n"].values > 0
+        counted = int(np.count_nonzero(evaluable))
+        assert 0 < counted < best.size
+        for label in [*candidates, "none"]:
+            expected_share = np.count_nonzero((best == label) & evaluable) / counted
+            assert shares.loc[3, label] == pytest.approx(expected_share), label
         land = namespace["land"]
         assert namespace["block_size"] == 6
         fractions = [(float(land[r : r + 6, c : c + 6].mean()), r, c) for r in range(2) for c in range(2)]
@@ -231,8 +239,24 @@ def test_distribution_suitability_notebook_runs_on_prepared_sample(
         assert (namespace["block_row"], namespace["block_col"]) == (expected_row, expected_col)
         rejection = namespace["rejection"]
         assert list(rejection.columns) == ["KS naive", "KS bootstrap", "AD bootstrap"]
-        assert np.isfinite(rejection[["KS bootstrap", "AD bootstrap"]].to_numpy()).all()
-        assert (rejection["KS naive"] >= 0).all()
+        assert rejection.index.tolist() == candidates
+        assert np.isfinite(rejection.to_numpy()).all()
+        # Recompute every rejection share from its p-values, so an all-zero summary cannot pass.
+        boot = namespace["boot"]
+        ks_naive = namespace["ks_naive"].values
+        ks_bootstrap = namespace["ks_bootstrap"].values
+        defined = np.isfinite(ks_bootstrap)
+        ad_bootstrap = boot["ad_p_value_bootstrap"].values
+        for position, label in enumerate(candidates):
+            for column, values, mask in (
+                ("KS naive", ks_naive[position], defined[position]),
+                ("KS bootstrap", ks_bootstrap[position], defined[position]),
+                ("AD bootstrap", ad_bootstrap[position], np.ones(defined.shape[1:], dtype=bool)),
+            ):
+                kept = mask & np.isfinite(values)
+                expected_share = np.count_nonzero(values[kept] <= 0.05) / np.count_nonzero(kept)
+                assert rejection.loc[label, column] == pytest.approx(expected_share), (label, column)
+        assert (rejection[["KS bootstrap", "AD bootstrap"]].to_numpy() > 0).any()
         assert len(namespace["top_two"]) == 2
         change = namespace["change"]
         assert set(change["share_changed"].dims) == {"lat", "lon"}
@@ -244,11 +268,39 @@ def test_distribution_suitability_notebook_runs_on_prepared_sample(
         expected_threshold = float(water.sel(time=slice("1981", "2010")).quantile(0.2))
         assert namespace["threshold"] == pytest.approx(expected_threshold)
         concordance = namespace["concordance"]
-        assert concordance.hits + concordance.misses == int(namespace["reference_runs"].start_index.size)
-        if concordance.hits + concordance.misses:
-            assert concordance.pod == pytest.approx(concordance.hits / (concordance.hits + concordance.misses))
+        # Overlap the runs independently of event_concordance's own matcher.
+        time_axis = namespace["time"]
+
+        def steps(runs: Any) -> np.ndarray:
+            mask = np.zeros(time_axis.size, dtype=bool)
+            for start, end in zip(runs.start_index, runs.end_index, strict=True):
+                mask[start : end + 1] = True
+            return mask
+
+        index_runs = namespace["index_runs"]
+        reference_runs = namespace["reference_runs"]
+        index_steps = steps(index_runs)
+        reference_steps = steps(reference_runs)
+        expected_hits = sum(
+            bool(index_steps[start : end + 1].any())
+            for start, end in zip(reference_runs.start_index, reference_runs.end_index, strict=True)
+        )
+        expected_false_alarms = sum(
+            not reference_steps[start : end + 1].any()
+            for start, end in zip(index_runs.start_index, index_runs.end_index, strict=True)
+        )
+        expected_misses = int(reference_runs.start_index.size) - expected_hits
+        assert (concordance.hits, concordance.misses) == (expected_hits, expected_misses)
+        assert concordance.false_alarms == expected_false_alarms
+        assert 0 < expected_hits < int(reference_runs.start_index.size)
+        matched = int(index_runs.start_index.size) - expected_false_alarms
+        assert concordance.pod == pytest.approx(expected_hits / (expected_hits + expected_misses))
+        assert concordance.far == pytest.approx(expected_false_alarms / (expected_false_alarms + matched))
+        assert concordance.csi == pytest.approx(
+            expected_hits / (expected_hits + expected_misses + expected_false_alarms)
+        )
         assert len(plt.get_fignums()) - len(previous_figures) == 4
-        # Pin the fixes that this fixture's values cannot distinguish (#1591 review).
+        # Secondary guard: pin the fixes that this fixture's values cannot distinguish (#1591 review).
         source = "\n".join(_code_cells())
         assert "share_below(ks_naive.where(defined))" in source
         assert "share_below(ks_bootstrap)" in source
