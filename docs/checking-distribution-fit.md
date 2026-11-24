@@ -384,8 +384,9 @@ that a distribution is *correct*. A defensible choice reports the relative
 evidence, the absolute evidence, the decision impact and the limits together.
 
 [The executable nClimGrid notebook](https://github.com/monocongo/climate_indices/blob/main/notebooks/check_distribution_suitability.ipynb)
-works through this sequence at SPEI-3/6/12/24 with gamma, Pearson, log-logistic
-and GEV. It uses the prepared sample, so prepare it once with
+works through the relative fit, the absolute fit, the category impact, the
+seasonal uniformity and the event counting at SPEI-3/6/12/24 with gamma,
+Pearson, log-logistic and GEV. It uses the prepared sample, so prepare it once with
 `uv run --group dev scripts/prepare_e2e_inputs.py`, then open the notebook with
 its kernel in `notebooks/` or set `CLIMATE_INDICES_E2E_DATA` to the
 prepared-data directory. The
