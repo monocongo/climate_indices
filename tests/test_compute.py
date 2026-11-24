@@ -724,7 +724,7 @@ def test_sum_to_scale():
 )
 def test_sum_to_scale_masked_input(scale, expected):
     """
-    A masked value is missing at every scale: each window containing it sums to NaN,
+    A masked value is missing at every Timescale: each window containing it sums to NaN,
     never to the data under the mask (#933).
     """
     values = np.ma.array(np.arange(6.0), mask=[False, False, True, False, False, False])
@@ -734,12 +734,24 @@ def test_sum_to_scale_masked_input(scale, expected):
 
 def test_sum_to_scale_scale_longer_than_series():
     """
-    A scale longer than the series has no complete window, so the result is all NaN and
-    keeps the input's length, as for any other scale (#933).
+    A Timescale longer than a 1-D series has no complete window, so the result is all NaN
+    and keeps the input's length, as for any other Timescale (#933).
     """
     computed = compute.sum_to_scale(np.array([1.0, 2.0, 3.0]), 4)
     assert computed.shape == (3,)
     assert np.isnan(computed).all()
+
+
+def test_sum_to_scale_overlong_scale_still_rejects_invalid_input():
+    """
+    The all-NaN result for an overlong Timescale applies to 1-D series with an integer
+    scale only: a 2-D layout and a non-integer scale are still rejected, as at any other
+    scale.
+    """
+    with pytest.raises(ValueError):
+        compute.sum_to_scale(np.ones((3, 2)), 4)
+    with pytest.raises(TypeError):
+        compute.sum_to_scale(np.ones(3), 4.5)
 
 
 def test_periodicity_period_length():
