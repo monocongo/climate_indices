@@ -16,6 +16,7 @@ import sys
 import traceback
 from collections import Counter
 from pathlib import Path
+from typing import Any, cast
 
 import numpy as np
 import pandas as pd
@@ -93,14 +94,22 @@ def _split_at_calculation(sources: list[str]) -> tuple[list[str], list[str]]:
 def _extract_pipeline_config_years(source: str) -> dict[str, int]:
     tree = ast.parse(source)
     for node in ast.walk(tree):
-        if isinstance(node, ast.Assign) and any(
-            isinstance(target, ast.Name) and target.id == "pipeline_config" for target in node.targets
-        ):
-            return {
-                key.value: value.value
-                for key, value in zip(node.value.keys, node.value.values, strict=True)
-                if isinstance(key, ast.Constant) and key.value in CANONICAL_YEARS and isinstance(value, ast.Constant)
-            }
+        if isinstance(node, ast.Assign) and isinstance(node.value, ast.Dict):
+            assigns_config = any(
+                isinstance(target, ast.Name) and target.id == "pipeline_config" for target in node.targets
+            )
+            if not assigns_config:
+                continue
+            years: dict[str, int] = {}
+            for key, value in zip(node.value.keys, node.value.values, strict=True):
+                if (
+                    isinstance(key, ast.Constant)
+                    and key.value in CANONICAL_YEARS
+                    and isinstance(value, ast.Constant)
+                    and isinstance(value.value, int)
+                ):
+                    years[str(key.value)] = value.value
+            return years
     raise AssertionError("pipeline_config assignment not found")
 
 
@@ -119,14 +128,26 @@ def _publish_store(data_root: Path, ds: xr.Dataset) -> None:
         "chunks": [ds.sizes["time"], 1, 1],
     }
     (generation / "manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")
-    (data_root / "current").symlink_to(generation, target_is_directory=True)
+    # The preparation script links `current` relative to the data root, so mirror that contract.
+    (data_root / "current").symlink_to(generation.relative_to(data_root), target_is_directory=True)
 
 
 @pytest.fixture
 def e2e_data(tmp_path, monkeypatch):
-    """Synthetic prepared store: one land cell and one masked cell, 1980-2010 monthly."""
+    """Synthetic prepared store: a 2x2 grid with one masked cell, 1980-2010 monthly."""
     pytest.importorskip("zarr")
     ds = _synthetic_dataset()
+    _publish_store(tmp_path, ds)
+    monkeypatch.setenv("CLIMATE_INDICES_E2E_DATA", str(tmp_path))
+    return tmp_path, ds
+
+
+@pytest.fixture
+def e2e_data_wide(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> tuple[Path, xr.Dataset]:
+    """Synthetic prepared store with a 7x7 grid, so the 6x6 block search has four windows."""
+    pytest.importorskip("zarr")
+    # Mask the first row so the representative cell is off-diagonal and a lat/lon transposition shows.
+    ds = _synthetic_dataset(cell_shape=(7, 7), periods=444, masked_cells=tuple((0, column) for column in range(7)))
     _publish_store(tmp_path, ds)
     monkeypatch.setenv("CLIMATE_INDICES_E2E_DATA", str(tmp_path))
     return tmp_path, ds
@@ -173,12 +194,14 @@ def test_spi_fit_notebook_plots_on_prepared_sample(e2e_data, monkeypatch):
         _exec_cells(namespace, _code_cells())
         figures = [plt.figure(number) for number in sorted(set(plt.get_fignums()) - previous_figures)]
         assert len(figures) == 3
-        assert all(sum(patch.get_height() for patch in axis.patches) > 0 for axis in figures[0].axes)
+        assert all(sum(cast(Any, patch).get_height() for patch in axis.patches) > 0 for axis in figures[0].axes)
         for figure in figures[1:]:
             assert all("January" in axis.get_title() for axis in figure.axes if axis.get_title())
             assert any(axis.collections for axis in figure.axes)
+        fit_array = figures[1].axes[0].collections[0].get_array()
+        assert fit_array is not None
         np.testing.assert_allclose(
-            figures[1].axes[0].collections[0].get_array(),
+            fit_array,
             namespace["fits"][1, indices.Distribution.gamma].ks_p_value.sel(month=1).values,
             equal_nan=True,
         )
@@ -186,20 +209,200 @@ def test_spi_fit_notebook_plots_on_prepared_sample(e2e_data, monkeypatch):
         namespace["fits"][1, indices.Distribution.pearson]["distribution_used"][0, 0] = "gamma"
         _exec_cells(namespace, _code_cells()[-1:])
         fallback_ks = plt.figure(sorted(set(plt.get_fignums()) - previous_figures)[-2])
-        assert np.ma.getmaskarray(fallback_ks.axes[1].collections[0].get_array())[0, 0]
+        fallback_array = fallback_ks.axes[1].collections[0].get_array()
+        assert fallback_array is not None
+        assert np.ma.getmaskarray(fallback_array)[0, 0]
     finally:
         for number in set(plt.get_fignums()) - previous_figures:
             plt.close(number)
 
 
-def _synthetic_dataset(time_freq="MS") -> xr.Dataset:
-    """One land cell, one fully masked cell, and one meaningful zero, 1980-2010 monthly."""
+def test_distribution_suitability_notebook_runs_on_prepared_sample(
+    e2e_data_wide: tuple[Path, xr.Dataset], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The suitability workflow executes offline: comparison, bootstrap, categories, PIT and concordance."""
+    matplotlib = pytest.importorskip("matplotlib")
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+
+    monkeypatch.setattr(
+        sys.modules[__name__], "NOTEBOOK", REPO_ROOT / "notebooks" / "check_distribution_suitability.ipynb"
+    )
+    previous_figures = set(plt.get_fignums())
+    try:
+        namespace: dict[str, Any] = {}
+        _exec_cells(namespace, _code_cells())
+        _, fixture_ds = e2e_data_wide
+        candidates = namespace["candidates"]
+        shares = namespace["shares"]
+        assert list(shares.columns) == [*candidates, "none"]
+        np.testing.assert_allclose(shares.sum(axis=1), 1.0)
+        # Every Timescale reports a headline share, so check each one. The sum above only
+        # constrains the denominator, so the per-label counts below carry the rest.
+        for scale in namespace["SCALES"]:
+            comparison = namespace["comparisons"][scale]
+            best = comparison["best"].values
+            # A masked cell is not evaluable and leaves the denominator; its rows would
+            # otherwise land in "none". Counting each candidate pins a misassigned share.
+            evaluable = comparison["n"].values > 0
+            counted = int(np.count_nonzero(evaluable))
+            assert 0 < counted < best.size, f"fixture no longer mixes masked and land cells at scale {scale}"
+            for label in [*candidates, "none"]:
+                expected_share = np.count_nonzero((best == label) & evaluable) / counted
+                assert shares.loc[scale, label] == pytest.approx(expected_share), (scale, label)
+        assert np.isfinite(namespace["deltas"].to_numpy()).all(), namespace["deltas"]
+        # The input-preparation cell is the part a reader copies, so check it against the
+        # fixture store instead of the notebook's own variables.
+        land = fixture_ds["precip"].notnull().any("time").values
+        assert np.array_equal(namespace["land"], land)
+        assert namespace["block_size"] == 6
+        block = namespace["block_size"]
+        fractions = [
+            (float(land[r : r + block, c : c + block].mean()), r, c)
+            for r in range(land.shape[0] - block + 1)
+            for c in range(land.shape[1] - block + 1)
+        ]
+        _, expected_row, expected_col = max(fractions, key=lambda candidate: candidate[0])
+        assert (namespace["block_row"], namespace["block_col"]) == (expected_row, expected_col)
+        assert land[expected_row : expected_row + block, expected_col : expected_col + block].all()
+        cell_row, cell_col = (int(index) for index in np.argwhere(land)[0])
+        assert (namespace["row"], namespace["col"]) == (cell_row, cell_col)
+        # The printed label and the plotted series must belong to the selected cell: a lat/lon
+        # swap would otherwise pass, because it selects the same cell when the row equals the column.
+        assert namespace["cell"] == {
+            "lat": float(fixture_ds["lat"].values[cell_row]),
+            "lon": float(fixture_ds["lon"].values[cell_col]),
+        }
+        assert namespace["series"]["lat"].item() == namespace["cell"]["lat"]
+        assert namespace["series"]["lon"].item() == namespace["cell"]["lon"]
+        selected = fixture_ds["wb"].isel(lat=cell_row, lon=cell_col)
+        assert np.array_equal(namespace["water"].values, selected.values)
+        assert namespace["threshold"] == pytest.approx(float(selected.sel(time=slice("1981", "2010")).quantile(0.2)))
+        rejection = namespace["rejection"]
+        assert list(rejection.columns) == ["KS naive", "KS bootstrap", "AD bootstrap"]
+        assert rejection.index.tolist() == candidates
+        assert np.isfinite(rejection.to_numpy()).all()
+        # Recompute every rejection share from its p-values, so an all-zero summary cannot pass.
+        boot = namespace["boot"]
+        # Pin the bootstrap's reported settings, so a changed Timescale, draw count or seed fails here
+        # instead of silently moving the headline evidence.
+        for variable in (boot["ks_p_value_bootstrap"], boot["ad_p_value_bootstrap"]):
+            assert variable.attrs["scale"] == "3"
+            assert variable.attrs["climate_indices_gof_bootstrap_samples"] == "199"
+            assert variable.attrs["climate_indices_rng_seed"] == "42"
+        ks_naive = namespace["ks_naive"].values
+        ks_bootstrap = namespace["ks_bootstrap"].values
+        defined = np.isfinite(ks_bootstrap)
+        ad_bootstrap = boot["ad_p_value_bootstrap"].values
+        for position, label in enumerate(candidates):
+            for column, values, mask in (
+                ("KS naive", ks_naive[position], defined[position]),
+                ("KS bootstrap", ks_bootstrap[position], defined[position]),
+                ("AD bootstrap", ad_bootstrap[position], np.ones(defined.shape[1:], dtype=bool)),
+            ):
+                kept = mask & np.isfinite(values)
+                expected_share = np.count_nonzero(values[kept] <= 0.05) / np.count_nonzero(kept)
+                assert rejection.loc[label, column] == pytest.approx(expected_share), (label, column)
+        assert (rejection[["KS bootstrap", "AD bootstrap"]].to_numpy() > 0).any(), "fixture now rejects nothing"
+        assert len(namespace["top_two"]) == 2
+        change = namespace["change"]
+        assert set(change["share_changed"].dims) == {"lat", "lon"}
+        # The printed share pools pairs; the map keeps the per-cell share.
+        pooled = namespace["pooled"]
+        confusion = pooled["confusion"].values
+        assert float(pooled["share_changed"]) == pytest.approx(1.0 - np.trace(confusion) / confusion.sum())
+        concordance = namespace["concordance"]
+        # Overlap the runs independently of event_concordance's own matcher.
+        time_axis = namespace["time"]
+
+        def steps(runs: Any) -> np.ndarray:
+            mask = np.zeros(time_axis.size, dtype=bool)
+            for start, end in zip(runs.start_index, runs.end_index, strict=True):
+                mask[start : end + 1] = True
+            return mask
+
+        index_runs = namespace["index_runs"]
+        reference_runs = namespace["reference_runs"]
+        index_steps = steps(index_runs)
+        reference_steps = steps(reference_runs)
+        expected_hits = sum(
+            bool(index_steps[start : end + 1].any())
+            for start, end in zip(reference_runs.start_index, reference_runs.end_index, strict=True)
+        )
+        expected_false_alarms = sum(
+            not reference_steps[start : end + 1].any()
+            for start, end in zip(index_runs.start_index, index_runs.end_index, strict=True)
+        )
+        expected_misses = int(reference_runs.start_index.size) - expected_hits
+        assert (concordance.hits, concordance.misses) == (expected_hits, expected_misses)
+        assert concordance.false_alarms == expected_false_alarms
+        assert 0 < expected_hits < int(reference_runs.start_index.size), "fixture now matches every reference event"
+        matched = int(index_runs.start_index.size) - expected_false_alarms
+        assert concordance.pod == pytest.approx(expected_hits / (expected_hits + expected_misses))
+        assert concordance.far == pytest.approx(expected_false_alarms / (expected_false_alarms + matched))
+        assert concordance.csi == pytest.approx(
+            expected_hits / (expected_hits + expected_misses + expected_false_alarms)
+        )
+        assert len(plt.get_fignums()) - len(previous_figures) == 4
+        figures = [plt.figure(number) for number in sorted(set(plt.get_fignums()) - previous_figures)]
+        # The category map plots the per-cell share, not the pooled number or another variable.
+        mapped_array = figures[2].axes[0].collections[0].get_array()
+        assert mapped_array is not None
+        np.testing.assert_allclose(
+            np.ma.filled(np.asarray(mapped_array, dtype=float), np.nan).ravel(),
+            change["share_changed"].values.ravel(),
+            equal_nan=True,
+        )
+        # The seasonal figure draws the SPEI and SPAI series, not one series twice.
+        seasonal_lines = figures[3].axes[0].get_lines()
+        np.testing.assert_allclose(
+            np.asarray(seasonal_lines[0].get_ydata(), dtype=float),
+            namespace["spei_seasonal"]["ks_p_value_naive"].values,
+        )
+        np.testing.assert_allclose(
+            np.asarray(seasonal_lines[1].get_ydata(), dtype=float),
+            namespace["spai_seasonal"]["ks_p_value_naive"].values,
+        )
+        # The probability and seasonal-PIT outputs are otherwise unread: a wrong distribution or a
+        # swapped series would still produce two plausible-looking curves.
+        cell_pit = namespace["spei_pit"].isel(lat=cell_row, lon=cell_col).values
+        finite_pit = np.isfinite(cell_pit)
+        assert finite_pit.any()
+        assert ((cell_pit[finite_pit] >= 0.0) & (cell_pit[finite_pit] <= 1.0)).all()
+        for seasonal in (namespace["spei_seasonal"], namespace["spai_seasonal"]):
+            assert seasonal.sizes["month"] == 12
+            assert np.isfinite(seasonal["ks_p_value_naive"].values).any()
+        assert not np.array_equal(
+            namespace["spei_seasonal"]["ks_p_value_naive"].values,
+            namespace["spai_seasonal"]["ks_p_value_naive"].values,
+            equal_nan=True,
+        )
+        # Secondary guard: pin the fixes that this fixture's values cannot distinguish (#1591 review).
+        source = "\n".join(_code_cells())
+        assert "share_below(ks_naive.where(defined))" in source
+        assert "share_below(ks_bootstrap)" in source
+        assert 'share_below(boot["ad_p_value_bootstrap"])' in source
+        assert "np.where(valid, series.values, np.nan)" in source
+        assert "np.where(valid, water.values, np.nan)" in source
+    finally:
+        for number in set(plt.get_fignums()) - previous_figures:
+            plt.close(number)
+
+
+def _synthetic_dataset(
+    time_freq: str | pd.DateOffset = "MS",
+    cell_shape: tuple[int, int] = (2, 2),
+    periods: int = 372,
+    masked_cells: tuple[tuple[int, int], ...] = ((0, 1),),
+) -> xr.Dataset:
+    """A small grid with masked cells and one meaningful zero, 1980-2010 monthly by default."""
     rng = np.random.default_rng(42)
-    shape = (372, 2, 2)
+    shape = (periods, *cell_shape)
     precip = rng.gamma(2, 40, shape).astype("float32")
     pet = rng.uniform(20, 100, shape).astype("float32")
-    precip[:, 0, 1] = pet[:, 0, 1] = np.nan  # masked/missing cell
     precip[100, 0, 0] = 0.0  # meaningful zero precipitation, distinct from missing
+    for row_index, column_index in masked_cells:
+        precip[:, row_index, column_index] = pet[:, row_index, column_index] = np.nan  # masked/missing cell
     ds = xr.Dataset(
         {
             "precip": (("time", "lat", "lon"), precip),
@@ -207,9 +410,9 @@ def _synthetic_dataset(time_freq="MS") -> xr.Dataset:
             "wb": (("time", "lat", "lon"), precip - pet),
         },
         coords={
-            "time": pd.date_range("1980-01-01", periods=372, freq=time_freq),
-            "lat": [35.0, 36.0],
-            "lon": [-100.0, -99.0],
+            "time": pd.date_range("1980-01-01", periods=periods, freq=time_freq),
+            "lat": [35.0 + index for index in range(cell_shape[0])],
+            "lon": [-100.0 + index for index in range(cell_shape[1])],
         },
     )
     for name in ds:

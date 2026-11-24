@@ -119,8 +119,9 @@ Implementation decisions of SUIT-05 ([#1586](https://github.com/monocongo/climat
   value), so they take SciPy's value.
 - **The bootstrap sample.** Each replicate has the observed size and missing-value pattern and is drawn by inverting the fitted
   mixed CDF at uniform numbers, so the zero mass is part of every sample. A `resolution` rounds the draws to the unit of the
-  prepared sample and is never inferred (that unit is the record's for SPI; `aggregation="mean"` divides it by the Timescale). The
-  library fits p0 on the rounded record, so p0 already counts what rounded to zero: a draw that rounds to zero is set to the
+  prepared sample and is never inferred (the record's own unit for a summed
+  window; `index="standardized_index"` with `aggregation="mean"` divides it by the Timescale). The library fits p0 on the rounded
+  record, so p0 already counts what rounded to zero: a draw that rounds to zero is set to the
   least positive point of the lattice, which keeps the simulated zero share at p0 and every nonzero value on the lattice, as in
   the record. Gamma draws that round below zero move to the same lattice point, since negative values are outside gamma's
   support. Negative Pearson Type III lattice points stay negative.
