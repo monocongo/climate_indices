@@ -886,8 +886,9 @@ over the `B_ok` refits that succeeded; a refit that fails is counted in `bootstr
 out. The exceedance count includes floating-point ties. For a series with a p-value, `alpha` lies on its
 grid when `(B_ok + 1) * alpha` is an integer. The actual rejection rate also depends on the probabilities of those
 grid points. Pass the rounding unit of the prepared
-sample as `resolution` if the record was rounded (the record's own unit for SPI; with `aggregation="mean"` that unit
-divided by the Timescale): without it a record rounded to 10 mm was rejected in 24% of series at a nominal 5%. A unit
+sample as `resolution` if the record was rounded (the record's own unit for a summed window; for
+`index="standardized_index"` with `aggregation="mean"`, that unit divided by the Timescale): without it a record
+rounded to 10 mm was rejected in 24% of series at a nominal 5%. A unit
 comparable to the mean of a zero-heavy record (35% zeros, unit 1 on a mean of 2.4) still leaves the bootstrap
 anti-conservative, at about 8% (K-S) and 10% (A²), so treat its p-values there as screening evidence. For daily
 input the calendar adapter fills February 29 of a common year with the mean of February 28 and March 1, but the
