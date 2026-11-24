@@ -406,8 +406,8 @@ CF_METADATA: dict[str, CFAttributes] = {
         "long_name": "Flood Index",
         "units": "dimensionless",
         "description": (
-            "I_F uses harmonic effective precipitation (Moishin et al., 2021); "
-            "the kernel in Deo et al. (2015) is unverified. Indicates flood potential, not flooding."
+            "I_F uses harmonic effective precipitation (Deo et al., 2015, Eq. 1; Moishin et al., 2021), "
+            "standardized by annual maxima. Indicates flood potential, not flooding."
         ),
         "references": (
             "Deo, R. C., Byun, H.-R., Adamowski, J. F., & Kim, D.-W. (2015). "

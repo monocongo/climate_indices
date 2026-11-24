@@ -151,15 +151,17 @@ observed flooding.
 
 ## Deferred
 
-- **Variable-duration EDI** (the Byun & Wilhite extension) and reproduction of
-  their Table 5, both blocked on the Hickman 1995–1996 daily record: the dry-day
-  threshold and the `DS` definition are settled by ADR-0014 decision 1, and the
-  paper names its data source (193 High Plains stations, 37 years 1960–96,
-  reduced to 113). Anyone building a Table 5 fixture should note that its
+- **Variable-duration EDI** (the Byun & Wilhite extension) and exact reproduction
+  of their Table 5. `tests/fixture/flood_hickman/` now characterizes the fixed-window
+  EDI against Table 5 on one candidate station; an exact reproduction still needs
+  the paper's processed record (193 High Plains stations, 37 years 1960–96,
+  reduced to 113, with nearest-station substitution) and the variable-duration EDI.
+  The dry-day threshold and the `DS` definition are settled by ADR-0014 decision 1. Anyone building a Table 5 fixture should note that its
   "Minimum of CNS" row cannot be a consecutive-day count under the paper's own
   definition of CNS, and that the Fig. 2 legend plots ANES in those panels — the
   row appears mislabelled, so it is not a CNS fixture.
-- **A numeric I_F oracle**, blocked on the Deo et al. (2015) full text; I_F is
-  specification-level until then, and the exponential kernel its abstracts
-  describe is not implemented (ADR-0014).
+- **A numeric I_F oracle**, blocked on the paper's rainfall inputs (BoM station
+  40094, 1915–2012, adjusted and gap-filled; not published). The Deo et al. (2015)
+  full text confirms the harmonic kernel, so I_F stays specification-level
+  (ADR-0014, `docs/research/deo-2015-flood-index-notes.md`).
 - **A numeric API oracle**, blocked on Kohler & Linsley (1951).

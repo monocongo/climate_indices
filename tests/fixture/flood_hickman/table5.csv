@@ -1,0 +1,11 @@
+equation,quantity,day_start,day_end,value
+2,dry_duration,232,493,
+2,drought_duration,259,493,
+2,min_apd,484,484,-214.4
+2,min_prn,484,484,-70.5
+2,min_edi,469,469,-2.5
+3,dry_duration,250,494,
+3,drought_duration,366,493,
+3,min_apd,484,484,-217.1
+3,min_prn,484,484,-173.4
+3,min_edi,469,469,-1.22
