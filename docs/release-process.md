@@ -189,9 +189,9 @@ These checks stop the setup before any push when a value is empty, or when
    equality is exercised by the annotated tag production uses:
 
 ```bash
-: "${SHA:?run the rehearsal setup block in this shell first}"
-: "${TAG:?run the rehearsal setup block in this shell first}"
-: "${TARGET:?run the rehearsal setup block in this shell first}"
+[[ -n ${SHA:-} ]] || { echo "SHA is not set: run the rehearsal setup block in this shell first"; exit 1; }
+[[ -n ${TAG:-} ]] || { echo "TAG is not set: run the rehearsal setup block in this shell first"; exit 1; }
+[[ -n ${TARGET:-} ]] || { echo "TARGET is not set: run the rehearsal setup block in this shell first"; exit 1; }
 
 git push --force "https://github.com/$TARGET.git" "${SHA}:refs/heads/main"
 git ls-remote --heads "https://github.com/$TARGET.git" main    # prints $SHA
