@@ -25,8 +25,8 @@ def flood_index(
 
     ``I_F = (PE - mean(PE_max)) / SD(PE_max)`` uses the population standard
     deviation (``ddof=0``). This describes flood potential, not flooding.
-    The shared PE input uses the harmonic Byun and Wilhite Eq. (2) kernel;
-    whether Deo et al. (2015) used that kernel remains unverified.
+    The shared PE input uses the harmonic Byun and Wilhite Eq. (2) kernel,
+    which is also Deo et al. (2015) Eq. (1).
 
     Args:
         pe: Effective precipitation in mm from :func:`effective_precipitation`.

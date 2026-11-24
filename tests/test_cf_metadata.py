@@ -368,11 +368,11 @@ def test_flood_entries_describe_potential_without_inventing_standard_names(index
     ("index_name", "phrases"),
     [
         ("edi", ("Fixed-window", "positive values", "negative values")),
-        ("flood_index", ("harmonic", "unverified")),
+        ("flood_index", ("harmonic", "annual maxima")),
     ],
 )
 def test_flood_descriptions_disclose_scientific_conventions(index_name: str, phrases: tuple[str, ...]) -> None:
-    """Describe EDI's sign and the flood index's unverified kernel lineage."""
+    """Describe EDI's sign and the flood index's kernel and standardization."""
     for phrase in phrases:
         assert phrase in CF_METADATA[index_name]["description"]
 
