@@ -153,9 +153,9 @@ gh repo create <owner>/climate_indices-rehearsal --public \
 
 ```bash
 set -u                            # abort on unset variables
-CANDIDATE=<full 40-character sha of the frozen candidate>
+CANDIDATE="<full 40-character sha of the frozen candidate>"
 TAG=vX.Y.Z                        # the real release tag, not an rc
-TARGET=<owner>/climate_indices-rehearsal   # or <fork-owner>/climate_indices for an equivalent fork
+TARGET="<owner>/climate_indices-rehearsal"   # or "<fork-owner>/climate_indices" for an equivalent fork
 
 # explicit tests: in an interactive shell, ${VAR:?} reports the error but does not exit
 [[ -n ${CANDIDATE:-} ]] \
@@ -208,7 +208,7 @@ rehearsal.
 
 ```bash
 gh run list -R "$TARGET" --workflow=release.yml --limit 3
-RUN=<run id>
+RUN="<run id>"
 gh run watch "$RUN" -R "$TARGET" --exit-status   # exits non-zero; expected
 gh run view "$RUN" -R "$TARGET" --json jobs --jq '.jobs[] | "\(.conclusion)\t\(.name)"'
 ```
@@ -272,7 +272,7 @@ remote `main` still equal the SHA that passed the rehearsal:
 ```bash
 git switch main
 git pull --ff-only origin main
-CANDIDATE=<full 40-character SHA recorded on the release ticket>
+CANDIDATE="<full 40-character SHA recorded on the release ticket>"
 test -z "$(git status --porcelain)" || { echo "working tree is not clean"; exit 1; }
 test "$(git rev-parse HEAD)" = "$CANDIDATE" || { echo "local candidate changed"; exit 1; }
 test "$(git rev-parse origin/main)" = "$CANDIDATE" || { echo "remote candidate changed"; exit 1; }
@@ -498,7 +498,7 @@ rehearsal* below describes.
    ```bash
    git switch main
    git pull --ff-only origin main
-   CANDIDATE=<full 40-character SHA recorded on the release ticket>
+   CANDIDATE="<full 40-character SHA recorded on the release ticket>"
    test -z "$(git status --porcelain)" || { echo "working tree is not clean"; exit 1; }
    test "$(git rev-parse HEAD)" = "$CANDIDATE" || { echo "local candidate changed"; exit 1; }
    test "$(git rev-parse origin/main)" = "$CANDIDATE" || { echo "remote candidate changed"; exit 1; }
@@ -570,7 +570,7 @@ rather than at whatever the current worktree holds:
 
 ```bash
 set -u
-CANDIDATE=<full 40-character SHA recorded on the release ticket>
+CANDIDATE="<full 40-character SHA recorded on the release ticket>"
 git fetch -q origin || { echo "cannot fetch origin"; exit 1; }
 git checkout --detach "$CANDIDATE"
 test "$(git rev-parse HEAD)" = "$CANDIDATE" || { echo "not at the candidate SHA: $(git rev-parse HEAD)"; exit 1; }
