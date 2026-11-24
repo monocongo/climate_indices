@@ -1258,7 +1258,9 @@ def compare_distributions(
             samples, the right null only for an unrounded record. Sums of values rounded to a unit are multiples of
             it, so for a summed window it is the record's unit; ``"standardized_index"`` with
             ``aggregation="mean"`` uses that unit divided by ``scale``, and a SPEI water balance has a unit only if
-            precipitation and PET share one. A positive draw
+            precipitation and PET share one. A daily record's synthesized February 29 holds the mean of its
+            neighbors, so a window that spans it can be a multiple of half ``resolution`` rather than of
+            ``resolution``, and the rounded draws do not reproduce it. A positive draw
             that rounds to zero is set to the least positive point of the lattice, so the simulated zero share stays the
             fitted p0. For ``"spei"``
             the draws lie on ``1000 * scale + k * resolution``, the lattice of the prepared sample with its
