@@ -11,7 +11,8 @@ and whether the events agree with an independent reference.
 Start with {doc}`choosing-parameters` for the distribution argument itself and
 for the calibration period. The executable
 [nClimGrid workflow notebook](https://github.com/monocongo/climate_indices/blob/main/notebooks/check_distribution_suitability.ipynb)
-runs this whole guide on the prepared sample, which is a workflow reproduction
+runs the comparison, goodness-of-fit, category, seasonal-uniformity and
+event-concordance steps on the prepared sample. That is a workflow reproduction
 and not a reference reproduction. Prepare the sample once with
 `uv run --group dev scripts/prepare_e2e_inputs.py` (about 15 MB on the first
 run) and start the notebook kernel in `notebooks/`.
@@ -67,7 +68,7 @@ mean the KS test could not assess the fit.
 
 `suitability.compare_distributions()` scores every likelihood-based candidate on
 one shared calibration sample. `index="spi"` and `index="standardized_index"`
-compare gamma and Pearson Type III; `index="spei"` also compares the
+compare Pearson Type III and gamma; `index="spei"` also compares the
 log-logistic and GEV. Name `candidates` to narrow the set; the result always
 follows the canonical enum order, so the input order has no effect. Any other
 family raises. The function prepares the series exactly as the named index
@@ -118,8 +119,9 @@ Read the ranking with these limits:
   `"bic"` only when you can say why.
 - **`best` carries no significance threshold.** `delta_to_runner_up` reports the
   gap, and a small gap does not separate two candidates. Ties go to the earlier
-  candidate in the canonical order, and `best` is `-1` on the NumPy route (the
-  string `"none"` on the xarray route) when no candidate is eligible.
+  candidate in the canonical order (`pearson`, `gamma`, `loglogistic`, `gev`),
+  and `best` is `-1` on the NumPy route (the string `"none"` on the xarray
+  route) when no candidate is eligible.
 - **A failed fit is recorded, never replaced.** The Pearson-to-gamma fallback
   that `spi()` applies is disabled here, so read `fit_failed` instead of
   assuming gamma when Pearson fails.
@@ -191,9 +193,9 @@ Defaults and limits:
 - **Pass the record's rounding unit as `resolution`.** Sums of values rounded to
   a unit are multiples of it. With `resolution=None`, the draws are continuous,
   which is the right null only for an unrounded record; a rounded record is then
-  rejected far too often. The unit is never inferred. For SPI the unit is the
-  record's unit, and with `aggregation="mean"` it is that unit divided by the
-  Timescale.
+  rejected far too often. The unit is never inferred. For a summed window the
+  unit is the record's unit; `index="standardized_index"` with
+  `aggregation="mean"` uses that unit divided by the Timescale.
 - **Failed refits leave the denominator.** Read `bootstrap_failed_share`; a
   candidate whose refits often fail has a p-value from fewer draws.
 - **The seed is recorded.** Pass `seed` for a reproducible run; the result
@@ -204,7 +206,7 @@ Defaults and limits:
 - **Across cells.** With a cell axis, `rejection_share` reports the share of
   cells at or below `alpha` for each candidate, step and statistic. It uses the
   bootstrap p-value when one exists and the naive K-S p-value otherwise, so the
-  AD column is missing without a bootstrap. `bh_adjust=True` adds
+  AD column is NaN without a bootstrap. `bh_adjust=True` adds
   Benjamini-Hochberg adjusted p-values across cells; spatial correlation weakens
   the assumptions of that adjustment, and field significance is out of scope.
 - **Estimation and ties.** Gamma and Pearson Type III drop exact zeros from the
