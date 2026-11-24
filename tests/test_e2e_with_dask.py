@@ -246,7 +246,9 @@ def test_distribution_suitability_notebook_runs_on_prepared_sample(
         _, expected_row, expected_col = max(fractions, key=lambda candidate: candidate[0])
         assert (namespace["block_row"], namespace["block_col"]) == (expected_row, expected_col)
         assert land[expected_row : expected_row + 6, expected_col : expected_col + 6].all()
-        selected = fixture_ds["wb"].isel(lat=namespace["row"], lon=namespace["col"])
+        cell_row, cell_col = (int(index) for index in np.argwhere(land)[0])
+        assert (namespace["row"], namespace["col"]) == (cell_row, cell_col)
+        selected = fixture_ds["wb"].isel(lat=cell_row, lon=cell_col)
         assert np.array_equal(namespace["water"].values, selected.values)
         assert namespace["threshold"] == pytest.approx(float(selected.sel(time=slice("1981", "2010")).quantile(0.2)))
         rejection = namespace["rejection"]
