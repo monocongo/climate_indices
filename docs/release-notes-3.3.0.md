@@ -1,6 +1,6 @@
 # climate_indices 3.3.0 release notes
 
-Version 3.3.0 is unreleased. It adds distribution suitability tools, GEV for SPEI,
+Released 2026-11-24. It adds distribution suitability tools, GEV for SPEI,
 and the `climate_indices.drought` namespace. See the
 [full changelog](https://github.com/monocongo/climate_indices/blob/main/CHANGELOG.md)
 and {doc}`the migration guide <deprecations/api-changes>`.
