@@ -218,25 +218,37 @@ def test_distribution_suitability_notebook_runs_on_prepared_sample(
     try:
         namespace: dict[str, Any] = {}
         _exec_cells(namespace, _code_cells())
+        _, fixture_ds = e2e_data_wide
         candidates = namespace["candidates"]
         shares = namespace["shares"]
         assert list(shares.columns) == [*candidates, "none"]
         np.testing.assert_allclose(shares.sum(axis=1), 1.0)
-        comparison = namespace["comparisons"][3]
-        best = comparison["best"].values
-        # A masked cell is not evaluable and leaves the denominator; its rows would otherwise
-        # land in "none". Counting each candidate on its own pins a misassigned share.
-        evaluable = comparison["n"].values > 0
-        counted = int(np.count_nonzero(evaluable))
-        assert 0 < counted < best.size
-        for label in [*candidates, "none"]:
-            expected_share = np.count_nonzero((best == label) & evaluable) / counted
-            assert shares.loc[3, label] == pytest.approx(expected_share), label
-        land = namespace["land"]
+        # Every Timescale reports a headline share, so check each one. The sum above only
+        # constrains the denominator, so the per-label counts below carry the rest.
+        for scale in namespace["SCALES"]:
+            comparison = namespace["comparisons"][scale]
+            best = comparison["best"].values
+            # A masked cell is not evaluable and leaves the denominator; its rows would
+            # otherwise land in "none". Counting each candidate pins a misassigned share.
+            evaluable = comparison["n"].values > 0
+            counted = int(np.count_nonzero(evaluable))
+            assert 0 < counted < best.size, f"fixture no longer mixes masked and land cells at scale {scale}"
+            for label in [*candidates, "none"]:
+                expected_share = np.count_nonzero((best == label) & evaluable) / counted
+                assert shares.loc[scale, label] == pytest.approx(expected_share), (scale, label)
+        assert np.isfinite(namespace["deltas"].to_numpy()).all(), namespace["deltas"]
+        # The input-preparation cell is the part a reader copies, so check it against the
+        # fixture store instead of the notebook's own variables.
+        land = fixture_ds["precip"].notnull().any("time").values
+        assert np.array_equal(namespace["land"], land)
         assert namespace["block_size"] == 6
         fractions = [(float(land[r : r + 6, c : c + 6].mean()), r, c) for r in range(2) for c in range(2)]
         _, expected_row, expected_col = max(fractions, key=lambda candidate: candidate[0])
         assert (namespace["block_row"], namespace["block_col"]) == (expected_row, expected_col)
+        assert land[expected_row : expected_row + 6, expected_col : expected_col + 6].all()
+        selected = fixture_ds["wb"].isel(lat=namespace["row"], lon=namespace["col"])
+        assert np.array_equal(namespace["water"].values, selected.values)
+        assert namespace["threshold"] == pytest.approx(float(selected.sel(time=slice("1981", "2010")).quantile(0.2)))
         rejection = namespace["rejection"]
         assert list(rejection.columns) == ["KS naive", "KS bootstrap", "AD bootstrap"]
         assert rejection.index.tolist() == candidates
@@ -256,7 +268,7 @@ def test_distribution_suitability_notebook_runs_on_prepared_sample(
                 kept = mask & np.isfinite(values)
                 expected_share = np.count_nonzero(values[kept] <= 0.05) / np.count_nonzero(kept)
                 assert rejection.loc[label, column] == pytest.approx(expected_share), (label, column)
-        assert (rejection[["KS bootstrap", "AD bootstrap"]].to_numpy() > 0).any()
+        assert (rejection[["KS bootstrap", "AD bootstrap"]].to_numpy() > 0).any(), "fixture now rejects nothing"
         assert len(namespace["top_two"]) == 2
         change = namespace["change"]
         assert set(change["share_changed"].dims) == {"lat", "lon"}
@@ -264,9 +276,6 @@ def test_distribution_suitability_notebook_runs_on_prepared_sample(
         pooled = namespace["pooled"]
         confusion = pooled["confusion"].values
         assert float(pooled["share_changed"]) == pytest.approx(1.0 - np.trace(confusion) / confusion.sum())
-        water = namespace["water"]
-        expected_threshold = float(water.sel(time=slice("1981", "2010")).quantile(0.2))
-        assert namespace["threshold"] == pytest.approx(expected_threshold)
         concordance = namespace["concordance"]
         # Overlap the runs independently of event_concordance's own matcher.
         time_axis = namespace["time"]
@@ -292,7 +301,7 @@ def test_distribution_suitability_notebook_runs_on_prepared_sample(
         expected_misses = int(reference_runs.start_index.size) - expected_hits
         assert (concordance.hits, concordance.misses) == (expected_hits, expected_misses)
         assert concordance.false_alarms == expected_false_alarms
-        assert 0 < expected_hits < int(reference_runs.start_index.size)
+        assert 0 < expected_hits < int(reference_runs.start_index.size), "fixture now matches every reference event"
         matched = int(index_runs.start_index.size) - expected_false_alarms
         assert concordance.pod == pytest.approx(expected_hits / (expected_hits + expected_misses))
         assert concordance.far == pytest.approx(expected_false_alarms / (expected_false_alarms + matched))
