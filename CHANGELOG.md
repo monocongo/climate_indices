@@ -5,23 +5,6 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
-
-### Changed
-
-- **Masked input is missing at every Timescale**: `compute.sum_to_scale()` treats a
-  masked value as missing, so every window containing one sums to NaN rather than to
-  the data under the mask. SPI, SPEI, EDDI and PNP fed a partially masked array now
-  return missing values at the masked time steps instead of values derived from the
-  masked-out data (#933).
-
-### Fixed
-
-- `compute.sum_to_scale()` returns an all-NaN array of the input's length when the
-  Timescale is longer than a 1-D series, instead of a longer array with wrong sums. A
-  2-D layout or a non-integer scale is still rejected, as at any other Timescale.
-  Tests cover masked input at Timescales 1, 2 and longer than the series (#933).
-
 ## [3.3.0] - 2026-11-24
 
 See the [release notes](docs/release-notes-3.3.0.md) and
