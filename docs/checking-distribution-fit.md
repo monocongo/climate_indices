@@ -224,6 +224,7 @@ same values disagree.
 
 ```python
 from climate_indices import spei
+from climate_indices.drought.indices import Distribution
 
 gamma_values = spei(
     precip, pet, scale=3, distribution=Distribution.gamma,
