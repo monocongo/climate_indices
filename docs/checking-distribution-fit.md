@@ -205,10 +205,12 @@ Defaults and limits:
   the candidate `best` chose is not an ordinary confirmatory test.
 - **Across cells.** With a cell axis, `rejection_share` reports the share of
   cells at or below `alpha` for each candidate, step and statistic. It uses the
-  bootstrap p-value when one exists and the naive K-S p-value otherwise, so the
-  AD column is NaN without a bootstrap. `bh_adjust=True` adds
-  Benjamini-Hochberg adjusted p-values across cells; spatial correlation weakens
-  the assumptions of that adjustment, and field significance is out of scope.
+  bootstrap p-values when a bootstrap ran and the naive K-S p-values when it did
+  not, chosen per call rather than per position: a position whose refits all
+  failed leaves the counts instead of falling back. The AD column is NaN
+  without a bootstrap. `bh_adjust=True` adds Benjamini-Hochberg adjusted
+  p-values across cells; spatial correlation weakens the assumptions of that
+  adjustment, and field significance is out of scope.
 - **Estimation and ties.** Gamma and Pearson Type III drop exact zeros from the
   statistics, because the zero mass is not part of the continuous distribution
   under test; the log-logistic and GEV keep zeros as ordinary values. Repeated
@@ -228,6 +230,7 @@ same values disagree.
 from climate_indices import spei
 from climate_indices.drought.indices import Distribution
 
+# xarray route: `precip` and `pet` are DataArrays, so the temporal arguments are optional.
 gamma_values = spei(
     precip, pet, scale=3, distribution=Distribution.gamma,
     calibration_year_initial=1981, calibration_year_final=2010,
@@ -384,12 +387,12 @@ that a distribution is *correct*. A defensible choice reports the relative
 evidence, the absolute evidence, the decision impact and the limits together.
 
 [The executable nClimGrid notebook](https://github.com/monocongo/climate_indices/blob/main/notebooks/check_distribution_suitability.ipynb)
-works through the relative fit, the absolute fit, the category impact, the
-seasonal uniformity and the event counting at SPEI-3/6/12/24 with gamma,
-Pearson, log-logistic and GEV. It uses the prepared sample, so prepare it once with
-`uv run --group dev scripts/prepare_e2e_inputs.py`, then open the notebook with
-its kernel in `notebooks/` or set `CLIMATE_INDICES_E2E_DATA` to the
-prepared-data directory. The
+works through the relative fit at SPEI-3/6/12/24 with gamma, Pearson,
+log-logistic and GEV, then the absolute fit, the category impact, the seasonal
+uniformity and the event counting at SPEI-3. It uses the prepared sample, so
+prepare it once with `uv run --group dev scripts/prepare_e2e_inputs.py`, then
+open the notebook with its kernel in `notebooks/` or set
+`CLIMATE_INDICES_E2E_DATA` to the prepared-data directory. The
 [fit-audit notebook](https://github.com/monocongo/climate_indices/blob/main/notebooks/check_spi_fit.ipynb)
 covers the single-fit diagnostics at SPI-1/3/12. See {doc}`choosing-parameters`
 for choosing the distribution and period.
