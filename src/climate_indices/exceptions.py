@@ -594,7 +594,7 @@ def alias_deprecated_module(*, old_name: str, canonical: ModuleType) -> None:
     emit_deprecation_warning(
         feature=f"The '{old_name}' module",
         alternative=f"import from '{canonical.__name__}' instead",
-        deprecated_in="3.2.0",
+        deprecated_in="3.3.0",
         removal_version="4.0.0",
         migration_url="api-changes.html",
         stacklevel=4,

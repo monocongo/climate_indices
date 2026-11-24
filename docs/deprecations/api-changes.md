@@ -5,11 +5,11 @@ breaking changes that ship without a deprecation period.
 
 ## Deprecations
 
-### Drought module paths (deprecated in 3.x)
+### Drought module paths (deprecated in 3.3.0)
 
 **What a user sees:** the drought implementation modules now live under
 `climate_indices.drought`.
-Imports from `climate_indices.indices`, `climate_indices.palmer`,
+Starting in 3.3.0, imports from `climate_indices.indices`, `climate_indices.palmer`,
 `climate_indices.self_calibration`, `climate_indices.eto`, and
 `climate_indices.pm_eto` emit `ClimateIndicesDeprecationWarning`.
 These five paths remain identity aliases until their removal in 4.0.0.
@@ -77,10 +77,10 @@ outputs retain the existing `calibration_start_year`/`calibration_end_year`
 attributes alongside the canonical names; their history entry still records the
 timescale, not calibration years. No numerical behavior changes.
 
-## Pearson zero-mass correction after 3.2.0
+## Pearson zero-mass correction in 3.3.0
 
-This correction is pending release and applies to both the Python library and
-`pearson::pearson_parameters` in the standalone Rust crate (#1562).
+The correction applies to the Python library and to `pearson::pearson_parameters`
+in the bundled Rust implementation (#1562).
 
 Pearson Type III fitting now excludes exact zeros from the continuous L-moment
 sample. The Probability of Zero still uses all non-missing Calibration Period
@@ -116,9 +116,9 @@ it fits every pooled anomaly value, exact zeros included, and is unchanged by
 this correction. See the SPAI section of
 {doc}`the algorithm reference </algorithm-reference>`.
 
-## Fitted-parameter units after 3.2.0
+## Fitted-parameter units in 3.3.0
 
-This change is pending release. `fit_diagnostics()` on an xarray input (#1650) now labels the fitted parameters that
+`fit_diagnostics()` on an xarray input (#1650) now labels the fitted parameters that
 carry the sample's physical units with those units. Previously every fitted parameter
 had `units = "1"`.
 

@@ -71,11 +71,9 @@ def test_deprecated_module_path_warns_and_aliases(
     # Drop the cached alias so the stub module executes and warns again.
     monkeypatch.delitem(sys.modules, old_path, raising=False)
 
-    with warnings.catch_warnings(record=True) as caught:
-        warnings.simplefilter("always")
+    with pytest.warns(ClimateIndicesDeprecationWarning, match=r"deprecated since version 3\.3\.0\b"):
         old = importlib.import_module(old_path)
 
-    assert any(issubclass(warning.category, ClimateIndicesDeprecationWarning) for warning in caught), caught
     assert isinstance(old, ModuleType)
     assert old is canonical
     assert sys.modules[old_path] is canonical

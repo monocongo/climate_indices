@@ -5,6 +5,52 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.3.0] - unreleased
+
+See the [release notes](docs/release-notes-3.3.0.md) and
+[migration guidance](docs/deprecations/api-changes.md).
+
+### Added
+
+- The **Beta `climate_indices.suitability` module** compares fitted distributions for
+  SPI and SPEI on NumPy and xarray inputs, reports goodness-of-fit statistics, classifies
+  scores into drought categories, and compares categories and events (#1584–#1587, #1590).
+- **`suitability.pit_uniformity()`** reports probability-scale uniformity by calendar
+  step for SPAI, SPI, SPEI and other standardized indices. It returns K–S and
+  Anderson–Darling statistics with a naive K–S p-value over the Calibration Period,
+  and supports NumPy and xarray/Dask inputs (#1588, #1692).
+- SPEI accepts **GEV** as `Distribution.gev` in the Python API. The SPEI CLI now
+  writes four outputs per Timescale by adding `spei_gev` (#1583).
+- The package supports **Python 3.15** on Linux (#1579).
+- The optional **`earthengine` extra** installs `xee` and the Earth Engine client
+  for the data-access examples (#1569).
+
+### Changed
+
+- The **Icechunk** extra uses `icechunk>=2.2,<3` on Python 3.12
+  or later. Writes use the Icechunk writer for compatibility with current xarray
+  and Zarr v3 (#1564).
+- The xarray **`fit_diagnostics()`** output reports the input units
+  on parameters that carry the sample's physical units (#1650).
+
+### Deprecated
+
+- Use **`climate_indices.drought`** for drought modules. Imports of the five
+  old public modules emit a deprecation warning from 3.3.0 and are scheduled for
+  removal in 4.0.0. Package-root function imports remain supported (#1555).
+
+### Fixed
+
+- The **Pearson Type III SPI** continuous L-moment fit excludes exact zeros.
+  Refit saved Pearson parameters if the Calibration Period contains zero
+  accumulations. Recomputing from the corrected fit can change SPI values (#1562).
+- The standard **Palmer** end-of-record flush preserves resolved months and
+  uses each pending month's own PMDI (#1665, #1666). The recursion stops at the
+  last supplied month, before any padding added to complete the year (#1663).
+  Exact PMDI ties now choose the incipient wet-spell value. Lower-layer water
+  loss handles zero Available Water Capacity using the total capacity of both
+  layers as the denominator (#1662, #1664).
+
 ## [3.2.0] - 2026-11-03
 
 See the [release notes](docs/release-notes-3.2.0.md) and
