@@ -714,6 +714,34 @@ def test_sum_to_scale():
     )
 
 
+@pytest.mark.parametrize(
+    ("scale", "expected"),
+    [
+        (1, [0.0, 1, np.nan, 3, 4, 5]),
+        (2, [np.nan, 1, np.nan, np.nan, 7, 9]),
+        (7, [np.nan] * 6),
+    ],
+)
+def test_sum_to_scale_masked_input(scale, expected):
+    """
+    A masked value is missing at every scale: each window containing it sums to NaN,
+    never to the data under the mask (#933).
+    """
+    values = np.ma.array(np.arange(6.0), mask=[False, False, True, False, False, False])
+    computed = compute.sum_to_scale(values, scale)
+    np.testing.assert_equal(np.ma.filled(np.ma.asarray(computed, dtype=float), np.nan), expected)
+
+
+def test_sum_to_scale_scale_longer_than_series():
+    """
+    A scale longer than the series has no complete window, so the result is all NaN and
+    keeps the input's length, as for any other scale (#933).
+    """
+    computed = compute.sum_to_scale(np.array([1.0, 2.0, 3.0]), 4)
+    assert computed.shape == (3,)
+    assert np.isnan(computed).all()
+
+
 def test_periodicity_period_length():
     """
     Each periodicity reports the number of time steps in one year of data.

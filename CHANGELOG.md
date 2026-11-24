@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+
+- `compute.sum_to_scale()` returns an all-NaN array of the input's length when the
+  scale is longer than a 1-D series, instead of a longer array with wrong sums. Tests
+  now cover masked input at scale 1, 2 and longer than the series (#933).
+
 ## [3.3.0] - 2026-11-24
 
 See the [release notes](docs/release-notes-3.3.0.md) and

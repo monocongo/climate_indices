@@ -348,6 +348,11 @@ def sum_to_scale(
         window_sums: np.ndarray = np.lib.stride_tricks.sliding_window_view(padded, scale, axis=0).sum(axis=-1)
         return window_sums
 
+    # a scale longer than the series leaves no complete window, so every position is
+    # padding; np.convolve would otherwise swap its arguments and return the wrong length
+    if scale > values.shape[0]:
+        return np.full(values.shape, np.nan)
+
     # get the valid sliding summations with 1D convolution
     sliding_sums = np.convolve(values, np.ones(scale), mode="valid")
 
