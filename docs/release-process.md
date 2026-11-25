@@ -226,6 +226,8 @@ rehearsal_push() {
   [[ -n ${SHA:-} ]] || { echo "SHA is not set: run the rehearsal setup block in this shell first"; return 1; }
   [[ -n ${TAG:-} ]] || { echo "TAG is not set: run the rehearsal setup block in this shell first"; return 1; }
   [[ -n ${TARGET:-} ]] || { echo "TARGET is not set: run the rehearsal setup block in this shell first"; return 1; }
+  [[ "$TARGET" =~ ^[A-Za-z0-9-]+/[A-Za-z0-9._-]+$ ]] \
+    || { echo "TARGET is not a plain owner/name repository: $TARGET"; return 1; }
   [[ "$(printf %s "$TARGET" | tr A-Z a-z)" != monocongo/climate_indices ]] \
     || { echo "TARGET is the upstream repository: never push a rehearsal there"; return 1; }
 

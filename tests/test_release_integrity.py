@@ -1483,6 +1483,32 @@ def test_release_process_shell_blocks_are_safe_to_paste() -> None:
     assert not unsafe, f"unsafe to paste into an interactive shell: {unsafe}"
 
 
+@pytest.mark.parametrize(
+    "target",
+    [
+        "monocongo/climate_indices",
+        "MonoCongo/Climate_Indices",
+        "monocongo/./climate_indices",
+        "monocongo//climate_indices",
+        "monocongo/climate%5Findices",
+    ],
+)
+def test_rehearsal_push_refuses_every_spelling_of_upstream(target: str) -> None:
+    """GitHub resolves several spellings to upstream, so none may reach a push."""
+    text = (ROOT / "docs/release-process.md").read_text(encoding="utf-8")
+    block = re.search(r"^```bash\n(rehearsal_push\(\) \{.*?)^```", text, re.MULTILINE | re.DOTALL)
+    assert block, "docs/release-process.md must keep the rehearsal_push block"
+    result = subprocess.run(
+        ["bash", "-c", 'git() { echo "git $*"; }\n' + block.group(1)],
+        env={**os.environ, "SHA": "0" * 40, "TAG": "v0.0.0", "TARGET": target},
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode != 0, result.stdout
+    assert "git push" not in result.stdout
+
+
 def test_release_process_documents_the_rehearsal_boundary() -> None:
     """The rehearsal runbook must state the failure it expects and what it cannot prove.
 
