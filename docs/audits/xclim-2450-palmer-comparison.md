@@ -287,13 +287,17 @@ not apply it as written.
 | 1900-06 (before calibration) | 1535 | finite for the first 65 months, then NaN |
 | 2000-06 (after calibration) | 1535 | finite for 1265 months, then NaN |
 
+Tracked as
+[issue #1710](https://github.com/monocongo/climate_indices/issues/1710).
+
 A NaN PET value inside calibration does the same, and so does the pure-Python
-kernel (checked separately from the committed script). The NaN enters the
-calibration sums, every K and Z becomes NaN, and the `_py_max`/`_py_min`
-clamps, which replicate `pdi.f`'s `max(0, x)` behaviour, turn NaN Z into
-X = 0. The comment at `palmer.py:1052-1060` describes this clamping, but the
-guard it introduces covers only cells that are missing for the *entire* series,
-or fully missing cells within a block. The same path returns all-zero PDSI for a
+path (checked separately from the committed script). The NaN enters the
+calibration sums, every K and Z becomes NaN, and in
+`_palmer_pdi._statement_200` the clamps
+`np.where(px1_computed > 0, px1_computed, 0.0)` (and the matching `px2` clamp)
+turn NaN candidates into 0, so the recursion assigns X = 0. The docstring at
+`palmer.py:1052-1060` describes NaN-to-0 clamping, but the guards cover only
+series or block cells that are missing *entirely*. The same path returns all-zero PDSI for a
 record of identical years (D̄ = 0). `scpdsi()` raises `ConvergenceError` for
 both, which is the safe behaviour. Returning "near normal" for missing data is
 worse than xclim's NaN. **Severity: high.**
