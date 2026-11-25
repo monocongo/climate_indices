@@ -714,6 +714,70 @@ def test_sum_to_scale():
     )
 
 
+@pytest.mark.parametrize(
+    ("scale", "expected"),
+    [
+        (1, [0.0, 1, np.nan, 3, 4, 5]),
+        (2, [np.nan, 1, np.nan, np.nan, 7, 9]),
+        (7, [np.nan] * 6),
+    ],
+)
+def test_sum_to_scale_masked_input(scale, expected):
+    """
+    A masked value is missing at every Timescale: each window containing it sums to NaN,
+    never to the data under the mask (#933).
+    """
+    values = np.ma.array(np.arange(6.0), mask=[False, False, True, False, False, False])
+    computed = compute.sum_to_scale(values, scale)
+    # a plain array, so the data under the mask is never exposed
+    assert not np.ma.isMaskedArray(computed)
+    np.testing.assert_equal(computed, expected)
+
+
+@pytest.mark.parametrize(("scale", "expected"), [(1, [1.0, np.nan]), (2, [np.nan, np.nan])])
+def test_sum_to_scale_masked_numeric_strings_stay_numeric(scale, expected):
+    """Numeric strings under a mask are cast to float, as before, not promoted to a string dtype."""
+    values = np.ma.array(["1", "2"], mask=[False, True])
+    np.testing.assert_equal(compute.sum_to_scale(values, scale), expected)
+
+
+def test_sum_to_scale_masked_complex_keeps_imaginary_part():
+    """Mask normalization marks masked values NaN without dropping a complex value's imaginary part."""
+    values = np.ma.array([1 + 2j, 3 + 4j], mask=[False, True])
+    computed = compute.sum_to_scale(values, 1)
+    assert computed.dtype == np.complex128
+    assert computed[0] == 1 + 2j
+    assert np.isnan(computed[1])
+
+
+@pytest.mark.parametrize(
+    ("scale", "input_dtype", "output_dtype"),
+    [(4, np.float32, np.float64), (np.int64(4), np.complex64, np.complex128)],
+)
+def test_sum_to_scale_scale_longer_than_series(scale, input_dtype, output_dtype):
+    """An overlong Timescale preserves the length and the convolution result dtype."""
+    computed = compute.sum_to_scale(np.array([1, 2, 3], dtype=input_dtype), scale)
+    assert computed.shape == (3,)
+    assert computed.dtype == output_dtype
+    assert np.isnan(computed).all()
+
+
+@pytest.mark.parametrize(
+    ("values", "scale", "error"),
+    [
+        (np.empty(0), 4, ValueError),
+        (np.ones((3, 2)), 4, ValueError),
+        (np.ones(3), 4.5, TypeError),
+        (np.array(["a", "b", "c"]), 4, (TypeError, ValueError)),
+        (np.array(["bad"], dtype=object), 2, TypeError),
+    ],
+)
+def test_sum_to_scale_overlong_scale_still_rejects_invalid_input(values, scale, error):
+    """An overlong Timescale does not make invalid input valid."""
+    with pytest.raises(error):
+        compute.sum_to_scale(values, scale)
+
+
 def test_periodicity_period_length():
     """
     Each periodicity reports the number of time steps in one year of data.

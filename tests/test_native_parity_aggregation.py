@@ -141,7 +141,13 @@ def test_mask_normalization_and_identity(monkeypatch: pytest.MonkeyPatch) -> Non
     assert _compare(monkeypatch, np.ma.array(np.zeros(24), mask=True), 3) == set()
     recorder = conftest.NativeRecorder(native)
     monkeypatch.setattr(compute, "_native", recorder)
-    assert compute.sum_to_scale(values, 1) is values
+    masked_result = compute.sum_to_scale(values, 1)
+    expected = np.arange(24.0)
+    expected[8] = np.nan
+    assert type(masked_result) is np.ndarray
+    np.testing.assert_array_equal(masked_result, expected)
+    plain = np.arange(24.0)
+    assert compute.sum_to_scale(plain, 1) is plain
     assert not recorder.calls
     assert _compare(monkeypatch, np.arange(24.0)[::-2], 3) == set()
     # the same normalization reaches the kernel through a Spatial Block
