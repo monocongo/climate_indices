@@ -38,6 +38,10 @@ from climate_indices.drought._palmer_pdi import PdiDurationFactors
 
 ROOT = Path(__file__).resolve().parents[1]
 SEQUENCES = ROOT / "docs" / "research" / "reference-papers" / "palmer-recursion-divergence-sequences.json"
+needs_checkout_import = pytest.mark.skipif(
+    Path(_palmer_pdi.__file__).resolve() != (ROOT / "src/climate_indices/drought/_palmer_pdi.py").resolve(),
+    reason="the source pin only accepts a package imported from this checkout",
+)
 
 
 @lru_cache(maxsize=1)
@@ -311,6 +315,7 @@ def test_generator_accepts_the_study_pin(monkeypatch: pytest.MonkeyPatch, tmp_pa
     assert json.loads(output.read_text()) == {}
 
 
+@needs_checkout_import
 def test_source_pin_includes_common_helpers(monkeypatch: pytest.MonkeyPatch) -> None:
     study = _load_finder().c
     common = "src/climate_indices/drought/_palmer_common.py"
@@ -328,13 +333,19 @@ def test_source_pin_rejects_imports_outside_the_checkout(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path, name: str
 ) -> None:
     study = _load_finder().c
-    module = importlib.import_module(f"climate_indices.drought.{name}")
+    # sources are checked in order, so pin the earlier ones to make the named module the first mismatch
+    for path in study.STUDIED_SOURCES:
+        module = importlib.import_module(f"climate_indices.drought.{Path(path).stem}")
+        if Path(path).stem == name:
+            break
+        monkeypatch.setattr(module, "__file__", str(study.ROOT / path))
     monkeypatch.setattr(module, "__file__", str(tmp_path / f"{name}.py"))
     monkeypatch.setattr(study.subprocess, "run", Mock(return_value=Mock(returncode=0)))
-    with pytest.raises(SystemExit, match="does not resolve to the checked source"):
+    with pytest.raises(SystemExit, match=rf"\.{name} does not resolve to the checked source"):
         study.verify_pinned_sources()
 
 
+@needs_checkout_import
 def test_source_pin_accepts_checkout_imports(monkeypatch: pytest.MonkeyPatch) -> None:
     study = _load_finder().c
     compare = Mock(return_value=Mock(returncode=0))
