@@ -285,7 +285,8 @@ def sum_to_scale(
     (scale - 1) elements of the result array will be padded with np.nan values.
     Missing values are not ignored, i.e. if a np.nan
     (missing) value is part of the group of values to be summed then the sum
-    will be np.nan
+    will be np.nan. A masked value counts as missing: a masked array is returned as
+    a plain array with NaN at the masked positions, at every scale including 1.
 
     A time-major spatial array with shape (time, ``*cells``) is summed window-wise along
     its time axis, so every cell's sliding sums are computed by one vectorized pass.
@@ -311,15 +312,17 @@ def sum_to_scale(
         array, left padded with NaN values
     """
 
-    # don't bother if the number of values to sum is 1
-    if scale == 1:
-        return values
-
     if np.ma.isMaskedArray(values):
         # a masked value stands for a missing value: make it an explicit NaN so the
         # convolution below and the window-wise spatial sum see the missing marker
         # rather than the data under the mask (np.convolve reads under it)
-        values = np.ma.filled(values.astype(float), np.nan)
+        # cast to float so numeric strings stay numeric; a complex value keeps its imaginary part
+        dtype = np.result_type(values.dtype, np.float64) if np.iscomplexobj(values) else float
+        values = np.ma.filled(values.astype(dtype), np.nan)
+
+    # don't bother if the number of values to sum is 1
+    if scale == 1:
+        return values
 
     native = _native_backend.kernels(_native, "trailing_sum")
     if (
@@ -347,6 +350,19 @@ def sum_to_scale(
         padded = np.concatenate((np.full(pad_shape, np.nan, dtype=float), values))
         window_sums: np.ndarray = np.lib.stride_tricks.sliding_window_view(padded, scale, axis=0).sum(axis=-1)
         return window_sums
+
+    # np.convolve swaps its arguments when no complete window fits. Keep its dtype
+    # promotion and leave validation of other inputs to the usual convolution path.
+    if (
+        values.ndim == 1
+        and isinstance(scale, (int, np.integer))
+        and 0 < values.size < scale
+        and values.dtype.kind in "buifcO"
+    ):
+        if values.dtype.kind == "O":
+            # np.convolve raises TypeError on non-numeric elements, so keep that contract
+            np.multiply(values, 1.0)
+        return np.full(values.shape, np.nan, dtype=np.result_type(values.dtype, np.float64))
 
     # get the valid sliding summations with 1D convolution
     sliding_sums = np.convolve(values, np.ones(scale), mode="valid")
