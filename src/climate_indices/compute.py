@@ -285,7 +285,8 @@ def sum_to_scale(
     (scale - 1) elements of the result array will be padded with np.nan values.
     Missing values are not ignored, i.e. if a np.nan
     (missing) value is part of the group of values to be summed then the sum
-    will be np.nan
+    will be np.nan. A masked value counts as missing: a masked array is returned as
+    a plain array with NaN at the masked positions, at every scale including 1.
 
     A time-major spatial array with shape (time, ``*cells``) is summed window-wise along
     its time axis, so every cell's sliding sums are computed by one vectorized pass.
