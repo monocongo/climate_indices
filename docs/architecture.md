@@ -1126,7 +1126,8 @@ Steps:
   1. Checkout code
   2. Setup Python + uv
   3. uv sync --locked --dev --no-build   # wheels only (Linux 3.15: source builds, no --no-build)
-  4. Run pytest -n auto
+  4. Run mypy src/   # Python 3.11 leg of test only (lint type-checks on 3.12)
+  5. Run pytest -n auto
 Rust jobs (every event; see "Rust in CI" under Optional Rust Backend):
   rust, test-native, native-wheel
 ```
