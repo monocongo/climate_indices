@@ -136,4 +136,6 @@ maintainer". If work is blocked on an open PR, review it and report back, or
 build on the PR's branch with explicit maintainer approval.
 
 Releases are maintainer-owned and tag-based from `main`; use [the release
-runbook](docs/release-process.md).
+runbook](docs/release-process.md). Before any release rehearsal or tag, take the
+candidate SHA from the release ticket; the runbook's freeze step gives the command that
+records it. Never derive it from `origin/main` or `HEAD` afterwards.

@@ -63,9 +63,18 @@ namespace and never publishes to PyPI.
    SHA is historical, not a release instruction. For 3.0.0, reconcile the still-open
    [PR #1266](https://github.com/monocongo/climate_indices/pull/1266) with the final
    release record instead of retaining its October 6 target date.
-2. Record the full 40-character SHA of the merged `main` tip and the intended release
-   date on the release ticket. Confirm the changelog no longer says `unreleased` and
-   the release notes no longer say draft. Hold unrelated merges through the tag push.
+2. Get the full 40-character SHA of the merged `main` tip:
+
+   ```bash
+   git fetch -q origin && git log -1 --format='%H %s' origin/main
+   ```
+
+   Check that the subject is the commit you intend to release. Record the SHA exactly as
+   printed, and the intended release date, on the release ticket. Every later
+   `CANDIDATE` is copied from that ticket. Never fill it from `origin/main` or `HEAD`
+   afterwards: the comparison would then pass for a commit that was never frozen.
+   Confirm the changelog no longer says `unreleased` and the release notes no longer say
+   draft. Hold unrelated merges through the tag push.
 3. Validate and rehearse that exact SHA, including every native-wheel and no-Rust
    install leg. Any change to the candidate requires another freeze and rehearsal;
    do not reuse a previous green run for a different commit.
@@ -153,13 +162,14 @@ gh repo create <owner>/climate_indices-rehearsal --public \
 
 ```bash
 set -u                            # abort on unset variables
-CANDIDATE="<full 40-character sha of the frozen candidate>"
+# copy from the release ticket (see "Freeze the candidate before tagging", step 2)
+CANDIDATE="<full 40-character SHA recorded on the release ticket>"
 TAG=vX.Y.Z                        # the real release tag, not an rc
 TARGET="<owner>/climate_indices-rehearsal"   # or "<fork-owner>/climate_indices" for an equivalent fork
 
 # explicit tests: in an interactive shell, ${VAR:?} reports the error but does not exit
 [[ -n ${CANDIDATE:-} ]] \
-  || { echo "set CANDIDATE to the full 40-character SHA of the frozen candidate"; exit 1; }
+  || { echo "set CANDIDATE to the full 40-character SHA recorded on the release ticket"; exit 1; }
 [[ -n ${TAG:-} ]] || { echo "set TAG to the release tag"; exit 1; }
 [[ -n ${TARGET:-} ]] || { echo "set TARGET to the rehearsal repository"; exit 1; }
 [[ "$CANDIDATE" =~ ^[0-9a-f]{40}$ ]] \
@@ -490,7 +500,15 @@ rehearsal* below describes.
    workflow refuses to publish while one is present.
 3. Open a PR into `main`, then let the maintainer merge it after review and
    passing CI.
-4. Record the full 40-character SHA of the merged `main` tip.
+4. Get the full 40-character SHA of the merged `main` tip:
+
+   ```bash
+   git fetch -q origin && git log -1 --format='%H %s' origin/main
+   ```
+
+   Check that the subject is the commit you intend to release, then record the SHA
+   exactly as printed on the release ticket. Every later `CANDIDATE` is copied from
+   that ticket, never filled from `origin/main` or `HEAD`.
 5. From a clean maintainer worktree, confirm that the candidate has not moved and
    that the tag is free. The PyPI checks in *Tag creation* above do not apply to
    the crate: this project publishes no crate to PyPI, and no crate job reads a
