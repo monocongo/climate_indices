@@ -38,6 +38,10 @@ from climate_indices.drought._palmer_pdi import PdiDurationFactors
 
 ROOT = Path(__file__).resolve().parents[1]
 SEQUENCES = ROOT / "docs" / "research" / "reference-papers" / "palmer-recursion-divergence-sequences.json"
+needs_checkout_import = pytest.mark.skipif(
+    not Path(_palmer_pdi.__file__).resolve().is_relative_to(ROOT / "src"),
+    reason="the source pin only accepts a package imported from this checkout",
+)
 
 
 @lru_cache(maxsize=1)
@@ -311,6 +315,7 @@ def test_generator_accepts_the_study_pin(monkeypatch: pytest.MonkeyPatch, tmp_pa
     assert json.loads(output.read_text()) == {}
 
 
+@needs_checkout_import
 def test_source_pin_includes_common_helpers(monkeypatch: pytest.MonkeyPatch) -> None:
     study = _load_finder().c
     common = "src/climate_indices/drought/_palmer_common.py"
@@ -335,6 +340,7 @@ def test_source_pin_rejects_imports_outside_the_checkout(
         study.verify_pinned_sources()
 
 
+@needs_checkout_import
 def test_source_pin_accepts_checkout_imports(monkeypatch: pytest.MonkeyPatch) -> None:
     study = _load_finder().c
     compare = Mock(return_value=Mock(returncode=0))
