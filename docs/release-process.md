@@ -606,6 +606,7 @@ rather than at whatever the current worktree holds:
 ```bash
 set -u
 CANDIDATE="<full 40-character SHA recorded on the release ticket>"
+CANDIDATE="$(printf %s "$CANDIDATE" | tr A-F a-f)"
 git fetch -q origin || { echo "cannot fetch origin"; exit 1; }
 git checkout --detach "$CANDIDATE"
 test "$(git rev-parse HEAD)" = "$CANDIDATE" || { echo "not at the candidate SHA: $(git rev-parse HEAD)"; exit 1; }
