@@ -412,10 +412,10 @@ class TestPalmersWorker:
         calibration_year_end_palmer,
         palmer_awcs,
     ):
-        """A calibration gap that defeats the duration-factor fit must not abort the run.
+        """A calibration gap must not abort the run.
 
-        `pdsi()` tolerates the gap and still computes, so scPDSI is left missing for
-        that location (the all-missing contract) while the other outputs survive.
+        Neither `pdsi()` nor `scpdsi()` can calibrate that location, so all of its
+        outputs are left missing (the all-missing contract) while others survive.
         """
         precips, pet = division_precip_pet
         awc = palmer_awcs[_DIVISION_ID]
@@ -427,9 +427,9 @@ class TestPalmersWorker:
             "calibration_end_year": calibration_year_end_palmer,
         }
 
-        # divisions path: the single location's scPDSI is missing, its PDSI is not
+        # divisions path: the single location's outputs are all missing
         pdsi, _phdi, _pmdi, _zindex, scpdsi = cli_main._palmers(gappy_precips, pet, awc, parameters)
-        assert np.isfinite(pdsi).any()
+        assert np.isnan(pdsi).all()
         assert np.isnan(scpdsi).all()
 
         # grid path: only the gap-bearing cell is missing, the run still completes
@@ -443,6 +443,7 @@ class TestPalmersWorker:
             awc,
             {**parameters, "spatial_time_major": True},
         )
-        assert np.isfinite(grid_pdsi).all()
+        assert np.isnan(grid_pdsi[:, 0, 0]).all()
+        assert np.isfinite(grid_pdsi[:, 0, 1]).all()
         assert np.isnan(grid_scpdsi[:, 0, 0]).all()
         assert np.isfinite(grid_scpdsi[:, 0, 1]).all()

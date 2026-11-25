@@ -3078,6 +3078,9 @@ def palmer_pdsi(
             ``precips`` and ``pet`` share a cell dimension with differing coordinates.
         ValueError: If a NumPy call omits a required temporal parameter, or the
             precipitation and PET shapes are incompatible.
+        ConvergenceError: If a single series cannot be calibrated (see
+            ``palmer.pdsi()``). An xarray input with cell dimensions does not
+            raise for this: the affected cells are NaN.
 
     Notes:
         - A 3-D or higher xarray input reaches ``palmer.pdsi()`` as one
@@ -3188,6 +3191,16 @@ def palmer_pdsi(
         **kwargs: Any,
     ) -> tuple[np.ndarray, ...]:
         """Return the four Palmer arrays without the fitted-parameter dictionary."""
+        if not use_spatial_kernel and precips_da.ndim > 1:
+            # one location of many: as a one-cell block, a location pdsi() cannot
+            # calibrate comes back NaN instead of raising and aborting the others
+            result = palmer.pdsi(
+                precips_series[:, None, None],
+                pet_series[:, None, None],
+                awc_value,
+                **{**kwargs, "spatial_time_major": True},
+            )
+            return tuple(np.asarray(output, dtype=float).reshape(-1) for output in result[:4])
         result = palmer.pdsi(precips_series, pet_series, awc_value, **kwargs)
         return tuple(np.asarray(output, dtype=float) for output in result[:4])
 

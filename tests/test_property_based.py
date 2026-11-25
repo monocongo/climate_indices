@@ -21,7 +21,12 @@ from hypothesis.extra import numpy as npst
 
 from climate_indices import compute
 from climate_indices.drought import eto, indices, palmer
-from climate_indices.exceptions import GoodnessOfFitWarning, MissingDataWarning, ShortCalibrationWarning
+from climate_indices.exceptions import (
+    ConvergenceError,
+    GoodnessOfFitWarning,
+    MissingDataWarning,
+    ShortCalibrationWarning,
+)
 
 
 # disable logging output during hypothesis test runs to reduce noise
@@ -426,6 +431,14 @@ def test_pet_thornthwaite_increases_with_temperature(temp_base: np.ndarray) -> N
 
 # ============================================================================
 # Group C: Symmetry Tests
+def _pdsi_or_reject(*args, **kwargs):
+    """``palmer.pdsi()``, discarding a draw it cannot calibrate (e.g. identical years)."""
+    try:
+        return palmer.pdsi(*args, **kwargs)
+    except ConvergenceError:
+        assume(False)
+
+
 # ============================================================================
 
 
@@ -538,7 +551,7 @@ def test_pdsi_bounded_range(precip: np.ndarray, pet_array: np.ndarray, awc: floa
     with warnings.catch_warnings():
         warnings.filterwarnings("ignore", category=RuntimeWarning)
 
-        pdsi_values, phdi, pmdi, zindex, fitting_params = palmer.pdsi(
+        pdsi_values, phdi, pmdi, zindex, fitting_params = _pdsi_or_reject(
             precip_inches,
             pet_inches,
             awc,
@@ -582,7 +595,7 @@ def test_pdsi_shape_preservation(precip: np.ndarray, pet_array: np.ndarray, awc:
     with warnings.catch_warnings():
         warnings.filterwarnings("ignore", category=RuntimeWarning)
 
-        pdsi_values, phdi, pmdi, zindex, params = palmer.pdsi(
+        pdsi_values, phdi, pmdi, zindex, params = _pdsi_or_reject(
             precip_inches,
             pet_inches,
             awc,
@@ -663,45 +676,27 @@ def test_pdsi_wet_vs_dry_direction() -> None:
     negative. This tests the fundamental directional sensitivity of the
     Palmer algorithm.
     """
-    num_months = 120  # 10 years
+    # one calibrated record with a wet and a dry spell: a constant scenario has
+    # identical years, which PDSI cannot calibrate
+    rng = np.random.default_rng(42)
+    precip = rng.uniform(2.0, 4.0, 240)  # 20 years
+    pet = np.full(240, 3.0)
+    wet, dry = slice(60, 96), slice(150, 186)
+    precip[wet] += 3.0
+    precip[dry] -= 1.8
 
-    # wet scenario: precipitation > PET
-    precip_wet = np.full(num_months, 5.0)
-    pet_wet = np.full(num_months, 2.0)
+    pdsi_values = palmer.pdsi(
+        precip,
+        pet,
+        5.0,
+        data_start_year=2000,
+        calibration_year_initial=2000,
+        calibration_year_final=2019,
+    )[0]
 
-    # dry scenario: PET > precipitation
-    precip_dry = np.full(num_months, 1.0)
-    pet_dry = np.full(num_months, 4.0)
-
-    awc = 5.0
-
-    with warnings.catch_warnings():
-        warnings.filterwarnings("ignore", category=RuntimeWarning)
-
-        pdsi_wet, _, _, _, _ = palmer.pdsi(
-            precip_wet,
-            pet_wet,
-            awc,
-            data_start_year=2000,
-            calibration_year_initial=2000,
-            calibration_year_final=2009,
-        )
-
-        pdsi_dry, _, _, _, _ = palmer.pdsi(
-            precip_dry,
-            pet_dry,
-            awc,
-            data_start_year=2000,
-            calibration_year_initial=2000,
-            calibration_year_final=2009,
-        )
-
-    # compare means of the second half (after Palmer state stabilizes)
-    half = num_months // 2
-    wet_mean = np.nanmean(pdsi_wet[half:])
-    dry_mean = np.nanmean(pdsi_dry[half:])
-
-    assert wet_mean > dry_mean, f"Wet PDSI mean ({wet_mean:.3f}) not greater than dry ({dry_mean:.3f})"
+    wet_mean = np.mean(pdsi_values[wet])
+    dry_mean = np.mean(pdsi_values[dry])
+    assert wet_mean > 0 > dry_mean, f"Wet PDSI mean {wet_mean:.3f}, dry {dry_mean:.3f}"
 
 
 @pytest.mark.slow
@@ -759,7 +754,7 @@ def test_pdsi_phdi_pmdi_bounded(precip: np.ndarray, pet_array: np.ndarray, awc: 
     with warnings.catch_warnings():
         warnings.filterwarnings("ignore", category=RuntimeWarning)
 
-        _, phdi, pmdi, _, _ = palmer.pdsi(
+        _, phdi, pmdi, _, _ = _pdsi_or_reject(
             precip_inches,
             pet_inches,
             awc,

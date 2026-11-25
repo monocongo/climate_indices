@@ -271,12 +271,12 @@ def test_missing_months_match(monkeypatch, palmer_division_inputs, index, missin
     precips[rng.random(precips.shape) < 0.03] = np.nan
     precips[600:640] = np.nan
     if not missing_in_calibration:
-        calibration = slice((_CALIBRATION[0] - _START) * 12, (_CALIBRATION[1] - _START + 1) * 12)
-        precips[calibration] = original[calibration]
+        calibration_end = (_CALIBRATION[1] - _START + 1) * 12
+        precips[:calibration_end] = original[:calibration_end]
     rust, python, calls = _rust_and_python(monkeypatch, index(precips, pet, awc))
     assert "palmer_water_balance" in calls
-    # Calibration gaps invalidate scPDSI K-prime; gaps outside it still produce indices.
-    error = ConvergenceError if index is _scpdsi and missing_in_calibration else None
+    # Calibration gaps defeat both calibrations; later gaps still produce indices.
+    error = ConvergenceError if missing_in_calibration else None
     _assert_parity(rust, python, error=error)
 
 
