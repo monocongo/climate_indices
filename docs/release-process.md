@@ -176,34 +176,41 @@ candidate before tagging*, step 2), and `TAG` to the real release tag, not an rc
 For an equivalent fork, set `TARGET` to `<fork-owner>/climate_indices`.
 
 ```bash
-set -u
 CANDIDATE="<full 40-character SHA recorded on the release ticket>"
 TAG=vX.Y.Z
 TARGET="<owner>/climate_indices-rehearsal"
+SHA=
 
-[[ -n ${CANDIDATE:-} ]] \
-  || { echo "set CANDIDATE to the full 40-character SHA recorded on the release ticket"; exit 1; }
-[[ -n ${TAG:-} ]] || { echo "set TAG to the release tag"; exit 1; }
-[[ -n ${TARGET:-} ]] || { echo "set TARGET to the rehearsal repository"; exit 1; }
-CANDIDATE="$(printf %s "$CANDIDATE" | tr A-F a-f)"
-[[ "$CANDIDATE" =~ ^[0-9a-f]{40}$ ]] \
-  || { echo "CANDIDATE is not a full 40-character SHA: $CANDIDATE"; exit 1; }
-[[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] \
-  || { echo "TAG is not a vX.Y.Z release tag: $TAG"; exit 1; }
+rehearsal_setup() {
+  local head
+  [[ -n ${CANDIDATE:-} ]] \
+    || { echo "set CANDIDATE to the full 40-character SHA recorded on the release ticket"; return 1; }
+  [[ -n ${TAG:-} ]] || { echo "set TAG to the release tag"; return 1; }
+  [[ -n ${TARGET:-} ]] || { echo "set TARGET to the rehearsal repository"; return 1; }
+  CANDIDATE="$(printf %s "$CANDIDATE" | tr A-F a-f)"
+  [[ "$CANDIDATE" =~ ^[0-9a-f]{40}$ ]] \
+    || { echo "CANDIDATE is not a full 40-character SHA: $CANDIDATE"; return 1; }
+  [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] \
+    || { echo "TAG is not a vX.Y.Z release tag: $TAG"; return 1; }
 
-git fetch -q origin || { echo "cannot fetch origin"; exit 1; }
-git checkout --detach "$CANDIDATE"
-SHA="$(git rev-parse HEAD)"
-[[ "$SHA" == "$CANDIDATE" ]] || { echo "not at the frozen candidate: $SHA"; exit 1; }
-git merge-base --is-ancestor "$SHA" origin/main \
-  || { echo "candidate is not on origin/main: $SHA"; exit 1; }
-git status --short
+  git fetch -q origin || { echo "cannot fetch origin"; return 1; }
+  git checkout --detach "$CANDIDATE" || return 1
+  head="$(git rev-parse HEAD)"
+  [[ "$head" == "$CANDIDATE" ]] || { echo "not at the frozen candidate: $head"; return 1; }
+  git merge-base --is-ancestor "$head" origin/main \
+    || { echo "candidate is not on origin/main: $head"; return 1; }
+  git status --short
+  SHA="$head"
+}
+rehearsal_setup
 ```
 
 These checks stop the setup before any push when a value is empty, or when
 `CANDIDATE` or `TAG` is still a placeholder or otherwise malformed. They test
 explicitly because, in an interactive shell, `${VAR:?}` reports the error but does
-not exit. The final `git status --short` must print nothing.
+not stop the rest of a paste. They run inside a function so that a failure returns
+from it and leaves the shell open; `exit` would close an interactive shell. `SHA`
+is set only when every check passes. The `git status --short` output must be empty.
 
 1. Push the candidate as the rehearsal repository's `main`, then its tag. The
    `validate-release-tag` job requires the tagged commit to be reachable from
@@ -215,15 +222,18 @@ not exit. The final `git status --short` must print nothing.
    equality is exercised by the annotated tag production uses:
 
 ```bash
-[[ -n ${SHA:-} ]] || { echo "SHA is not set: run the rehearsal setup block in this shell first"; exit 1; }
-[[ -n ${TAG:-} ]] || { echo "TAG is not set: run the rehearsal setup block in this shell first"; exit 1; }
-[[ -n ${TARGET:-} ]] || { echo "TARGET is not set: run the rehearsal setup block in this shell first"; exit 1; }
+rehearsal_push() {
+  [[ -n ${SHA:-} ]] || { echo "SHA is not set: run the rehearsal setup block in this shell first"; return 1; }
+  [[ -n ${TAG:-} ]] || { echo "TAG is not set: run the rehearsal setup block in this shell first"; return 1; }
+  [[ -n ${TARGET:-} ]] || { echo "TARGET is not set: run the rehearsal setup block in this shell first"; return 1; }
 
-git push --force "https://github.com/$TARGET.git" "${SHA}:refs/heads/main"
-git ls-remote --heads "https://github.com/$TARGET.git" main
+  git push --force "https://github.com/$TARGET.git" "${SHA}:refs/heads/main" || return 1
+  git ls-remote --heads "https://github.com/$TARGET.git" main
 
-git push --force "https://github.com/$TARGET.git" "${SHA}:refs/tags/$TAG"
-git ls-remote --tags "https://github.com/$TARGET.git" "$TAG"
+  git push --force "https://github.com/$TARGET.git" "${SHA}:refs/tags/$TAG" || return 1
+  git ls-remote --tags "https://github.com/$TARGET.git" "$TAG"
+}
+rehearsal_push
 ```
 
 Both `git ls-remote` commands must print `$SHA`.
@@ -248,20 +258,28 @@ Expected: `validate-release-tag`, every `test` leg, `security-audit`, `build`, e
 the OIDC exchange because the rehearsal repository is not a trusted publisher. A network
 error, an approval wait, or an action-resolution failure is a different defect to diagnose
 and not a pass, and that rejection must not be remedied by configuring the rehearsal
-repository:
+repository.
+
+The first command lists every job that did not succeed. Its output must be exactly
+the two lines for `publish` (`failure`) and `create-release` (`skipped`), in either
+order. If any other line appears, or one of the two is missing, the rehearsal did
+not pass: do not tag. The second command shows the `publish` rejection:
 
 ```bash
+gh run view "$RUN" -R "$TARGET" --json jobs \
+  --jq '.jobs[] | select(.conclusion != "success") | "\(.conclusion)\t\(.name)"'
 gh run view "$RUN" -R "$TARGET" --log-failed \
   | grep -i -B2 -A6 "server refused the request\|invalid-publisher"
 ```
 
 3. Collect the artifacts, checksums, and timing. Each artifact is downloaded into a
    directory of its own (`dist` for the sdist and pure wheel, `dist-native-<target>` per
-   binary wheel), so `gh run download` is called without `-n`:
+   binary wheel), so `gh run download` is called without `-n`. Each run gets its own
+   parent directory, so an earlier rehearsal's files cannot join the checksum list:
 
 ```bash
-gh run download "$RUN" -R "$TARGET" -D /tmp/rehearsal-dist
-ls -lR /tmp/rehearsal-dist && shasum -a 256 /tmp/rehearsal-dist/*/*
+gh run download "$RUN" -R "$TARGET" -D "/tmp/rehearsal-dist-$RUN"
+ls -lR "/tmp/rehearsal-dist-$RUN" && shasum -a 256 "/tmp/rehearsal-dist-$RUN"/*/*
 gh run view "$RUN" -R "$TARGET" --json createdAt,updatedAt,attempt
 ```
 
@@ -271,13 +289,13 @@ gh run view "$RUN" -R "$TARGET" --json createdAt,updatedAt,attempt
 
 ```bash
 git ls-remote --tags origin "$TAG"
-gh release view "$TAG"
+gh release view "$TAG" -R monocongo/climate_indices
 curl -s https://pypi.org/pypi/climate-indices/json \
   | python3 -c "import json,sys; print('${TAG#v}' in json.load(sys.stdin)['releases'])"
 ```
 
 5. Record the evidence on the release ticket — candidate SHA, rehearsal
-   repository, run URL, attempt number, every job conclusion, the verbatim PyPI
+   repository, run URL, attempt number, the full job table from step 2, the verbatim PyPI
    rejection, artifact filenames with `sha256`, timing, and the not-published
    confirmation above — before the run logs expire. Reuse or delete the rehearsal
    repository afterwards; it holds no unique state.
@@ -301,17 +319,22 @@ from a clean maintainer worktree only after approval. First confirm that local a
 remote `main` still equal the SHA that passed the rehearsal:
 
 ```bash
-git switch main
-git pull --ff-only origin main
 CANDIDATE="<full 40-character SHA recorded on the release ticket>"
 CANDIDATE="$(printf %s "$CANDIDATE" | tr A-F a-f)"
-test -z "$(git status --porcelain)" || { echo "working tree is not clean"; exit 1; }
-test "$(git rev-parse HEAD)" = "$CANDIDATE" || { echo "local candidate changed"; exit 1; }
-test "$(git rev-parse origin/main)" = "$CANDIDATE" || { echo "remote candidate changed"; exit 1; }
-git remote get-url --push origin
+
+tag_preflight() {
+  git switch main || return 1
+  git pull --ff-only origin main || return 1
+  test -z "$(git status --porcelain)" || { echo "working tree is not clean"; return 1; }
+  test "$(git rev-parse HEAD)" = "$CANDIDATE" || { echo "local candidate changed"; return 1; }
+  test "$(git rev-parse origin/main)" = "$CANDIDATE" || { echo "remote candidate changed"; return 1; }
+  git remote get-url --push origin || return 1
+  echo "pre-tag checks passed"
+}
+tag_preflight
 ```
 
-The printed push URL must be `monocongo/climate_indices`, not the rehearsal
+Continue only after `pre-tag checks passed`. The printed push URL must be `monocongo/climate_indices`, not the rehearsal
 repository.
 
 Confirm `vX.Y.Z` does not already exist locally or upstream and `X.Y.Z` is not
@@ -540,17 +563,22 @@ rehearsal* below describes.
    that the tag is free. The PyPI checks in *Tag creation* above do not apply to
    the crate: this project publishes no crate to PyPI, and no crate job reads a
    tagger date. The push URL must be `monocongo/climate_indices`, and
-   `git tag -l` must print nothing.
+   `git tag -l` must print nothing. Continue only after `pre-tag checks passed`.
    ```bash
-   git switch main
-   git pull --ff-only origin main
    CANDIDATE="<full 40-character SHA recorded on the release ticket>"
    CANDIDATE="$(printf %s "$CANDIDATE" | tr A-F a-f)"
-   test -z "$(git status --porcelain)" || { echo "working tree is not clean"; exit 1; }
-   test "$(git rev-parse HEAD)" = "$CANDIDATE" || { echo "local candidate changed"; exit 1; }
-   test "$(git rev-parse origin/main)" = "$CANDIDATE" || { echo "remote candidate changed"; exit 1; }
-   git remote get-url --push origin
-   git tag -l climate-indices-vX.Y.Z
+
+   crate_tag_preflight() {
+     git switch main || return 1
+     git pull --ff-only origin main || return 1
+     test -z "$(git status --porcelain)" || { echo "working tree is not clean"; return 1; }
+     test "$(git rev-parse HEAD)" = "$CANDIDATE" || { echo "local candidate changed"; return 1; }
+     test "$(git rev-parse origin/main)" = "$CANDIDATE" || { echo "remote candidate changed"; return 1; }
+     git remote get-url --push origin || return 1
+     git tag -l climate-indices-vX.Y.Z || return 1
+     echo "pre-tag checks passed"
+   }
+   crate_tag_preflight
    ```
 6. Create and inspect the annotated tag. The last command must print
    `$CANDIDATE`:
@@ -617,13 +645,16 @@ Rehearse the packaging and verification steps locally first, at the candidate SH
 rather than at whatever the current worktree holds:
 
 ```bash
-set -u
 CANDIDATE="<full 40-character SHA recorded on the release ticket>"
 CANDIDATE="$(printf %s "$CANDIDATE" | tr A-F a-f)"
-git fetch -q origin || { echo "cannot fetch origin"; exit 1; }
-git checkout --detach "$CANDIDATE"
-test "$(git rev-parse HEAD)" = "$CANDIDATE" || { echo "not at the candidate SHA: $(git rev-parse HEAD)"; exit 1; }
-cargo publish --dry-run --locked -p climate-indices
+
+crate_rehearsal() {
+  git fetch -q origin || { echo "cannot fetch origin"; return 1; }
+  git checkout --detach "$CANDIDATE" || return 1
+  test "$(git rev-parse HEAD)" = "$CANDIDATE" || { echo "not at the candidate SHA: $(git rev-parse HEAD)"; return 1; }
+  cargo publish --dry-run --locked -p climate-indices
+}
+crate_rehearsal
 ```
 
 Then rehearse the tagged path:

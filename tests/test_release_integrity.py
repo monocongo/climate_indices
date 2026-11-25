@@ -1431,6 +1431,30 @@ def test_release_process_shell_blocks_have_no_comments() -> None:
     assert not commented, f"move these shell comments into the surrounding text: {commented}"
 
 
+def test_release_process_shell_blocks_are_safe_to_paste() -> None:
+    """A pasted block must not close or reconfigure the maintainer's shell.
+
+    `exit` closes an interactive shell and `set -u` stays on afterwards. zsh also
+    reads `$SHA:r` as a modifier, so a variable before a colon needs braces.
+    A block that is a `( ... )` subshell cannot affect the caller and is skipped.
+    """
+    text = (ROOT / "docs/release-process.md").read_text(encoding="utf-8")
+    blocks = re.findall(r"^([ \t]*)```bash\n(.*?)^\1```", text, re.MULTILINE | re.DOTALL)
+    assert blocks, "docs/release-process.md must keep its bash blocks"
+    unsafe = []
+    for _, body in blocks:
+        if body.lstrip().startswith("("):
+            continue
+        for line in body.splitlines():
+            expanded = re.sub(r"'[^']*'", "", line)
+            unquoted = re.sub(r'"[^"]*"', "", expanded)
+            if re.search(r"(?:^|[;{&|])\s*(?:exit\b|set -[a-z]*u)", unquoted) or re.search(
+                r"\$[A-Za-z_]\w*:[A-Za-z]", expanded
+            ):
+                unsafe.append(line.strip())
+    assert not unsafe, f"unsafe to paste into an interactive shell: {unsafe}"
+
+
 def test_release_process_documents_the_rehearsal_boundary() -> None:
     """The rehearsal runbook must state the failure it expects and what it cannot prove.
 
