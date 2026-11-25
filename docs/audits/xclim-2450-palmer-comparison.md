@@ -8,9 +8,16 @@
 | xclim file | `src/xclim/compute/_palmer.py`, SHA-256 `9eb0b0dfe0bb22331c489376cbafe40e583c5c16d26af6e830f209198a4425ae` |
 | Reproduce | [`xclim_2450_palmer_compare.py`](xclim_2450_palmer_compare.py) |
 
-**Interest to declare.** This audit lives in the climate-indices repository and
-uses it as the comparison base. The measurements against NOAA NCEI do not depend
-on climate-indices, and the script reruns all of the full-record figures.
+**Interest to declare.** This audit lives in the climate-indices repository,
+uses it as the comparison base, and concerns a pull request that reuses
+climate-indices code (section 7). The xclim measurements against NOAA NCEI do not
+depend on climate-indices.
+
+**What the script reruns.** The full-record measurements, the cumulative and
+leave-one-out fixes, the backtracking check, the leftover-difference counts, the
+non-contracting division, and the single-NaN-precipitation case. It does **not**
+rerun the synthetic cases (3.6), the missing-PET and pure-Python checks (6.1),
+or the code-similarity scores (7).
 
 File references below are written `X:line` for xclim `_palmer.py` at the head
 above, and as paths under `src/climate_indices/drought/` at `v3.3.0` for
@@ -155,7 +162,8 @@ months being resolved. It also writes into `pdsi_values`, which
 `_scpdsi_from_zindex` discards (`X:1638-1644`), and the current month's
 `scpdsi` is assigned separately (`X:2071`). Demonstrated: replacing the
 function body with `return` leaves xclim's scPDSI **bit-identical** on all
-528,384 months. The function is textually identical to `legacy:1743-1778`.
+528,384 months. Apart from its docstring and type annotations, the function matches
+`legacy:1743-1778`.
 
 ### 3.5 scPDSI calibration
 
@@ -312,7 +320,7 @@ not NCEI values, but the names invite the mistake.
 
 The author [wrote on the PR](https://github.com/Ouranosinc/xclim/pull/2450):
 "Palmer source code from the climate_indices package was also employed as
-reference." The files show more than reference use. Comparing each function's
+reference." The overlap is substantial. Comparing each function's
 syntax tree (docstrings and type annotations removed, then line similarity of
 the regenerated source) with the legacy module:
 
@@ -382,7 +390,7 @@ unverified.
 ### Next steps for the xclim maintainers
 
 1. Consider delegating to climate-indices (BSD-3) as an optional dependency, or
-   porting from 3.3.0 with attribution, instead of repairing a translation of
+   porting from 3.3.0 with attribution, instead of repairing an adaptation of
    code that was removed in 2023. 3.3.0 shares none of the four standard-path
    defects measured here, though it has the one in section 6.1.
 2. If the current code is kept, fix in this order: K′ units; `V = PV`; potential

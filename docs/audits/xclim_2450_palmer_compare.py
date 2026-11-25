@@ -5,6 +5,7 @@ xclim supplies its single dependency, ``xclim.core.calendar.compare_offsets``::
 
     uv venv --python 3.12 /tmp/xvenv
     uv pip install --python /tmp/xvenv/bin/python 'climate-indices==3.3.0' 'xclim==1.0.1'
+    mkdir -p /tmp/x2450
     gh api 'repos/Ouranosinc/xclim/contents/src/xclim/compute/_palmer.py?ref=91fcf88a76829fd9d41ad848bde4c7faa62645de' \\
         -H 'Accept: application/vnd.github.raw' > /tmp/x2450/_palmer.py
     /tmp/xvenv/bin/python -I docs/audits/xclim_2450_palmer_compare.py . /tmp/x2450/_palmer.py
@@ -135,7 +136,7 @@ def stats(a, b):
         f"n={mask.sum()} median={np.median(diff):.3f} rmse={np.sqrt(np.mean(diff**2)):.3f} max={diff.max():.6g} "
         f"r={np.corrcoef(a[mask], b[mask])[0, 1]:+.3f} within0.05={100 * np.mean(diff <= 0.05):.1f}% "
         f"over0.5={100 * np.mean(diff > 0.5):.1f}% category={100 * np.mean(category(a[mask]) == category(b[mask])):.1f}% "
-        f"over1e-6={(diff > 1e-6).sum()}"
+        f"months over1e-6={(diff > 1e-6).sum()} over0.05={(diff > 0.05).sum()}"
     )
 
 
@@ -143,6 +144,27 @@ def table(title, left, right, keys=KEYS):
     print(f"\n== {title}")
     for key in keys:
         print(f"{key:7s} {stats(left[key], right[key])}")
+
+
+def residual_tail(left, right):
+    """Months differing by more than 0.05 in the final 24 months of the record."""
+    for key in KEYS:
+        print(f"{key:7s} over0.05 in final 24 months: {(np.abs(left[key] - right[key])[-24:] > 0.05).sum()}")
+
+
+def contraction_probe(scz, scpdsi):
+    """Divisions whose fitted xclim scPDSI recurrence does not contract (|c| >= 1)."""
+    module = sys.modules["xpalmer"]
+    print("\n== xclim scPDSI contraction")
+    for j, division in enumerate(IDS):
+        factors = {side: module._duration_factors(scz[:, j], 1931, 1990, 1895, side) for side in ("WET", "DRY")}
+        coefficients = {side: 1 - m / (m + b) for side, (m, b) in factors.items()}
+        if any(abs(c) >= 1 for c in coefficients.values()) or np.nanmax(np.abs(scpdsi[:, j])) > 20:
+            print(
+                f"division {division}: max|scPDSI|={np.nanmax(np.abs(scpdsi[:, j])):.6g}",
+                {side: tuple(round(float(v), 4) for v in pair) for side, pair in factors.items()},
+                {side: round(float(c), 4) for side, c in coefficients.items()},
+            )
 
 
 def nan_gap_probe():
@@ -192,6 +214,7 @@ def main():
         out, _ = run_xclim(edits)
         table(f"cumulative fix [{label}] vs NCEI", out, NCEI)
         table(f"cumulative fix [{label}] vs climate-indices", out, ours, (*KEYS, "scpdsi"))
+    residual_tail(out, ours)
 
     for label, edits in (("V", FIX_PL + FIX_K), ("PL", FIX_V + FIX_K), ("K", FIX_V + FIX_PL)):
         out, _ = run_xclim(edits)
@@ -200,6 +223,8 @@ def main():
     no_backtrack, _ = run_xclim(NO_BACKTRACK)
     same = np.array_equal(raw["scpdsi"], no_backtrack["scpdsi"], equal_nan=True)
     print("\nxclim scPDSI bit-identical with _backtrack_self_calibrated disabled:", same)
+    _, raw_ds = run_xclim()
+    contraction_probe(raw_ds["scz"].transpose("time", "division").values, raw["scpdsi"])
     nan_gap_probe()
 
 
