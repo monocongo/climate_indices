@@ -1403,6 +1403,34 @@ def test_release_process_documents_pypi_metadata_verification() -> None:
     assert _expected_badge_url() in release_process
 
 
+def test_release_process_says_how_to_get_the_candidate_sha() -> None:
+    """Both freeze steps, Python and crate, must give the command that yields the SHA."""
+    text = (ROOT / "docs/release-process.md").read_text(encoding="utf-8")
+    command = "git fetch -q origin && git log -1 --format='**CANDIDATE_SHA**=`%H`%n%n%H %ci %s' origin/main"
+    python_freeze = text.split("## Freeze the candidate before tagging")[1].split("## Validation commands")[0]
+    crate_steps = text.split("### Crate release steps")[1].split("### The crate release workflow")[0]
+    assert command in python_freeze, "the Python freeze step must say how to get the candidate SHA"
+    assert command in crate_steps, "the crate release steps must say how to get the candidate SHA"
+
+
+def test_release_process_shell_blocks_have_no_comments() -> None:
+    """Interactive zsh does not treat `#` as a comment by default.
+
+    Pasted there, `VAR=value  # note` leaves VAR unset, so explanations belong in
+    the surrounding text.
+    """
+    text = (ROOT / "docs/release-process.md").read_text(encoding="utf-8")
+    blocks = re.findall(r"^([ \t]*)```bash\n(.*?)^\1```", text, re.MULTILINE | re.DOTALL)
+    assert blocks, "docs/release-process.md must keep its bash blocks"
+    commented = [
+        line.strip()
+        for _, body in blocks
+        for line in body.splitlines()
+        if re.search(r"(^|\s)#", re.sub(r"'[^']*'|\"[^\"]*\"", "", line))
+    ]
+    assert not commented, f"move these shell comments into the surrounding text: {commented}"
+
+
 def test_release_process_documents_the_rehearsal_boundary() -> None:
     """The rehearsal runbook must state the failure it expects and what it cannot prove.
 

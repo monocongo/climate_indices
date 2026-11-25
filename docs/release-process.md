@@ -63,9 +63,30 @@ namespace and never publishes to PyPI.
    SHA is historical, not a release instruction. For 3.0.0, reconcile the still-open
    [PR #1266](https://github.com/monocongo/climate_indices/pull/1266) with the final
    release record instead of retaining its October 6 target date.
-2. Record the full 40-character SHA of the merged `main` tip and the intended release
-   date on the release ticket. Confirm the changelog no longer says `unreleased` and
-   the release notes no longer say draft. Hold unrelated merges through the tag push.
+2. Record the candidate on the release ticket. Run this:
+
+   ```bash
+   git fetch -q origin && git log -1 --format='**CANDIDATE_SHA**=`%H`%n%n%H %ci %s' origin/main
+   ```
+
+   Check that the last line names the commit you intend to release. Then post the whole
+   output, unchanged, as a new comment on the release ticket. It looks like this:
+
+   ```markdown
+   **CANDIDATE_SHA**=`0123456789abcdef0123456789abcdef01234567`
+
+   0123456789abcdef0123456789abcdef01234567 2026-01-02 10:00:00 -0500 Merge pull request #1 from ...
+   ```
+
+   Add nothing to it and type nothing by hand. Also record the intended release date on
+   the ticket. If you freeze again, edit the older candidate comment to say it is
+   superseded.
+
+   Wherever this page sets `CANDIDATE="..."`, paste only the 40 characters between the
+   backticks. Never fill it from `origin/main` or `HEAD` afterwards: the comparison
+   would then pass for a commit that was never frozen.
+   Confirm the changelog no longer says `unreleased` and the release notes no longer say
+   draft. Hold unrelated merges through the tag push.
 3. Validate and rehearse that exact SHA, including every native-wheel and no-Rust
    install leg. Any change to the candidate requires another freeze and rehearsal;
    do not reuse a previous green run for a different commit.
@@ -144,18 +165,31 @@ expected outcome and evidences nothing. Never add publishing credentials to the
 rehearsal repository.
 
 ```bash
-# the default public copy; a fork under another owner is equivalent
 gh repo create <owner>/climate_indices-rehearsal --public \
   --description "Release-workflow rehearsal; not a PyPI publisher"
 ```
 
 ### Rehearsal steps
 
+Set `CANDIDATE` to the SHA copied from the release ticket (see *Freeze the
+candidate before tagging*, step 2), and `TAG` to the real release tag, not an rc.
+For an equivalent fork, set `TARGET` to `<fork-owner>/climate_indices`.
+
 ```bash
-set -u                            # abort on unset variables
-CANDIDATE=<full 40-character sha of the frozen candidate>
-TAG=vX.Y.Z                        # the real release tag, not an rc
-TARGET=<owner>/climate_indices-rehearsal   # or <fork-owner>/climate_indices for an equivalent fork
+set -u
+CANDIDATE="<full 40-character SHA recorded on the release ticket>"
+TAG=vX.Y.Z
+TARGET="<owner>/climate_indices-rehearsal"
+
+[[ -n ${CANDIDATE:-} ]] \
+  || { echo "set CANDIDATE to the full 40-character SHA recorded on the release ticket"; exit 1; }
+[[ -n ${TAG:-} ]] || { echo "set TAG to the release tag"; exit 1; }
+[[ -n ${TARGET:-} ]] || { echo "set TARGET to the rehearsal repository"; exit 1; }
+CANDIDATE="$(printf %s "$CANDIDATE" | tr A-F a-f)"
+[[ "$CANDIDATE" =~ ^[0-9a-f]{40}$ ]] \
+  || { echo "CANDIDATE is not a full 40-character SHA: $CANDIDATE"; exit 1; }
+[[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] \
+  || { echo "TAG is not a vX.Y.Z release tag: $TAG"; exit 1; }
 
 git fetch -q origin || { echo "cannot fetch origin"; exit 1; }
 git checkout --detach "$CANDIDATE"
@@ -163,8 +197,13 @@ SHA="$(git rev-parse HEAD)"
 [[ "$SHA" == "$CANDIDATE" ]] || { echo "not at the frozen candidate: $SHA"; exit 1; }
 git merge-base --is-ancestor "$SHA" origin/main \
   || { echo "candidate is not on origin/main: $SHA"; exit 1; }
-git status --short                # must be empty
+git status --short
 ```
+
+These checks stop the setup before any push when a value is empty, or when
+`CANDIDATE` or `TAG` is still a placeholder or otherwise malformed. They test
+explicitly because, in an interactive shell, `${VAR:?}` reports the error but does
+not exit. The final `git status --short` must print nothing.
 
 1. Push the candidate as the rehearsal repository's `main`, then its tag. The
    `validate-release-tag` job requires the tagged commit to be reachable from
@@ -176,27 +215,30 @@ git status --short                # must be empty
    equality is exercised by the annotated tag production uses:
 
 ```bash
-: "${SHA:?run the rehearsal setup block in this shell first}"
-: "${TAG:?run the rehearsal setup block in this shell first}"
-: "${TARGET:?run the rehearsal setup block in this shell first}"
+[[ -n ${SHA:-} ]] || { echo "SHA is not set: run the rehearsal setup block in this shell first"; exit 1; }
+[[ -n ${TAG:-} ]] || { echo "TAG is not set: run the rehearsal setup block in this shell first"; exit 1; }
+[[ -n ${TARGET:-} ]] || { echo "TARGET is not set: run the rehearsal setup block in this shell first"; exit 1; }
 
 git push --force "https://github.com/$TARGET.git" "${SHA}:refs/heads/main"
-git ls-remote --heads "https://github.com/$TARGET.git" main    # prints $SHA
+git ls-remote --heads "https://github.com/$TARGET.git" main
 
 git push --force "https://github.com/$TARGET.git" "${SHA}:refs/tags/$TAG"
-git ls-remote --tags "https://github.com/$TARGET.git" "$TAG"   # prints $SHA
+git ls-remote --tags "https://github.com/$TARGET.git" "$TAG"
 ```
+
+Both `git ls-remote` commands must print `$SHA`.
 
 Never push a rehearsal tag upstream. Re-pushing the same candidate is a no-op,
 so no new run starts: use `gh run rerun <run-id> -R "$TARGET"` to retry an identical
 rehearsal.
 
-2. Watch the run and read every job's conclusion:
+2. Watch the run and read every job's conclusion. `gh run watch` is expected to
+   exit non-zero:
 
 ```bash
 gh run list -R "$TARGET" --workflow=release.yml --limit 3
-RUN=<run id>
-gh run watch "$RUN" -R "$TARGET" --exit-status   # exits non-zero; expected
+RUN="<run id>"
+gh run watch "$RUN" -R "$TARGET" --exit-status
 gh run view "$RUN" -R "$TARGET" --json jobs --jq '.jobs[] | "\(.conclusion)\t\(.name)"'
 ```
 
@@ -223,11 +265,13 @@ ls -lR /tmp/rehearsal-dist && shasum -a 256 /tmp/rehearsal-dist/*/*
 gh run view "$RUN" -R "$TARGET" --json createdAt,updatedAt,attempt
 ```
 
-4. Confirm nothing was published:
+4. Confirm nothing was published: `git ls-remote` must print nothing,
+   `gh release view` must report that the release is not found, and the PyPI
+   check must print `False`:
 
 ```bash
-git ls-remote --tags origin "$TAG"     # empty
-gh release view "$TAG"                 # not found
+git ls-remote --tags origin "$TAG"
+gh release view "$TAG"
 curl -s https://pypi.org/pypi/climate-indices/json \
   | python3 -c "import json,sys; print('${TAG#v}' in json.load(sys.stdin)['releases'])"
 ```
@@ -259,22 +303,26 @@ remote `main` still equal the SHA that passed the rehearsal:
 ```bash
 git switch main
 git pull --ff-only origin main
-CANDIDATE=<full 40-character SHA recorded on the release ticket>
+CANDIDATE="<full 40-character SHA recorded on the release ticket>"
+CANDIDATE="$(printf %s "$CANDIDATE" | tr A-F a-f)"
 test -z "$(git status --porcelain)" || { echo "working tree is not clean"; exit 1; }
 test "$(git rev-parse HEAD)" = "$CANDIDATE" || { echo "local candidate changed"; exit 1; }
 test "$(git rev-parse origin/main)" = "$CANDIDATE" || { echo "remote candidate changed"; exit 1; }
-git remote get-url --push origin   # must be monocongo/climate_indices, not the rehearsal repo
+git remote get-url --push origin
 ```
+
+The printed push URL must be `monocongo/climate_indices`, not the rehearsal
+repository.
 
 Confirm `vX.Y.Z` does not already exist locally or upstream and `X.Y.Z` is not
 already published on PyPI. The tag build checks the dated changelog entry against
 the annotated tag's own tagger date, so tag on the recorded release day. Then
-create and inspect the annotated tag:
+create and inspect the annotated tag. The last command must print `$CANDIDATE`:
 
 ```bash
 git tag -a vX.Y.Z "$CANDIDATE" -m "Release vX.Y.Z"
 git show --stat vX.Y.Z
-git rev-parse 'vX.Y.Z^{commit}'     # must equal $CANDIDATE
+git rev-parse 'vX.Y.Z^{commit}'
 ```
 
 **Pushing the tag starts the publishing workflow.** Push only this tag after
@@ -477,26 +525,39 @@ rehearsal* below describes.
    workflow refuses to publish while one is present.
 3. Open a PR into `main`, then let the maintainer merge it after review and
    passing CI.
-4. Record the full 40-character SHA of the merged `main` tip.
+4. Record the candidate on the release ticket. Run this:
+
+   ```bash
+   git fetch -q origin && git log -1 --format='**CANDIDATE_SHA**=`%H`%n%n%H %ci %s' origin/main
+   ```
+
+   Check that the last line names the commit you intend to release. Then post the whole
+   output, unchanged, as a new comment on the release ticket, in the format shown in
+   step 2 of *Freeze the candidate before tagging*. Wherever this page sets
+   `CANDIDATE="..."`, paste only the 40 characters between the backticks, never a value
+   from `origin/main` or `HEAD`.
 5. From a clean maintainer worktree, confirm that the candidate has not moved and
    that the tag is free. The PyPI checks in *Tag creation* above do not apply to
    the crate: this project publishes no crate to PyPI, and no crate job reads a
-   tagger date.
+   tagger date. The push URL must be `monocongo/climate_indices`, and
+   `git tag -l` must print nothing.
    ```bash
    git switch main
    git pull --ff-only origin main
-   CANDIDATE=<full 40-character SHA recorded on the release ticket>
+   CANDIDATE="<full 40-character SHA recorded on the release ticket>"
+   CANDIDATE="$(printf %s "$CANDIDATE" | tr A-F a-f)"
    test -z "$(git status --porcelain)" || { echo "working tree is not clean"; exit 1; }
    test "$(git rev-parse HEAD)" = "$CANDIDATE" || { echo "local candidate changed"; exit 1; }
    test "$(git rev-parse origin/main)" = "$CANDIDATE" || { echo "remote candidate changed"; exit 1; }
-   git remote get-url --push origin   # must be monocongo/climate_indices
-   git tag -l climate-indices-vX.Y.Z  # must print nothing
+   git remote get-url --push origin
+   git tag -l climate-indices-vX.Y.Z
    ```
-6. Create and inspect the annotated tag:
+6. Create and inspect the annotated tag. The last command must print
+   `$CANDIDATE`:
    ```bash
    git tag -a climate-indices-vX.Y.Z "$CANDIDATE" -m "Release climate-indices vX.Y.Z"
    git show --stat climate-indices-vX.Y.Z
-   git rev-parse 'climate-indices-vX.Y.Z^{commit}'   # must equal $CANDIDATE
+   git rev-parse 'climate-indices-vX.Y.Z^{commit}'
    ```
 7. Confirm the version is absent from crates.io, then push only that tag. The
    crates.io API refuses a request without a `User-Agent`, so the read needs one:
@@ -557,7 +618,8 @@ rather than at whatever the current worktree holds:
 
 ```bash
 set -u
-CANDIDATE=<full 40-character SHA recorded on the release ticket>
+CANDIDATE="<full 40-character SHA recorded on the release ticket>"
+CANDIDATE="$(printf %s "$CANDIDATE" | tr A-F a-f)"
 git fetch -q origin || { echo "cannot fetch origin"; exit 1; }
 git checkout --detach "$CANDIDATE"
 test "$(git rev-parse HEAD)" = "$CANDIDATE" || { echo "not at the candidate SHA: $(git rev-parse HEAD)"; exit 1; }
