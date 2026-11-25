@@ -230,7 +230,8 @@ rehearsal_push() {
     || { echo "TARGET is the upstream repository: never push a rehearsal there"; return 1; }
 
   git push --force "https://github.com/$TARGET.git" "${SHA}:refs/heads/main" || return 1
-  git ls-remote --heads "https://github.com/$TARGET.git" main
+  [[ "$(git ls-remote "https://github.com/$TARGET.git" refs/heads/main | cut -f1)" == "$SHA" ]] \
+    || { echo "rehearsal main is not at $SHA: tag not pushed"; return 1; }
 
   git push --force "https://github.com/$TARGET.git" "${SHA}:refs/tags/$TAG" || return 1
   git ls-remote --tags "https://github.com/$TARGET.git" "$TAG"
@@ -238,7 +239,8 @@ rehearsal_push() {
 rehearsal_push
 ```
 
-Both `git ls-remote` commands must print `$SHA`.
+The tag is pushed only after the rehearsal `main` reads back as `$SHA`. The final
+`git ls-remote` must print `$SHA` for the tag.
 
 Never push a rehearsal tag upstream. Re-pushing the same candidate is a no-op,
 so no new run starts: use `gh run rerun <run-id> -R "$TARGET"` to retry an identical
