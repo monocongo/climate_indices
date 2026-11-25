@@ -226,6 +226,8 @@ rehearsal_push() {
   [[ -n ${SHA:-} ]] || { echo "SHA is not set: run the rehearsal setup block in this shell first"; return 1; }
   [[ -n ${TAG:-} ]] || { echo "TAG is not set: run the rehearsal setup block in this shell first"; return 1; }
   [[ -n ${TARGET:-} ]] || { echo "TARGET is not set: run the rehearsal setup block in this shell first"; return 1; }
+  [[ "$(printf %s "$TARGET" | tr A-Z a-z)" != monocongo/climate_indices ]] \
+    || { echo "TARGET is the upstream repository: never push a rehearsal there"; return 1; }
 
   git push --force "https://github.com/$TARGET.git" "${SHA}:refs/heads/main" || return 1
   git ls-remote --heads "https://github.com/$TARGET.git" main
