@@ -278,12 +278,14 @@ gh run view "$RUN" -R "$TARGET" --log-failed \
 
 3. Collect the artifacts, checksums, and timing. Each artifact is downloaded into a
    directory of its own (`dist` for the sdist and pure wheel, `dist-native-<target>` per
-   binary wheel), so `gh run download` is called without `-n`. Each run gets its own
-   parent directory, so an earlier rehearsal's files cannot join the checksum list:
+   binary wheel), so `gh run download` is called without `-n`. Each run attempt gets its own
+   parent directory, so files from an earlier rehearsal or attempt cannot join the checksum list:
 
 ```bash
-gh run download "$RUN" -R "$TARGET" -D "/tmp/rehearsal-dist-$RUN"
-ls -lR "/tmp/rehearsal-dist-$RUN" && shasum -a 256 "/tmp/rehearsal-dist-$RUN"/*/*
+ATTEMPT="$(gh run view "$RUN" -R "$TARGET" --json attempt --jq .attempt)"
+DIST="/tmp/rehearsal-dist-${RUN}-${ATTEMPT}"
+gh run download "$RUN" -R "$TARGET" -D "$DIST"
+ls -lR "$DIST" && shasum -a 256 "$DIST"/*/*
 gh run view "$RUN" -R "$TARGET" --json createdAt,updatedAt,attempt
 ```
 
