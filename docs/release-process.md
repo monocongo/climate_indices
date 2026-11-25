@@ -179,10 +179,10 @@ For an equivalent fork, set `TARGET` to `<fork-owner>/climate_indices`.
 CANDIDATE="<full 40-character SHA recorded on the release ticket>"
 TAG=vX.Y.Z
 TARGET="<owner>/climate_indices-rehearsal"
-SHA=
 
 rehearsal_setup() {
   local head
+  SHA=
   [[ -n ${CANDIDATE:-} ]] \
     || { echo "set CANDIDATE to the full 40-character SHA recorded on the release ticket"; return 1; }
   [[ -n ${TAG:-} ]] || { echo "set TAG to the release tag"; return 1; }
