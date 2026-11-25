@@ -334,14 +334,16 @@ tag_preflight() {
   test -z "$(git status --porcelain)" || { echo "working tree is not clean"; return 1; }
   test "$(git rev-parse HEAD)" = "$CANDIDATE" || { echo "local candidate changed"; return 1; }
   test "$(git rev-parse origin/main)" = "$CANDIDATE" || { echo "remote candidate changed"; return 1; }
-  git remote get-url --push origin || return 1
+  local url re='^(git@github\.com:|(ssh://git@|https://)github\.com/)monocongo/climate_indices(\.git)?$'
+  url="$(git remote get-url --push --all origin)" || return 1
+  [[ $url =~ $re ]] || { echo "unexpected push URL: $url"; return 1; }
   echo "pre-tag checks passed"
 }
 tag_preflight
 ```
 
-Continue only after `pre-tag checks passed`. The printed push URL must be `monocongo/climate_indices`, not the rehearsal
-repository.
+Continue only after `pre-tag checks passed`. It fails
+unless the push URL is `monocongo/climate_indices`, so a rehearsal remote cannot pass.
 
 Confirm `vX.Y.Z` does not already exist locally or upstream and `X.Y.Z` is not
 already published on PyPI. The tag build checks the dated changelog entry against
@@ -580,8 +582,12 @@ rehearsal* below describes.
      test -z "$(git status --porcelain)" || { echo "working tree is not clean"; return 1; }
      test "$(git rev-parse HEAD)" = "$CANDIDATE" || { echo "local candidate changed"; return 1; }
      test "$(git rev-parse origin/main)" = "$CANDIDATE" || { echo "remote candidate changed"; return 1; }
-     git remote get-url --push origin || return 1
-     git tag -l climate-indices-vX.Y.Z || return 1
+     local url re='^(git@github\.com:|(ssh://git@|https://)github\.com/)monocongo/climate_indices(\.git)?$'
+     url="$(git remote get-url --push --all origin)" || return 1
+     [[ $url =~ $re ]] || { echo "unexpected push URL: $url"; return 1; }
+     local tags
+     tags="$(git tag -l climate-indices-vX.Y.Z)" || return 1
+     [[ -z $tags ]] || { echo "crate tag already exists: $tags"; return 1; }
      echo "pre-tag checks passed"
    }
    crate_tag_preflight
