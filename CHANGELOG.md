@@ -50,6 +50,11 @@ See the [release notes](docs/release-notes-3.3.0.md) and
   Exact PMDI ties now choose the incipient wet-spell value. Lower-layer water
   loss handles zero Available Water Capacity using the total capacity of both
   layers as the denominator (#1662, #1664).
+- **`compute.sum_to_scale()`** returns a plain array with NaN at masked positions
+  for a masked input at Timescale 1, instead of the masked array unchanged. For a
+  nonempty one-dimensional series shorter than an integer Timescale, it returns
+  all NaN at the input's length, instead of a longer array that contains sums
+  (#933, #1701).
 
 ## [3.2.0] - 2026-11-03
 

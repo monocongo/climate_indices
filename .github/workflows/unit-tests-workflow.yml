@@ -139,6 +139,12 @@ jobs:
           sudo apt-get install -y libhdf5-dev
           uv sync --locked --dev  # NOSONAR (S8541, S8544): no cp315 wheels for pyyaml/numcodecs/h5py/lz4 yet
 
+      # release.yml type-checks every Python, but `lint` only sees 3.12, where
+      # optional dependencies such as icechunk are installed.
+      - name: Run mypy type checker (Python 3.11)
+        if: matrix.python-version == '3.11'
+        run: uv run --no-sync --no-build mypy src/
+
       # Repo/meta checks are owned by the single `meta` job; validation by
       # the single `validation` job. Do not reintroduce them here: the
       # version/distro matrix exists to exercise behavior on each interpreter.
