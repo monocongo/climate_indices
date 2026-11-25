@@ -63,16 +63,28 @@ namespace and never publishes to PyPI.
    SHA is historical, not a release instruction. For 3.0.0, reconcile the still-open
    [PR #1266](https://github.com/monocongo/climate_indices/pull/1266) with the final
    release record instead of retaining its October 6 target date.
-2. Get the full 40-character SHA of the merged `main` tip:
+2. Record the candidate on the release ticket. Run this:
 
    ```bash
-   git fetch -q origin && git log -1 --format='%H %s' origin/main
+   git fetch -q origin && git log -1 --format='**CANDIDATE_SHA**=`%H`%n%n%H %ci %s' origin/main
    ```
 
-   Check that the subject is the commit you intend to release. Record the SHA exactly as
-   printed, and the intended release date, on the release ticket. Every later
-   `CANDIDATE` is copied from that ticket. Never fill it from `origin/main` or `HEAD`
-   afterwards: the comparison would then pass for a commit that was never frozen.
+   Check that the last line names the commit you intend to release. Then post the whole
+   output, unchanged, as a new comment on the release ticket. It looks like this:
+
+   ```markdown
+   **CANDIDATE_SHA**=`0123456789abcdef0123456789abcdef01234567`
+
+   0123456789abcdef0123456789abcdef01234567 2026-01-02 10:00:00 -0500 Merge pull request #1 from ...
+   ```
+
+   Add nothing to it and type nothing by hand. Also record the intended release date on
+   the ticket. If you freeze again, edit the older candidate comment to say it is
+   superseded.
+
+   Wherever this page sets `CANDIDATE="..."`, paste only the 40 characters between the
+   backticks. Never fill it from `origin/main` or `HEAD` afterwards: the comparison
+   would then pass for a commit that was never frozen.
    Confirm the changelog no longer says `unreleased` and the release notes no longer say
    draft. Hold unrelated merges through the tag push.
 3. Validate and rehearse that exact SHA, including every native-wheel and no-Rust
@@ -500,15 +512,17 @@ rehearsal* below describes.
    workflow refuses to publish while one is present.
 3. Open a PR into `main`, then let the maintainer merge it after review and
    passing CI.
-4. Get the full 40-character SHA of the merged `main` tip:
+4. Record the candidate on the release ticket. Run this:
 
    ```bash
-   git fetch -q origin && git log -1 --format='%H %s' origin/main
+   git fetch -q origin && git log -1 --format='**CANDIDATE_SHA**=`%H`%n%n%H %ci %s' origin/main
    ```
 
-   Check that the subject is the commit you intend to release, then record the SHA
-   exactly as printed on the release ticket. Every later `CANDIDATE` is copied from
-   that ticket, never filled from `origin/main` or `HEAD`.
+   Check that the last line names the commit you intend to release. Then post the whole
+   output, unchanged, as a new comment on the release ticket, in the format shown in
+   step 2 of *Freeze the candidate before tagging*. Wherever this page sets
+   `CANDIDATE="..."`, paste only the 40 characters between the backticks, never a value
+   from `origin/main` or `HEAD`.
 5. From a clean maintainer worktree, confirm that the candidate has not moved and
    that the tag is free. The PyPI checks in *Tag creation* above do not apply to
    the crate: this project publishes no crate to PyPI, and no crate job reads a

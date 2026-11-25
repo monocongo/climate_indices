@@ -1406,7 +1406,7 @@ def test_release_process_documents_pypi_metadata_verification() -> None:
 def test_release_process_says_how_to_get_the_candidate_sha() -> None:
     """Both freeze steps, Python and crate, must give the command that yields the SHA."""
     text = (ROOT / "docs/release-process.md").read_text(encoding="utf-8")
-    command = "git fetch -q origin && git log -1 --format='%H %s' origin/main"
+    command = "git fetch -q origin && git log -1 --format='**CANDIDATE_SHA**=`%H`%n%n%H %ci %s' origin/main"
     python_freeze = text.split("## Freeze the candidate before tagging")[1].split("## Validation commands")[0]
     crate_steps = text.split("### Crate release steps")[1].split("### The crate release workflow")[0]
     assert command in python_freeze, "the Python freeze step must say how to get the candidate SHA"
