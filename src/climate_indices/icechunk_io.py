@@ -64,4 +64,5 @@ def write_icechunk(
 
     session = repository.writable_session(branch=branch)
     to_icechunk(dataset, session, mode=mode)
-    return session.commit(message)
+    snapshot_id: str = session.commit(message)
+    return snapshot_id

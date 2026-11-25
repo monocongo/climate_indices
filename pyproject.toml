@@ -202,6 +202,12 @@ module = [
 ]
 ignore_missing_imports = true
 
+# The `icechunk` extra needs Python 3.12 or later, so the 3.11 environment has no
+# icechunk to type-check against.
+[[tool.mypy.overrides]]
+module = ["icechunk", "icechunk.*"]
+ignore_missing_imports = true
+
 # Optional test-only dependency; its py3.12+ syntax breaks parsing under
 # python_version = "3.11", and no first-party code imports it.
 [[tool.mypy.overrides]]
