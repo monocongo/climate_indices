@@ -100,6 +100,7 @@ exclude_patterns = [
     "Thumbs.db",
     ".DS_Store",
     "agent/**",
+    "audits/**",
     "design/**",
     "research/fire-indices-cli-approach.md",
     "research/interactive-climate-explorer-landscape.md",
