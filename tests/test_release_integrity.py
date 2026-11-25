@@ -1431,6 +1431,84 @@ def test_release_process_shell_blocks_have_no_comments() -> None:
     assert not commented, f"move these shell comments into the surrounding text: {commented}"
 
 
+def _shell_paste_hazards(body: str) -> list[str]:
+    """Return the lines of a bash block that would close or reconfigure the caller's shell.
+
+    Only a block fully enclosed in one `( ... )` subshell is exempt.
+    """
+    lines = [line.strip() for line in body.strip().splitlines()]
+    if lines[0] == "(" and lines[-1] == ")" and ")" not in lines[1:-1]:
+        return []
+    hazards = []
+    for line in lines:
+        expanded = re.sub(r"'[^']*'", "", line)
+        unquoted = re.sub(r'"[^"]*"', "", expanded)
+        if re.search(
+            r"(?:^|[;{&|()]|\b(?:then|else|do)\b)\s*(?:exit\b|set\s+(?:-[a-z]*u|-o\s+nounset))", unquoted
+        ) or re.search(r"\$[A-Za-z_]\w*:[A-Za-z]", expanded):
+            hazards.append(line)
+    return hazards
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        "(true)\nset -u",
+        "(\n  true\n)\nexit 1\n(\n  true\n)",
+        "if false; then exit 1; fi",
+        "for x in a; do exit; done",
+        "if true; then :; else exit 1; fi",
+        "set -o nounset",
+        'git push origin "$SHA:refs/heads/main"',
+    ],
+)
+def test_shell_paste_hazards_are_detected(body: str) -> None:
+    assert _shell_paste_hazards(body)
+
+
+def test_shell_paste_hazards_ignore_an_enclosing_subshell() -> None:
+    assert not _shell_paste_hazards("(\n    set -euo pipefail\n    exit 1\n)\n")
+
+
+def test_release_process_shell_blocks_are_safe_to_paste() -> None:
+    """A pasted block must not close or reconfigure the maintainer's shell.
+
+    `exit` closes an interactive shell and `set -u` stays on afterwards. zsh also
+    reads `$SHA:r` as a modifier, so a variable before a colon needs braces.
+    """
+    text = (ROOT / "docs/release-process.md").read_text(encoding="utf-8")
+    blocks = re.findall(r"^([ \t]*)```bash\n(.*?)^\1```", text, re.MULTILINE | re.DOTALL)
+    assert blocks, "docs/release-process.md must keep its bash blocks"
+    unsafe = [line for _, body in blocks for line in _shell_paste_hazards(body)]
+    assert not unsafe, f"unsafe to paste into an interactive shell: {unsafe}"
+
+
+@pytest.mark.parametrize(
+    "target",
+    [
+        "monocongo/climate_indices",
+        "MonoCongo/Climate_Indices",
+        "monocongo/./climate_indices",
+        "monocongo//climate_indices",
+        "monocongo/climate%5Findices",
+    ],
+)
+def test_rehearsal_push_refuses_every_spelling_of_upstream(target: str) -> None:
+    """GitHub resolves several spellings to upstream, so none may reach a push."""
+    text = (ROOT / "docs/release-process.md").read_text(encoding="utf-8")
+    block = re.search(r"^```bash\n(rehearsal_push\(\) \{.*?)^```", text, re.MULTILINE | re.DOTALL)
+    assert block, "docs/release-process.md must keep the rehearsal_push block"
+    result = subprocess.run(
+        ["bash", "-c", 'git() { echo "git $*"; }\n' + block.group(1)],
+        env={**os.environ, "SHA": "0" * 40, "TAG": "v0.0.0", "TARGET": target},
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode != 0, result.stdout
+    assert "git push" not in result.stdout
+
+
 def test_release_process_documents_the_rehearsal_boundary() -> None:
     """The rehearsal runbook must state the failure it expects and what it cannot prove.
 
