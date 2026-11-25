@@ -316,7 +316,8 @@ def sum_to_scale(
         # a masked value stands for a missing value: make it an explicit NaN so the
         # convolution below and the window-wise spatial sum see the missing marker
         # rather than the data under the mask (np.convolve reads under it)
-        values = np.ma.filled(values.astype(float), np.nan)
+        # a float64 floor still holds NaN, and result_type keeps a complex value's imaginary part
+        values = np.ma.filled(values.astype(np.result_type(values.dtype, np.float64)), np.nan)
 
     # don't bother if the number of values to sum is 1
     if scale == 1:
@@ -357,6 +358,9 @@ def sum_to_scale(
         and 0 < values.size < scale
         and values.dtype.kind in "buifcO"
     ):
+        if values.dtype.kind == "O":
+            # np.convolve raises TypeError on non-numeric elements, so keep that contract
+            np.multiply(values, 1.0)
         return np.full(values.shape, np.nan, dtype=np.result_type(values.dtype, np.float64))
 
     # get the valid sliding summations with 1D convolution

@@ -734,6 +734,15 @@ def test_sum_to_scale_masked_input(scale, expected):
     np.testing.assert_equal(computed, expected)
 
 
+def test_sum_to_scale_masked_complex_keeps_imaginary_part():
+    """Mask normalization marks masked values NaN without dropping a complex value's imaginary part."""
+    values = np.ma.array([1 + 2j, 3 + 4j], mask=[False, True])
+    computed = compute.sum_to_scale(values, 1)
+    assert computed.dtype == np.complex128
+    assert computed[0] == 1 + 2j
+    assert np.isnan(computed[1])
+
+
 @pytest.mark.parametrize(
     ("scale", "input_dtype", "output_dtype"),
     [(4, np.float32, np.float64), (np.int64(4), np.complex64, np.complex128)],
@@ -753,6 +762,7 @@ def test_sum_to_scale_scale_longer_than_series(scale, input_dtype, output_dtype)
         (np.ones((3, 2)), 4, ValueError),
         (np.ones(3), 4.5, TypeError),
         (np.array(["a", "b", "c"]), 4, (TypeError, ValueError)),
+        (np.array(["bad"], dtype=object), 2, TypeError),
     ],
 )
 def test_sum_to_scale_overlong_scale_still_rejects_invalid_input(values, scale, error):
