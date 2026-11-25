@@ -1413,6 +1413,24 @@ def test_release_process_says_how_to_get_the_candidate_sha() -> None:
     assert command in crate_steps, "the crate release steps must say how to get the candidate SHA"
 
 
+def test_release_process_shell_blocks_have_no_comments() -> None:
+    """Interactive zsh does not treat `#` as a comment by default.
+
+    Pasted there, `VAR=value  # note` leaves VAR unset, so explanations belong in
+    the surrounding text.
+    """
+    text = (ROOT / "docs/release-process.md").read_text(encoding="utf-8")
+    blocks = re.findall(r"^([ \t]*)```bash\n(.*?)^\1```", text, re.MULTILINE | re.DOTALL)
+    assert blocks, "docs/release-process.md must keep its bash blocks"
+    commented = [
+        line.strip()
+        for _, body in blocks
+        for line in body.splitlines()
+        if re.search(r"(^|\s)#", re.sub(r"'[^']*'|\"[^\"]*\"", "", line))
+    ]
+    assert not commented, f"move these shell comments into the surrounding text: {commented}"
+
+
 def test_release_process_documents_the_rehearsal_boundary() -> None:
     """The rehearsal runbook must state the failure it expects and what it cannot prove.
 
