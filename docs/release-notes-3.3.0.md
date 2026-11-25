@@ -77,6 +77,6 @@ masked positions of a masked input. It previously returned the masked array
 unchanged, which left the masked-out data readable in the underlying array.
 Longer Timescales already returned NaN for windows that contain a masked value.
 
-When a one-dimensional series is shorter than an integer Timescale, the result is
-now all NaN at the input's length. It was previously longer than the input and
-could contain sums, although no complete window exists.
+When a nonempty one-dimensional series is shorter than an integer Timescale, the
+result is now all NaN at the input's length. It was previously longer than the
+input and could contain sums, although no complete window exists.
