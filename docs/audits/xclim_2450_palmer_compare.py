@@ -1,16 +1,18 @@
-"""Reproduce the numbers in xclim-2450-palmer-comparison.md.
+r"""Reproduce the numbers in xclim-2450-palmer-comparison.md.
 
 Loads only xclim PR #2450's ``_palmer.py`` (not the fork) so that a released
 xclim supplies its single dependency, ``xclim.core.calendar.compare_offsets``::
 
-    uv venv --python 3.12 /tmp/xvenv
-    uv pip install --python /tmp/xvenv/bin/python 'climate-indices==3.3.0' 'xclim==1.0.1'
-    mkdir -p /tmp/x2450
-    gh api 'repos/Ouranosinc/xclim/contents/src/xclim/compute/_palmer.py?ref=91fcf88a76829fd9d41ad848bde4c7faa62645de' \\
-        -H 'Accept: application/vnd.github.raw' > /tmp/x2450/_palmer.py
-    /tmp/xvenv/bin/python -I docs/audits/xclim_2450_palmer_compare.py . /tmp/x2450/_palmer.py
+    work=$(mktemp -d)
+    uv venv --python 3.12 "$work/venv"
+    uv pip install --python "$work/venv/bin/python" 'climate-indices==3.3.0' 'xclim==1.0.1'
+    gh api 'repos/Ouranosinc/xclim/contents/src/xclim/compute/_palmer.py?ref=91fcf88a76829fd9d41ad848bde4c7faa62645de' \
+        -H 'Accept: application/vnd.github.raw' > "$work/_palmer.py"
+    "$work/venv/bin/python" -I docs/audits/xclim_2450_palmer_compare.py < "$work/_palmer.py"
 
-Review the downloaded file before running it: this script executes it.
+This script executes the source it reads from standard input, so it refuses any
+bytes other than the audited ones (``XCLIM_SHA256``). Review that file before
+running it.
 """
 
 import hashlib
@@ -18,7 +20,6 @@ import json
 import logging
 import sys
 import types
-import warnings
 from pathlib import Path
 
 import numpy as np
@@ -29,10 +30,9 @@ import xarray as xr
 from climate_indices.drought import palmer as ci
 
 structlog.configure(wrapper_class=structlog.make_filtering_bound_logger(logging.CRITICAL))
-warnings.filterwarnings("ignore")
 
-FIXTURES = Path(sys.argv[1]) / "tests" / "fixture"
-SOURCE = Path(sys.argv[2]).read_text()
+FIXTURES = Path(__file__).resolve().parents[2] / "tests" / "fixture"
+XCLIM_SHA256 = "9eb0b0dfe0bb22331c489376cbafe40e583c5c16d26af6e830f209198a4425ae"
 KEYS = ("pdsi", "phdi", "pmdi", "zindex")
 MM = 25.4
 
@@ -96,14 +96,25 @@ NO_BACKTRACK = [
 ]
 
 
-def run_xclim(edits=()):
-    source = SOURCE
+def read_audited_source():
+    """Read xclim's _palmer.py from standard input; accept only the audited bytes."""
+    data = sys.stdin.buffer.read()
+    digest = hashlib.sha256(data).hexdigest()
+    if digest != XCLIM_SHA256:
+        raise SystemExit(f"refusing to run: stdin sha256 {digest} is not the audited {XCLIM_SHA256}")
+    return data.decode()
+
+
+def run_xclim(audited_source, edits=()):
+    source = audited_source
     for old, new in edits:
-        assert source.count(old) == 1, old
+        if source.count(old) != 1:
+            raise ValueError(f"edit target must occur exactly once: {old!r}")
         source = source.replace(old, new)
     module = types.ModuleType("xpalmer")
     sys.modules["xpalmer"] = module
-    exec(compile(source, "_palmer.py", "exec"), module.__dict__)  # noqa: S102
+    # Intentional: the input is hash-pinned above, and the fixes are literal edits in this file.
+    exec(compile(source, "_palmer.py", "exec"), module.__dict__)  # noqa: S102  # nosec B102
 
     def data(values):
         return xr.DataArray(values * MM, dims=("time", "division"), coords={"time": TIME, "division": IDS})
@@ -182,9 +193,10 @@ def nan_gap_probe():
 
 
 def main():
-    print("xclim _palmer.py sha256:", hashlib.sha256(SOURCE.encode()).hexdigest())
+    source = read_audited_source()
+    print("xclim _palmer.py sha256:", XCLIM_SHA256)
     ours = run_climate_indices()
-    raw, ds = run_xclim()
+    raw, ds = run_xclim(source)
     table("climate-indices vs NCEI", ours, NCEI)
     table("xclim vs NCEI", raw, NCEI)
     table("xclim vs climate-indices", raw, ours, (*KEYS, "scpdsi"))
@@ -211,19 +223,19 @@ def main():
         ("V + PL + K", FIX_V + FIX_PL + FIX_K),
         ("V + PL + K + CAFEC zero rule", FIX_V + FIX_PL + FIX_K + FIX_CAFEC),
     ):
-        out, _ = run_xclim(edits)
+        out, _ = run_xclim(source, edits)
         table(f"cumulative fix [{label}] vs NCEI", out, NCEI)
         table(f"cumulative fix [{label}] vs climate-indices", out, ours, (*KEYS, "scpdsi"))
     residual_tail(out, ours)
 
     for label, edits in (("V", FIX_PL + FIX_K), ("PL", FIX_V + FIX_K), ("K", FIX_V + FIX_PL)):
-        out, _ = run_xclim(edits)
+        out, _ = run_xclim(source, edits)
         table(f"leave out {label} vs NCEI", out, NCEI)
 
-    no_backtrack, _ = run_xclim(NO_BACKTRACK)
+    no_backtrack, _ = run_xclim(source, NO_BACKTRACK)
     same = np.array_equal(raw["scpdsi"], no_backtrack["scpdsi"], equal_nan=True)
     print("\nxclim scPDSI bit-identical with _backtrack_self_calibrated disabled:", same)
-    _, raw_ds = run_xclim()
+    _, raw_ds = run_xclim(source)
     contraction_probe(raw_ds["scz"].transpose("time", "division").values, raw["scpdsi"])
     nan_gap_probe()
 

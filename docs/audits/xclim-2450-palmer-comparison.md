@@ -35,11 +35,12 @@ r = 0.996. xclim's scPDSI reaches 1.4×10⁷.
 
 The causes are specific and few. Three changes to xclim (restore one
 commented-out assignment, correct potential loss, compute one logarithm in
-inches) make its Z, PDSI, PHDI and PMDI reproduce climate-indices' NCEI
-statistics, with 100% of months within 0.05 of climate-indices. A fourth (the
-zero-denominator CAFEC rule) makes its Z-index identical to floating-point
-rounding (maximum difference 5×10⁻¹⁴). So the overall design is sound, and the
-standard Palmer path is repairable. The scPDSI path is not repaired by these
+inches) bring its Z, PDSI, PHDI and PMDI within 0.05 of climate-indices in at
+least 99.95% of months, not all of them: 58, 206, 235 and 248 months
+respectively still differ by more. A fourth (the zero-denominator CAFEC rule)
+makes its Z-index identical to floating-point rounding (maximum difference
+5×10⁻¹⁴) and lowers the other three counts to 45, 41 and 35 (section 3.7). So
+the overall design is sound, and the standard Palmer path is repairable. The scPDSI path is not repaired by these
 changes and needs separate work: its backtracking has no effect at all, and its
 calibration sequence and constants differ from the Wells procedure as
 climate-indices ports it.
@@ -202,15 +203,25 @@ this degenerate climate.
 
 ### 3.7 What remains after four fixes
 
-Z is identical. PDSI still differs by more than 10⁻⁶ in 264 months and by more
-than 0.05 in 45 (maximum 0.52); PHDI in 298 months (maximum 1.26); PMDI in 329
-(maximum 0.49). These sit in the spell state machine. Nine of the PDSI months
+Z is identical. The other three indices are not. Months differing from
+climate-indices, out of 528,384:
+
+| Index | By more than 0.05, after three fixes | By more than 0.05, after four | By more than 10⁻⁶, after four | Maximum, after four |
+| --- | --- | --- | --- | --- |
+| Z | 58 | 0 | 0 | 5×10⁻¹⁴ |
+| PDSI | 206 | 45 | 264 | 0.52 |
+| PHDI | 235 | 41 | 298 | 1.26 |
+| PMDI | 248 | 35 | 329 | 0.49 |
+
+With Z identical, what is left after four fixes arises in the spell state
+machine. Nine of the PDSI months
 over 0.05 are in the final 24 months of the record, consistent with the
 different end-of-record flush. **The cause of the others was not established.**
 
 ## 4. Measurements
 
-Inputs: `tests/fixture/palmer/` precipitation and PET, `palmer_awc.json`, data
+Inputs: precipitation and PET from `tests/fixture/palmer/`, AWC from
+`tests/fixture/palmer_awc.json`, data
 from 1895-01, calibration 1931–1990. xclim received the values × 25.4.
 Reference: `tests/fixture/nclimdiv/`. "Within 0.05" and "over 0.5" are shares of
 months by absolute difference. "Category" is agreement on the seven bins with
