@@ -333,10 +333,15 @@ def test_source_pin_rejects_imports_outside_the_checkout(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path, name: str
 ) -> None:
     study = _load_finder().c
-    module = importlib.import_module(f"climate_indices.drought.{name}")
+    # sources are checked in order, so pin the earlier ones to make the named module the first mismatch
+    for path in study.STUDIED_SOURCES:
+        module = importlib.import_module(f"climate_indices.drought.{Path(path).stem}")
+        if Path(path).stem == name:
+            break
+        monkeypatch.setattr(module, "__file__", str(study.ROOT / path))
     monkeypatch.setattr(module, "__file__", str(tmp_path / f"{name}.py"))
     monkeypatch.setattr(study.subprocess, "run", Mock(return_value=Mock(returncode=0)))
-    with pytest.raises(SystemExit, match="does not resolve to the checked source"):
+    with pytest.raises(SystemExit, match=rf"\.{name} does not resolve to the checked source"):
         study.verify_pinned_sources()
 
 
