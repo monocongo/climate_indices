@@ -184,6 +184,7 @@ TARGET="<owner>/climate_indices-rehearsal"   # or "<fork-owner>/climate_indices"
   || { echo "set CANDIDATE to the full 40-character SHA recorded on the release ticket"; exit 1; }
 [[ -n ${TAG:-} ]] || { echo "set TAG to the release tag"; exit 1; }
 [[ -n ${TARGET:-} ]] || { echo "set TARGET to the rehearsal repository"; exit 1; }
+CANDIDATE="$(printf %s "$CANDIDATE" | tr A-F a-f)"
 [[ "$CANDIDATE" =~ ^[0-9a-f]{40}$ ]] \
   || { echo "CANDIDATE is not a full 40-character SHA: $CANDIDATE"; exit 1; }
 [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] \
@@ -295,6 +296,7 @@ remote `main` still equal the SHA that passed the rehearsal:
 git switch main
 git pull --ff-only origin main
 CANDIDATE="<full 40-character SHA recorded on the release ticket>"
+CANDIDATE="$(printf %s "$CANDIDATE" | tr A-F a-f)"
 test -z "$(git status --porcelain)" || { echo "working tree is not clean"; exit 1; }
 test "$(git rev-parse HEAD)" = "$CANDIDATE" || { echo "local candidate changed"; exit 1; }
 test "$(git rev-parse origin/main)" = "$CANDIDATE" || { echo "remote candidate changed"; exit 1; }
@@ -531,6 +533,7 @@ rehearsal* below describes.
    git switch main
    git pull --ff-only origin main
    CANDIDATE="<full 40-character SHA recorded on the release ticket>"
+   CANDIDATE="$(printf %s "$CANDIDATE" | tr A-F a-f)"
    test -z "$(git status --porcelain)" || { echo "working tree is not clean"; exit 1; }
    test "$(git rev-parse HEAD)" = "$CANDIDATE" || { echo "local candidate changed"; exit 1; }
    test "$(git rev-parse origin/main)" = "$CANDIDATE" || { echo "remote candidate changed"; exit 1; }
