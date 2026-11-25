@@ -39,7 +39,7 @@ from climate_indices.drought._palmer_pdi import PdiDurationFactors
 ROOT = Path(__file__).resolve().parents[1]
 SEQUENCES = ROOT / "docs" / "research" / "reference-papers" / "palmer-recursion-divergence-sequences.json"
 needs_checkout_import = pytest.mark.skipif(
-    not Path(_palmer_pdi.__file__).resolve().is_relative_to(ROOT / "src"),
+    Path(_palmer_pdi.__file__).resolve() != (ROOT / "src/climate_indices/drought/_palmer_pdi.py").resolve(),
     reason="the source pin only accepts a package imported from this checkout",
 )
 
