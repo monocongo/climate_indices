@@ -311,15 +311,15 @@ def sum_to_scale(
         array, left padded with NaN values
     """
 
-    # don't bother if the number of values to sum is 1
-    if scale == 1:
-        return values
-
     if np.ma.isMaskedArray(values):
         # a masked value stands for a missing value: make it an explicit NaN so the
         # convolution below and the window-wise spatial sum see the missing marker
         # rather than the data under the mask (np.convolve reads under it)
         values = np.ma.filled(values.astype(float), np.nan)
+
+    # don't bother if the number of values to sum is 1
+    if scale == 1:
+        return values
 
     native = _native_backend.kernels(_native, "trailing_sum")
     if (

@@ -729,7 +729,9 @@ def test_sum_to_scale_masked_input(scale, expected):
     """
     values = np.ma.array(np.arange(6.0), mask=[False, False, True, False, False, False])
     computed = compute.sum_to_scale(values, scale)
-    np.testing.assert_equal(np.ma.filled(np.ma.asarray(computed, dtype=float), np.nan), expected)
+    # a plain array, so the data under the mask is never exposed
+    assert not np.ma.isMaskedArray(computed)
+    np.testing.assert_equal(computed, expected)
 
 
 @pytest.mark.parametrize(
