@@ -316,8 +316,9 @@ def sum_to_scale(
         # a masked value stands for a missing value: make it an explicit NaN so the
         # convolution below and the window-wise spatial sum see the missing marker
         # rather than the data under the mask (np.convolve reads under it)
-        # a float64 floor still holds NaN, and result_type keeps a complex value's imaginary part
-        values = np.ma.filled(values.astype(np.result_type(values.dtype, np.float64)), np.nan)
+        # cast to float so numeric strings stay numeric; a complex value keeps its imaginary part
+        dtype = np.result_type(values.dtype, np.float64) if np.iscomplexobj(values) else float
+        values = np.ma.filled(values.astype(dtype), np.nan)
 
     # don't bother if the number of values to sum is 1
     if scale == 1:

@@ -734,6 +734,13 @@ def test_sum_to_scale_masked_input(scale, expected):
     np.testing.assert_equal(computed, expected)
 
 
+@pytest.mark.parametrize(("scale", "expected"), [(1, [1.0, np.nan]), (2, [np.nan, np.nan])])
+def test_sum_to_scale_masked_numeric_strings_stay_numeric(scale, expected):
+    """Numeric strings under a mask are cast to float, as before, not promoted to a string dtype."""
+    values = np.ma.array(["1", "2"], mask=[False, True])
+    np.testing.assert_equal(compute.sum_to_scale(values, scale), expected)
+
+
 def test_sum_to_scale_masked_complex_keeps_imaginary_part():
     """Mask normalization marks masked values NaN without dropping a complex value's imaginary part."""
     values = np.ma.array([1 + 2j, 3 + 4j], mask=[False, True])
