@@ -435,7 +435,9 @@ def _pdsi_or_reject(*args, **kwargs):
     """``palmer.pdsi()``, discarding a draw it cannot calibrate (e.g. identical years)."""
     try:
         return palmer.pdsi(*args, **kwargs)
-    except ConvergenceError:
+    except ConvergenceError as error:
+        if error.algorithm != "PDSI calibration":
+            raise
         assume(False)
 
 

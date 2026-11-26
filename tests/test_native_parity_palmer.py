@@ -278,6 +278,11 @@ def test_missing_months_match(monkeypatch, palmer_division_inputs, index, missin
     # Calibration gaps defeat both calibrations; later gaps still produce indices.
     error = ConvergenceError if missing_in_calibration else None
     _assert_parity(rust, python, error=error)
+    if index is _pdsi and not missing_in_calibration:
+        assert "palmer_pdi" in calls
+        first_gap = int(np.isnan(precips).argmax())
+        assert np.isfinite(rust[0][:first_gap]).all()
+        assert np.isnan(rust[0][first_gap:]).all()
 
 
 def test_short_calibration_raises_like_python(monkeypatch, palmer_division_inputs) -> None:
