@@ -173,7 +173,7 @@ vocabulary at `src/climate_indices/CONTEXT.md`):
   `docs/ai-assisted-development.md`,
   `docs/algorithm_refs/`, `docs/architecture.md`,
   `docs/project-overview.md`, `docs/floating_point_best_practices.md`
-- Internal: `docs/agent/`, `docs/design/`,
+- Internal: `docs/agent/`, `docs/audits/`, `docs/design/`,
   `docs/research/fire-indices-cli-approach.md`,
   `docs/research/interactive-climate-explorer-landscape.md`,
   `docs/research/dri-wrcc-scpdsi-assessment.md`,
