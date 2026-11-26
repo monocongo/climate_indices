@@ -858,7 +858,6 @@ def _prepare_palmer_data(
     _calc_water_balances(prepared)
     if prepared.calibrate:
         _calc_cafec_coefficients(prepared)
-    _calc_zindex_factors(prepared)
     return prepared, original_length
 
 
@@ -1024,8 +1023,9 @@ def _record_ends(prepared: _PalmerPrepared, z: np.ndarray, original_length: int)
 
 def _calculate_pdsi_prepared(prepared: _PalmerPrepared, original_length: int) -> _PalmerResult:
     """Complete standard PDSI after the shared Palmer preparation stages."""
-    # an uncalibratable cell divides by zero or NaN here; _record_ends reports it
+    # An uncalibratable cell can divide by zero; _record_ends reports it.
     with np.errstate(divide="ignore", invalid="ignore"):
+        _calc_zindex_factors(prepared)
         _calc_kfactors(prepared)
     z = _calc_raw_zindex(prepared)
     factors = PdiDurationFactors.from_fitted(prepared.wetm, prepared.wetb, prepared.drym, prepared.dryb)
@@ -1035,14 +1035,17 @@ def _calculate_pdsi_prepared(prepared: _PalmerPrepared, original_length: int) ->
 
     if np.all(ends == original_length):
         recursion = _pdi_recursion(z, factors, n_months=original_length)
+    elif np.any(ends) and _palmer_native("palmer_pdi", z) is None:
+        recursion = _palmer_pdi.calculate(z, factors, n_months=int(ends.max()), record_ends=ends)
     else:
-        outputs = np.full((3, *z.shape), np.nan)
-        # ponytail: one recursion per distinct record length; gap-free grids have one
+        outputs = tuple(np.full(z.shape, np.nan) for _ in range(3))
+        # The native kernel takes one record length per call.
         for end in np.unique(ends[ends > 0]):
             cells = ends == end
-            part = _pdi_recursion(np.ascontiguousarray(z[..., cells]), factors, n_months=int(end))
+            n_years = (int(end) + 11) // 12
+            part = _pdi_recursion(np.ascontiguousarray(z[:n_years, ..., cells]), factors, n_months=int(end))
             for output, values in zip(outputs, (part.pdsi, part.phdi, part.pmdi), strict=True):
-                output[..., cells] = values
+                output[:n_years, ..., cells] = values
         recursion = _palmer_pdi.PdiResult(*outputs)
 
     pdsi_result = _trim_time_major(recursion.pdsi, original_length)
@@ -1066,6 +1069,7 @@ def _calculate_pdsi_prepared(prepared: _PalmerPrepared, original_length: int) ->
 
 def _calculate_scpdsi_prepared(prepared: _PalmerPrepared, original_length: int) -> _PalmerResult:
     """Complete self-calibrating PDSI after shared Palmer preparation."""
+    _calc_zindex_factors(prepared)
     _calc_scpdsi_k_factors(prepared)
     z = _calc_raw_zindex(prepared)
     z_values = z.reshape(-1)
