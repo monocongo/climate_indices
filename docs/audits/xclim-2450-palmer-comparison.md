@@ -54,6 +54,13 @@ whole record (section 6).
 Verdicts: **match**; **variant** (differs, defensible); **bug** (confirmed,
 measured or demonstrated); **gap** (missing); **unverified**.
 
+Water-balance matches assume an available water capacity (AWC) of at least
+1 inch. Below that capacity, climate-indices still assigns 1 inch to the
+surface layer, while xclim limits the surface layer to the supplied capacity.
+For example, with AWC of 0.5 inches, precipitation of 0.5 inches, and PET of
+2 inches, actual evapotranspiration in the first month is 1.5 inches in
+climate-indices and 1 inch in xclim.
+
 | Component | climate-indices 3.3.0 | xclim `91fcf88a` | Verdict |
 | --- | --- | --- | --- |
 | Units | inches throughout; `AWCTOP = 1.0` (`palmer.py`) | no unit handling; surface capacity 25.4 (`X:512-516`) assumes mm, K constants assume inches | **bug** (xclim) |
@@ -62,7 +69,7 @@ measured or demonstrated); **gap** (missing); **unverified**.
 | Potential recharge PR = AWC − S | `palmer.py:362-363` | `X:526-529` | match |
 | Potential runoff PRO = S | `spsum`, `palmer.py:362,409` | `X:530` | match |
 | Potential loss PL | `min(PE, S)`-form, no dependence on P, `palmer.py:122-140` | branches on P ≥ PE, `X:534-552` | **bug** (xclim, inherited) |
-| Actual ET, recharge, runoff, loss | `palmer.py:176-221` | `X:557-646` | match (Z identical after the fixes) |
+| Actual ET, recharge, runoff, loss | `palmer.py:176-221` | `X:557-646` | match for AWC ≥ 1 inch |
 | PET | precomputed input | precomputed input | match |
 | AWC | total, inches, scalar or per cell | total, implicit mm, `awhc ≤ 0` → NaN (`X:336`) | variant |
 | CAFEC α β γ δ, 12 sets from calibration sums or means | `palmer.py:407-410` | `X:832-847` (means; same ratio) | match |
@@ -71,7 +78,7 @@ measured or demonstrated); **gap** (missing); **unverified**.
 | T ratio | `palmer.py:422` | `X:926` | match |
 | D̄ = mean \|d\| over calibration | `palmer.py:439-450` | `X:925` | match |
 | K′ = 1.5·log₁₀((T+2.8)/D̄)+0.5 | `palmer.py:451`, D̄ in inches | `X:927`, D̄ in mm | **bug** (xclim, new) |
-| K = 17.67·K′/Σ(D̄K′) | `palmer.py:473-474` | `X:928-932` | match (units cancel here) |
+| K = 17.67·K′/Σ(D̄K′) | `palmer.py:473-474` | `X:928-932` | same formula; in Z = K·d, the units of D̄ and d cancel |
 | Z = K·d | `palmer.py:512` | `X:960` | match |
 | p = 0.897, q = 1/3 | `_palmer_duration.py:29-30,55-57` | `X:1012-1013` | match |
 | Ud = Z − 0.15, Uw = Z + 0.15 | `_palmer_pdi.py:448,469` | `X:1406,1450` | match |
@@ -108,10 +115,11 @@ measured or demonstrated); **gap** (missing); **unverified**.
         Pe = PPe[k]
 ```
 
-`V` is initialised to 0 (`X:1051`) and never changes, so
-`PV = Ud + min(V, 0)` and `Q = Ze + V` see only the current month. The
-probability that a spell has ended, `Pe = 100·V/Q`, then ignores all previous
-abatement. The legacy code has the live line (`legacy:1369`).
+The code initializes `V` to 0 (`X:1051`) and never updates it. Thus the wet
+spell calculation uses `PV = Ud` and `Q = Ze`. The probability that the spell
+has ended, `100·PV/Q`, omits the accumulated abatement from previous months
+(`X:1406-1418`). The dry spell calculation has the same problem. The legacy
+code updates `V` (`legacy:1369`).
 
 Effect, leaving only this unfixed: PDSI median 0.025, RMSE 0.860, 16.0% of
 months off by more than 0.5; category agreement 92.8% against 98.2%.
@@ -124,10 +132,11 @@ months off by more than 0.5; category agreement 92.8% against 98.2%.
 ```
 
 (condensed). Potential loss is a *potential* quantity and does not depend on
-precipitation: PLs = min(PE, Ss), PLu = (PE − PLs)·Su/AWC. As written, a wet
-month claims PLs = PE even when the surface layer holds less, and a dry month
-claims PLs = Ss even when PE is smaller, which makes PLu negative and PL larger
-than PE (0.8% of division-months). Inherited from `legacy:363-391`.
+precipitation: PLs = min(PE, Ss) and PLu = min(Su, (PE − PLs)·Su/AWC) for
+AWC ≥ 1 inch. In xclim, the wet branch sets PLs = PE even when the surface
+layer holds less. The dry branch sets PLs = Ss even when PE is smaller. This
+can make PLu negative and PL greater than PE (0.8% of division-months).
+These branches come from `legacy:363-391`.
 
 Effect, leaving only this unfixed: Z RMSE 0.161 against 0.046, maximum 9.19;
 PDSI within 0.05 of NCEI in 55.4% of months against 86.2%.
@@ -139,11 +148,12 @@ PDSI within 0.05 of NCEI in 55.4% of months against 86.2%.
 ```
 
 `2.8` is calibrated for D̄ in inches. The code needs millimetre inputs
-(`X:512-516`), so D̄ is 25.4 times too large for this term. K′ goes negative
-when D̄ > about 2.15·(T + 2.8) mm, which **reverses the sign of Z**, and
-Σ(D̄K′) can approach zero, which makes K unbounded. Measured: 4.1% of
-division/calendar-month K values are negative, 64 of 344 divisions are
-affected, minimum K = −17.97.
+(`X:512-516`), so D̄ is 25.4 times too large for this term. K′ is negative
+when D̄ > about 2.15·(T + 2.8) mm. **Z has the opposite sign to the moisture
+departure** when K is negative, which occurs when K′ and Σ(D̄K′) have opposite
+signs. Near-zero Σ(D̄K′) can also produce very large K values. In the benchmark,
+4.1% of division/calendar-month K values are negative. This affects 64 of 344
+divisions, and the smallest K is −17.97.
 
 This is the dominant error. Leaving only this unfixed: Z RMSE 18.7, maximum
 1955, r = 0.11. The legacy code worked in inches, so the bug is new with the
@@ -174,10 +184,10 @@ Besides the table rows above, two measured outcomes:
   98th percentiles near −4 and +4. Median over divisions: climate-indices
   −3.96 / +4.01; xclim −5.19 / +5.02. xclim rescales once, from standard-PDSI
   percentiles, before fitting the duration factors, and never checks the result.
-- **Divergence.** In division 0205 the fitted wet factors are m = −0.1076,
-  b = 9.0012, so c = 1.0121 and the recurrence grows without bound. It is the
-  only division with \|c\| ≥ 1 and the only one whose scPDSI exceeds 20; it
-  reaches 1.4×10⁷.
+- **Growth during wet spells.** In division 0205 the fitted wet factors are
+  m = −0.1076 and b = 9.0012. Thus c = 1.0121 amplifies the previous wet-spell
+  severity instead of reducing it. This is the only division with \|c\| ≥ 1
+  and the only one whose scPDSI exceeds 20. It reaches 1.4×10⁷.
 
 After the four standard-path fixes, xclim scPDSI against climate-indices is
 still median 0.849, RMSE 1.65, maximum 12.0, r = 0.850, with category agreement
@@ -253,9 +263,10 @@ Cumulative fixes to xclim, PDSI against NCEI:
 | V + PL + K′ + CAFEC zero rule | 0.013 | 0.202 | 86.2% |
 
 RMSE rises at the second step because the K′ error is still present and the
-changed departures move some Σ(D̄K′) values closer to zero. The fixes interact;
-the leave-one-out figures in sections 3.1–3.3 show each one's independent
-effect. These edits are diagnostic patches, not a proposed implementation.
+changed departures move some Σ(D̄K′) values closer to zero. The fixes interact.
+The leave-one-out figures in sections 3.1–3.3 show the result with one fix
+omitted and the other two in place. These edits are diagnostic patches, not a
+proposed implementation.
 
 ## 5. Validation evidence
 
