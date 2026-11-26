@@ -14,6 +14,12 @@ across all four recursions (`drought/palmer.py`, `_calculate_scpdsi_prepared`), 
 fits are one pair, not four. The decision — scPDSI stays on the per-location
 path — is unchanged.
 
+Amended by #1710: the "A block cell that is entirely missing" post-pass below is
+superseded for `pdsi()`. The first missing or uncomputable month now ends each
+cell's record, so a fully missing cell is NaN in all four outputs without a
+separate post-pass. The spatial-block and per-location scPDSI contracts are
+unchanged.
+
 ADR-0001 named Palmer the documented exception to the modern xarray API and required
 a separate, explicit decision before it could grow one: "Adding xarray support for
 Palmer indices requires a separate, explicit architecture decision rather than
@@ -109,6 +115,11 @@ across one process per worker, so per-worker memory is the chunk's share of the 
 sum across workers stays proportional to the grid).
 
 ## A block cell that is entirely missing
+
+*Superseded for `pdsi()` by #1710: the separate post-pass is gone. The first missing
+or uncomputable month now ends each cell's record, which leaves a fully missing cell
+NaN in all four outputs; see {doc}`../algorithm_refs/palmer`. The text below records
+the earlier behaviour.*
 
 A standalone call on an all-missing series short-circuits before the recursion runs and
 returns NaN for all four outputs. Inside a block that is not entirely missing, that

@@ -482,19 +482,24 @@ def _statement_170(factors: PdiDurationFactors, state: _State, active: np.ndarra
     _statement_190(factors, state, continuing)
 
 
-def _advance_month(factors: PdiDurationFactors, state: _State, year: int, month: int) -> None:
-    """Advance the spell recursion by one month, for every cell at once.
+def _advance_month(
+    factors: PdiDurationFactors, state: _State, year: int, month: int, active: np.ndarray | None = None
+) -> None:
+    """Advance the spell recursion by one month for cells still in their records.
 
-    Every cell shares this same calendar step (``year``/``month``); the six masks
-    below partition every cell into exactly one of the four statement calls,
+    Every active cell shares this calendar step (``year``/``month``). The masks
+    below route each active cell to exactly one of the four statement calls,
     mirroring the scalar recursion's dispatch (including its NaN fallthrough,
     reachable only when ``state.x3`` is NaN) and its abatement branch.
     """
     state.year = year
     state.month = month
     cells = np.arange(state.k8.shape[0])
-    state.indexj[state.k8, cells] = year
-    state.indexm[state.k8, cells] = month
+    slots = state.k8
+    if active is not None:
+        cells, slots = cells[active], slots[active]
+    state.indexj[slots, cells] = year
+    state.indexm[slots, cells] = month
     state.ze = np.zeros_like(state.ze)
     state.ud = np.zeros_like(state.ud)
     state.uw = np.zeros_like(state.uw)
@@ -505,6 +510,9 @@ def _advance_month(factors: PdiDurationFactors, state: _State, year: int, month:
     # abatement.
     established = (state.pro == 100) | (state.pro == 0)  # NOSONAR
     abating = ~established
+    if active is not None:
+        established &= active
+        abating &= active
 
     # End of drought or wet
     spell_ended = established & (state.x3 >= -0.5) & (state.x3 <= 0.5)
@@ -574,7 +582,13 @@ def _real_months(n_months: int | None, total_months: int) -> int:
     return real
 
 
-def calculate(z_values: np.ndarray, factors: PdiDurationFactors, n_months: int | None = None) -> PdiResult:
+def calculate(
+    z_values: np.ndarray,
+    factors: PdiDurationFactors,
+    n_months: int | None = None,
+    *,
+    record_ends: np.ndarray | None = None,
+) -> PdiResult:
     """Run the ``pdi.f`` Palmer recursion over a precomputed Z-index series.
 
     The Z series is the K-factor-weighted departure computed by
@@ -590,6 +604,8 @@ def calculate(z_values: np.ndarray, factors: PdiDurationFactors, n_months: int |
             stops at the last real month and flushes there, as ``pdi.f`` does at
             ``nendmo``. The function ignores values after that month and returns NaN
             for those positions. ``None`` (the default) runs every month.
+        record_ends: Optional per-cell lengths computed by ``palmer.pdsi()``.
+            The caller replaces each cell's Z values after its record with NaN.
 
     Returns:
         The final PDSI, PHDI, and PMDI series, each shaped like ``z_values``.
@@ -613,6 +629,8 @@ def calculate(z_values: np.ndarray, factors: PdiDurationFactors, n_months: int |
         )
     state = _initialize_state(z)
     for t in range(real_months):
-        _advance_month(factors, state, t // 12, t % 12)
+        active = t < record_ends if record_ends is not None else None
+        _advance_month(factors, state, t // 12, t % 12, active)
+    # The history of a cell stops at its last month, so these flushes can run together.
     _finish_up(state)
     return PdiResult(pdsi=state.pdsi, phdi=state.phdi, pmdi=state.wplm)

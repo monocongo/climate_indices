@@ -3014,6 +3014,50 @@ def _pdsi_numpy_passthrough(
     )
 
 
+def _infer_pdsi_temporal_parameters(
+    precips: xr.DataArray,
+    pet: xr.DataArray,
+    awc: float | np.ndarray | xr.DataArray,
+    provided: dict[str, Any],
+    time_dim: str,
+) -> dict[str, Any]:
+    """Default to the last complete year when the calibration can cover it."""
+    inferred = _infer_temporal_parameters(palmer.pdsi, precips, [precips, pet, awc], provided, time_dim)
+    if "calibration_year_final" in inferred and int(precips[time_dim].dt.month[-1]) != 12:
+        initial = {**inferred, **provided}["calibration_year_initial"]
+        if inferred["calibration_year_final"] > initial:
+            inferred["calibration_year_final"] -= 1
+    return inferred
+
+
+def _pdsi_kernel_for(
+    precips: xr.DataArray,
+    pet: xr.DataArray,
+    awc: float | np.ndarray | xr.DataArray,
+    spatial_kernel: bool,
+) -> Callable[..., tuple[np.ndarray, ...]]:
+    """Use singleton blocks to isolate failures on the per-cell path."""
+    has_cells = precips.ndim > 1 or pet.ndim > 1 or (isinstance(awc, xr.DataArray) and awc.ndim > 0)
+    singleton_block = has_cells and not spatial_kernel
+
+    def kernel(
+        precips_series: np.ndarray, pet_series: np.ndarray, awc_value: Any, **kwargs: Any
+    ) -> tuple[np.ndarray, ...]:
+        if singleton_block:
+            result = palmer.pdsi(
+                precips_series[:, None, None],
+                pet_series[:, None, None],
+                awc_value,
+                spatial_time_major=True,
+                **kwargs,
+            )
+            return tuple(np.asarray(output, dtype=float).reshape(-1) for output in result[:4])
+        result = palmer.pdsi(precips_series, pet_series, awc_value, **kwargs)
+        return tuple(np.asarray(output, dtype=float) for output in result[:4])
+
+    return kernel
+
+
 def palmer_pdsi(
     precips: np.ndarray | xr.DataArray,
     pet: np.ndarray | xr.DataArray,
@@ -3078,12 +3122,21 @@ def palmer_pdsi(
             ``precips`` and ``pet`` share a cell dimension with differing coordinates.
         ValueError: If a NumPy call omits a required temporal parameter, or the
             precipitation and PET shapes are incompatible.
+        ConvergenceError: If a single series cannot be calibrated, or a
+            duration-factor override is unusable (see ``palmer.pdsi()``). An
+            xarray input with a cell dimension on any input does not raise for
+            calibration: the affected cells are NaN.
 
     Notes:
-        - A 3-D or higher xarray input reaches ``palmer.pdsi()`` as one
-          ``(time, *cells)`` block per Dask spatial block, so the recursion runs once
-          per block rather than once per grid cell. A 1-D or 2-D input keeps the
-          per-cell path.
+        - A 3-D or higher xarray input normally reaches ``palmer.pdsi()`` as one
+          ``(time, *cells)`` block per Dask spatial block. A 1-D or 2-D input keeps
+          the per-cell path.
+        - If the caller omits ``calibration_year_final``, calibration ends at the
+          last December in the record. If the requested period has no December,
+          it cannot be calibrated.
+        - ``MissingDataWarning`` counts are per ``palmer.pdsi()`` call, which for
+          a ``(time, station)`` input is one station, and Python's default filter
+          shows a repeated message once.
         - Dask-backed DataArrays stay lazy, but the time dimension must be a single
           chunk (the recursion spans the whole record); see
           :doc:`xarray_migration`.
@@ -3166,8 +3219,7 @@ def palmer_pdsi(
         }.items()
         if value is not None
     }
-    inferred = _infer_temporal_parameters(palmer.pdsi, precips_da, [precips_da, pet_da, awc], provided, time_dim)
-    provided.update(inferred)
+    provided.update(_infer_pdsi_temporal_parameters(precips_da, pet_da, awc, provided, time_dim))
 
     # normalize AWC for xr.apply_ufunc: a gridded input reaches palmer.pdsi as one
     # time-major block with the AWC per cell, instead of one call per grid cell. An
@@ -3180,16 +3232,7 @@ def palmer_pdsi(
             "precipitation's cell dimensions."
         )
     use_spatial_kernel, awc_for_ufunc = _spatial_kernel_cell_param(precips_da, awc, time_dim)
-
-    def _pdsi_kernel(
-        precips_series: np.ndarray,
-        pet_series: np.ndarray,
-        awc_value: Any,
-        **kwargs: Any,
-    ) -> tuple[np.ndarray, ...]:
-        """Return the four Palmer arrays without the fitted-parameter dictionary."""
-        result = palmer.pdsi(precips_series, pet_series, awc_value, **kwargs)
-        return tuple(np.asarray(output, dtype=float) for output in result[:4])
+    kernel = _pdsi_kernel_for(precips_da, pet_da, awc, use_spatial_kernel)
 
     calculation_metadata: dict[str, Any] = {
         key: provided[key]
@@ -3209,7 +3252,7 @@ def palmer_pdsi(
 
     display_names = {"pdsi": "PDSI", "phdi": "PHDI", "pmdi": "PMDI", "z_index": "Z-Index"}
     arrays = _spatial_kernel_call(
-        _pdsi_kernel,
+        kernel,
         (precips_da, pet_da),
         cell_params=(awc_for_ufunc,),
         kernel_kwargs=provided,

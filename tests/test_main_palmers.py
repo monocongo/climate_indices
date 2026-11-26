@@ -412,10 +412,10 @@ class TestPalmersWorker:
         calibration_year_end_palmer,
         palmer_awcs,
     ):
-        """A calibration gap that defeats the duration-factor fit must not abort the run.
+        """A calibration gap must not abort the run.
 
-        `pdsi()` tolerates the gap and still computes, so scPDSI is left missing for
-        that location (the all-missing contract) while the other outputs survive.
+        Neither `pdsi()` nor `scpdsi()` can calibrate that location, so all of its
+        outputs are left missing (the all-missing contract) while others survive.
         """
         precips, pet = division_precip_pet
         awc = palmer_awcs[_DIVISION_ID]
@@ -427,9 +427,12 @@ class TestPalmersWorker:
             "calibration_end_year": calibration_year_end_palmer,
         }
 
-        # divisions path: the single location's scPDSI is missing, its PDSI is not
-        pdsi, _phdi, _pmdi, _zindex, scpdsi = cli_main._palmers(gappy_precips, pet, awc, parameters)
-        assert np.isfinite(pdsi).any()
+        # divisions path: the single location's outputs are all missing
+        pdsi, phdi, pmdi, zindex, scpdsi = cli_main._palmers(gappy_precips, pet, awc, parameters)
+        assert np.isnan(pdsi).all()
+        assert np.isnan(phdi).all()
+        assert np.isnan(pmdi).all()
+        assert np.isnan(zindex).all()
         assert np.isnan(scpdsi).all()
 
         # grid path: only the gap-bearing cell is missing, the run still completes
@@ -437,12 +440,44 @@ class TestPalmersWorker:
         block[:, 0, 0] = gappy_precips
         block[:, 0, 1] = precips
         pet_block = np.broadcast_to(pet[:, None, None], block.shape).copy()
-        grid_pdsi, _grid_phdi, _grid_pmdi, _grid_zindex, grid_scpdsi = cli_main._palmers(
+        grid_pdsi, grid_phdi, grid_pmdi, grid_zindex, grid_scpdsi = cli_main._palmers(
             block,
             pet_block,
             awc,
             {**parameters, "spatial_time_major": True},
         )
-        assert np.isfinite(grid_pdsi).all()
+        assert np.isnan(grid_pdsi[:, 0, 0]).all()
+        assert np.isnan(grid_phdi[:, 0, 0]).all()
+        assert np.isnan(grid_pmdi[:, 0, 0]).all()
+        assert np.isnan(grid_zindex[:, 0, 0]).all()
+        assert np.isfinite(grid_pdsi[:, 0, 1]).all()
         assert np.isnan(grid_scpdsi[:, 0, 0]).all()
         assert np.isfinite(grid_scpdsi[:, 0, 1]).all()
+
+    def test_pdsi_calibration_failure_leaves_scpdsi_missing(
+        self,
+        division_precip_pet,
+        data_year_start_monthly,
+        calibration_year_start_palmer,
+        calibration_year_end_palmer,
+        palmer_awcs,
+        monkeypatch,
+    ):
+        """The all-missing contract holds even if scPDSI could calibrate alone.
+
+        scPDSI calibrates independently (ADR-0011), so force the divergent case:
+        its computation would succeed, but a location whose standard PDSI
+        calibration fails is left missing in every output.
+        """
+        precips, pet = division_precip_pet
+        awc = palmer_awcs[_DIVISION_ID]
+        gappy_precips = precips.copy()
+        gappy_precips[12 * (calibration_year_start_palmer - data_year_start_monthly)] = np.nan
+        parameters = {
+            "data_start_year": data_year_start_monthly,
+            "calibration_start_year": calibration_year_start_palmer,
+            "calibration_end_year": calibration_year_end_palmer,
+        }
+        monkeypatch.setattr(palmer, "scpdsi", lambda *args: (np.zeros_like(args[0]),))
+        outputs = cli_main._palmers(gappy_precips, pet, awc, parameters)
+        assert all(np.isnan(output).all() for output in outputs)

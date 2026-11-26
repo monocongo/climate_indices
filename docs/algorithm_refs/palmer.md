@@ -63,6 +63,34 @@ pins the parameter and `pdsi()` Z-Index statements for every series it draws, an
 the open-spell block shape of PDSI for one seeded draw that reaches such a spell
 (issue #544). It does not pin PHDI or PMDI.
 
+### Missing data
+
+NCEI's `pdi.f` has no rule for gaps: it requires temperature and precipitation
+that are serially complete over the analysis period, and its only option is to
+fill a missing month with a constant monthly value before the computation.
+`pdsi()` fills nothing.
+
+- The first missing precipitation or PET month ends a location's record. The soil
+  moisture state after it is unknown, so no later month is computable. When the
+  month falls after the calibration period, earlier months match a `pdsi()` run on
+  the record that ends there, and all four outputs are NaN from it onward.
+- A location cannot be calibrated when a month is missing before the calibration
+  period ends, or when a K factor is not finite (for example, a calendar month
+  whose mean absolute departure is zero). A single series raises
+  `ConvergenceError`; in a spatial block that cell is NaN. An entirely missing
+  precipitation series is the exception: `pdsi()` returns all-NaN outputs and
+  `None` parameters without raising.
+- A calibration period that ends in a partial final year cannot be calibrated.
+  The xarray entry point therefore infers a final calibration year whose December
+  is in the record. A record that contains no complete calendar year has no such
+  year and still cannot be calibrated.
+- A spatial block issues one `MissingDataWarning` per call with two counts: cells
+  that cannot be calibrated, excluding cells with no precipitation at all, and
+  cells cut short after the calibration period. A single series cut short does not
+  warn.
+
+`scpdsi()` is not covered by the end-of-record rule.
+
 ### Exact-zero comparisons
 
 Both recursions branch on exact comparisons against zero, and every float

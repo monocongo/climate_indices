@@ -1225,15 +1225,28 @@ def _palmers(
     # worker passes its block with spatial_time_major=True; the divisions worker's
     # per-location call leaves it unset and gets the legacy 1-D reading.
     spatial_time_major = parameters.get("spatial_time_major", False)
-    computed_pdsi, computed_phdi, computed_pmdi, computed_zindex, _fitting_params = palmer.pdsi(
-        precips,
-        pet,
-        awc,
-        parameters["data_start_year"],
-        parameters["calibration_start_year"],
-        parameters["calibration_end_year"],
-        spatial_time_major=spatial_time_major,
-    )
+    try:
+        computed_pdsi, computed_phdi, computed_pmdi, computed_zindex, _fitting_params = palmer.pdsi(
+            precips,
+            pet,
+            awc,
+            parameters["data_start_year"],
+            parameters["calibration_start_year"],
+            parameters["calibration_end_year"],
+            spatial_time_major=spatial_time_major,
+        )
+    except ConvergenceError as error:
+        # a block marks its own uncalibratable cells; a single location raises
+        if spatial_time_major:
+            raise
+        _logger.warning("PDSI left missing for one location: %s", error)
+        computed_pdsi, computed_phdi, computed_pmdi, computed_zindex = (
+            np.full(np.shape(precips), np.nan) for _ in range(4)
+        )
+        # the all-missing contract covers scPDSI too, even though it calibrates
+        # independently: a location that cannot calibrate is left fully missing
+        computed_scpdsi = np.full(np.shape(precips), np.nan)
+        return computed_pdsi, computed_phdi, computed_pmdi, computed_zindex, computed_scpdsi
     computed_scpdsi = _palmers_scpdsi(precips, pet, awc, parameters, spatial_time_major)
     return computed_pdsi, computed_phdi, computed_pmdi, computed_zindex, computed_scpdsi
 

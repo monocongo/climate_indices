@@ -1,6 +1,7 @@
 """Compute palmer drought indices"""
 
 import time
+import warnings
 from collections.abc import Callable
 from dataclasses import dataclass
 from types import ModuleType
@@ -15,7 +16,7 @@ from climate_indices.drought import _palmer_pdi, _palmer_wells, self_calibration
 from climate_indices.drought._palmer_common import _py_max, _py_min
 from climate_indices.drought._palmer_duration import DurationFactors
 from climate_indices.drought._palmer_pdi import PdiDurationFactors
-from climate_indices.exceptions import ConvergenceError
+from climate_indices.exceptions import ConvergenceError, MissingDataWarning
 from climate_indices.logging_config import get_logger
 
 _logger = get_logger(__name__)
@@ -857,7 +858,6 @@ def _prepare_palmer_data(
     _calc_water_balances(prepared)
     if prepared.calibrate:
         _calc_cafec_coefficients(prepared)
-    _calc_zindex_factors(prepared)
     return prepared, original_length
 
 
@@ -966,12 +966,87 @@ def _scpdsi_duration_factors(calibration_z: np.ndarray, sign: int) -> tuple[floa
     return m, b
 
 
+def _record_ends(prepared: _PalmerPrepared, z: np.ndarray, original_length: int) -> np.ndarray:
+    """Each cell's record length: its first non-finite Z, else ``original_length``.
+
+    A missing month ends a cell's record. The water balance does not carry NaN
+    forward (its ``np.where`` branches drain the soil instead), so nothing from
+    that month on is computable. ``pdi.f`` defines no gap rule: it requires
+    serially complete input. A cell whose record ends before the calibration
+    period does cannot be calibrated and gets length 0: a single location
+    raises, a spatial block leaves that cell missing and warns.
+    """
+    unusable = ~np.isfinite(z.reshape(-1, z.shape[-1])[:original_length])
+    ends = np.where(unusable.any(axis=0), unusable.argmax(axis=0), original_length)
+    calibration_end = (prepared.calibration_year_final_idx + 1) * 12
+    # K is checked directly: an infinite factor can leave some months' Z finite
+    # (a calibration period that outruns the record leaves K non-finite through the NaN padding)
+    uncalibrated = ~np.isfinite(prepared.ak).all(axis=0) | (ends < min(calibration_end, original_length))
+    ends = np.where(uncalibrated, 0, ends)
+    no_data = np.isnan(prepared.precips).all(axis=(0, 1))
+
+    if not prepared.cell_shape:
+        if uncalibrated[0]:
+            # real months only: the calendar padding of a partial last year is NaN too
+            missing = (np.isnan(prepared.precips) | np.isnan(prepared.pet)).reshape(-1)[:original_length]
+            missing = missing[:calibration_end]
+            if missing.any():
+                reason = (
+                    f"month index {int(missing.argmax())} is missing, and calibration needs complete "
+                    f"data from the start of the record through month index {calibration_end - 1}"
+                )
+            elif calibration_end > original_length:
+                reason = (
+                    f"the final calibration year is incomplete (the record ends at month index "
+                    f"{original_length - 1}); end the calibration period at the last complete year"
+                )
+            else:
+                reason = (
+                    "the K factors are not finite (for example, a calendar month with zero "
+                    "departure across the calibration period)"
+                )
+            raise ConvergenceError(f"PDSI calibration failed: {reason}", algorithm="PDSI calibration")
+        return ends
+
+    failed = int(np.count_nonzero(uncalibrated & ~no_data))
+    truncated = int(np.count_nonzero((ends > 0) & (ends < original_length)))
+    if failed or truncated:
+        warnings.warn(
+            f"pdsi: {failed} cell(s) cannot be calibrated and are all NaN; {truncated} cell(s) "
+            "are NaN from their first missing month onward",
+            MissingDataWarning,
+            # the caller of pdsi()
+            stacklevel=5,
+        )
+    return ends
+
+
 def _calculate_pdsi_prepared(prepared: _PalmerPrepared, original_length: int) -> _PalmerResult:
     """Complete standard PDSI after the shared Palmer preparation stages."""
-    _calc_kfactors(prepared)
+    # An uncalibratable cell can divide by zero; _record_ends reports it.
+    with np.errstate(divide="ignore", invalid="ignore"):
+        _calc_zindex_factors(prepared)
+        _calc_kfactors(prepared)
     z = _calc_raw_zindex(prepared)
     factors = PdiDurationFactors.from_fitted(prepared.wetm, prepared.wetb, prepared.drym, prepared.dryb)
-    recursion = _pdi_recursion(z, factors, n_months=original_length)
+    ends = _record_ends(prepared, z, original_length)
+    flat_z = z.reshape(-1, z.shape[-1])
+    flat_z[np.arange(flat_z.shape[0])[:, None] >= ends] = np.nan
+
+    if np.all(ends == original_length):
+        recursion = _pdi_recursion(z, factors, n_months=original_length)
+    elif np.any(ends) and _palmer_native("palmer_pdi", z) is None:
+        recursion = _palmer_pdi.calculate(z, factors, n_months=int(ends.max()), record_ends=ends)
+    else:
+        outputs = tuple(np.full(z.shape, np.nan) for _ in range(3))
+        # The native kernel takes one record length per call.
+        for end in np.unique(ends[ends > 0]):
+            cells = ends == end
+            n_years = (int(end) + 11) // 12
+            part = _pdi_recursion(np.ascontiguousarray(z[:n_years, ..., cells]), factors, n_months=int(end))
+            for output, values in zip(outputs, (part.pdsi, part.phdi, part.pmdi), strict=True):
+                output[:n_years, ..., cells] = values
+        recursion = _palmer_pdi.PdiResult(*outputs)
 
     pdsi_result = _trim_time_major(recursion.pdsi, original_length)
     phdi = _trim_time_major(recursion.phdi, original_length)
@@ -994,6 +1069,7 @@ def _calculate_pdsi_prepared(prepared: _PalmerPrepared, original_length: int) ->
 
 def _calculate_scpdsi_prepared(prepared: _PalmerPrepared, original_length: int) -> _PalmerResult:
     """Complete self-calibrating PDSI after shared Palmer preparation."""
+    _calc_zindex_factors(prepared)
     _calc_scpdsi_k_factors(prepared)
     z = _calc_raw_zindex(prepared)
     z_values = z.reshape(-1)
@@ -1041,38 +1117,6 @@ def _fill_masked_with_nan(values: np.ndarray) -> np.ndarray:
     if not np.ma.isMaskedArray(values):
         return values
     return np.ma.filled(values.astype(float), np.nan)
-
-
-def _mask_fully_missing_cells(precips: np.ndarray, result: _PalmerResult) -> _PalmerResult:
-    """
-    NaN out any cell whose entire time series is missing, in a spatial block.
-
-    A standalone call on an all-missing series takes the ``all_missing``
-    shortcut above and returns NaN outputs directly. Inside a block that is
-    NOT entirely missing, that shortcut never fires, so a fully-missing cell
-    instead runs the recursion like any other: Python's ``max(0, ...)``/
-    ``min(0.0, ...)`` calls in ``_palmer_pdi._statement_170``/``_statement_180``
-    (replicated exactly by :func:`_py_max`/:func:`_py_min` for bit-for-bit
-    equivalence) silently
-    turn a NaN Z-index into 0 rather than propagating it, so an unmasked
-    fully-missing cell would read back as a misleadingly ordinary near-zero
-    PDSI instead of missing data -- the wrong answer for a real grid's
-    ocean or no-data cells. This reproduces the standalone shortcut's NaN
-    result for exactly those cells, leaving every other cell untouched.
-
-    :param precips: the original, un-reshaped spatial block, (time, *cells)
-    :param result: the block result to mask
-    """
-    fully_missing = np.all(np.isnan(precips), axis=0)
-    if not np.any(fully_missing):
-        return result
-    return _PalmerResult(
-        np.where(fully_missing, np.nan, result.pdsi),
-        np.where(fully_missing, np.nan, result.phdi),
-        np.where(fully_missing, np.nan, result.pmdi),
-        np.where(fully_missing, np.nan, result.zindex),
-        result.params,
-    )
 
 
 def _palmer_calculation(
@@ -1165,8 +1209,6 @@ def _palmer_calculation(
                 prepared.drym = duration_factors.drym
                 prepared.dryb = duration_factors.dryb
         result = calculate_prepared(prepared, original_length)
-        if precips.ndim > 2:
-            result = _mask_fully_missing_cells(precips, result)
         duration_ms = (time.perf_counter() - t0) * 1000.0
         log.info(
             "calculation_completed",
@@ -1260,9 +1302,24 @@ def pdsi(
             if only some of the ``wetm``/``wetb``/``drym``/``dryb`` override keys
             were supplied or a supplied value is not a finite scalar.
         ConvergenceError: If a supplied duration-factor override does not
-            yield contracting recurrence coefficients (never raised for
+            yield contracting recurrence coefficients, or if a single location
+            cannot be calibrated: a month is missing before the calibration
+            period ends, or a K factor is not finite (never raised for
             all-missing input, which returns the NaN arrays and ``None``
             parameters described above).
+
+    Missing data:
+        The first missing precipitation or PET month ends a location's record.
+        If it falls after the calibration period, the months before it are
+        computed as for a record that ends there, and all four outputs are NaN
+        from it onward. A spatial block does not raise for a location that
+        cannot be calibrated: that cell is NaN in all four outputs and a
+        :class:`~climate_indices.exceptions.MissingDataWarning` gives two
+        counts: cells that cannot be calibrated (excluding cells with no
+        precipitation at all) and cells cut short after the calibration period.
+        The counts are per call, and Python's default warning filter shows a
+        repeated message once. A single series cut short does not warn. A
+        calibration period that ends in a partial final year cannot be calibrated.
     """
 
     # _palmer_calculation emits calculation_started, calculation_completed,
