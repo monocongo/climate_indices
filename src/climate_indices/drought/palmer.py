@@ -981,17 +981,25 @@ def _record_ends(prepared: _PalmerPrepared, z: np.ndarray, original_length: int)
     ends = np.where(unusable.any(axis=0), unusable.argmax(axis=0), original_length)
     calibration_end = (prepared.calibration_year_final_idx + 1) * 12
     # K is checked directly: an infinite factor can leave some months' Z finite
+    # (a calibration period that outruns the record leaves K non-finite through the NaN padding)
     uncalibrated = ~np.isfinite(prepared.ak).all(axis=0) | (ends < min(calibration_end, original_length))
     ends = np.where(uncalibrated, 0, ends)
     no_data = np.isnan(prepared.precips).all(axis=(0, 1))
 
     if not prepared.cell_shape:
         if uncalibrated[0]:
-            missing = (np.isnan(prepared.precips) | np.isnan(prepared.pet)).reshape(-1)[:calibration_end]
+            # real months only: the calendar padding of a partial last year is NaN too
+            missing = (np.isnan(prepared.precips) | np.isnan(prepared.pet)).reshape(-1)[:original_length]
+            missing = missing[:calibration_end]
             if missing.any():
                 reason = (
                     f"month index {int(missing.argmax())} is missing, and calibration needs complete "
                     f"data from the start of the record through month index {calibration_end - 1}"
+                )
+            elif calibration_end > original_length:
+                reason = (
+                    f"the final calibration year is incomplete (the record ends at month index "
+                    f"{original_length - 1}); end the calibration period at the last complete year"
                 )
             else:
                 reason = (
@@ -1302,8 +1310,12 @@ def pdsi(
         computed as for a record that ends there, and all four outputs are NaN
         from it onward. A spatial block does not raise for a location that
         cannot be calibrated: that cell is NaN in all four outputs and a
-        :class:`~climate_indices.exceptions.MissingDataWarning` counts the
-        affected cells (cells with no precipitation at all are not counted).
+        :class:`~climate_indices.exceptions.MissingDataWarning` gives two
+        counts: cells that cannot be calibrated (excluding cells with no
+        precipitation at all) and cells cut short after the calibration period.
+        The counts are per call, and Python's default warning filter shows a
+        repeated message once. A single series cut short does not warn. A
+        calibration period that ends in a partial final year cannot be calibrated.
     """
 
     # _palmer_calculation emits calculation_started, calculation_completed,

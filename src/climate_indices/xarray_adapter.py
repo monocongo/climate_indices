@@ -3078,15 +3078,21 @@ def palmer_pdsi(
             ``precips`` and ``pet`` share a cell dimension with differing coordinates.
         ValueError: If a NumPy call omits a required temporal parameter, or the
             precipitation and PET shapes are incompatible.
-        ConvergenceError: If a single series cannot be calibrated (see
-            ``palmer.pdsi()``). An xarray input with cell dimensions does not
-            raise for this: the affected cells are NaN.
+        ConvergenceError: If a single series cannot be calibrated, or a
+            duration-factor override is unusable (see ``palmer.pdsi()``). An
+            xarray input with a cell dimension on any input does not raise for
+            calibration: the affected cells are NaN.
 
     Notes:
         - A 3-D or higher xarray input reaches ``palmer.pdsi()`` as one
           ``(time, *cells)`` block per Dask spatial block, so the recursion runs once
           per block rather than once per grid cell. A 1-D or 2-D input keeps the
           per-cell path.
+        - An inferred ``calibration_year_final`` is the last year whose December
+          is in the record.
+        - ``MissingDataWarning`` counts are per ``palmer.pdsi()`` call, which for
+          a ``(time, station)`` input is one station, and Python's default filter
+          shows a repeated message once.
         - Dask-backed DataArrays stay lazy, but the time dimension must be a single
           chunk (the recursion spans the whole record); see
           :doc:`xarray_migration`.
@@ -3170,6 +3176,12 @@ def palmer_pdsi(
         if value is not None
     }
     inferred = _infer_temporal_parameters(palmer.pdsi, precips_da, [precips_da, pet_da, awc], provided, time_dim)
+    # pdsi() cannot calibrate on a partial year, so the default ends at the last December
+    if "calibration_year_final" in inferred and int(precips_da[time_dim].dt.month[-1]) != 12:
+        # with no complete year to end on, pdsi() reports the incomplete one itself
+        initial = {**inferred, **provided}["calibration_year_initial"]
+        if inferred["calibration_year_final"] > initial:
+            inferred["calibration_year_final"] -= 1
     provided.update(inferred)
 
     # normalize AWC for xr.apply_ufunc: a gridded input reaches palmer.pdsi as one
@@ -3183,6 +3195,7 @@ def palmer_pdsi(
             "precipitation's cell dimensions."
         )
     use_spatial_kernel, awc_for_ufunc = _spatial_kernel_cell_param(precips_da, awc, time_dim)
+    has_cells = precips_da.ndim > 1 or pet_da.ndim > 1 or (isinstance(awc, xr.DataArray) and awc.ndim > 0)
 
     def _pdsi_kernel(
         precips_series: np.ndarray,
@@ -3191,7 +3204,7 @@ def palmer_pdsi(
         **kwargs: Any,
     ) -> tuple[np.ndarray, ...]:
         """Return the four Palmer arrays without the fitted-parameter dictionary."""
-        if not use_spatial_kernel and precips_da.ndim > 1:
+        if not use_spatial_kernel and has_cells:
             # one location of many: as a one-cell block, a location pdsi() cannot
             # calibrate comes back NaN instead of raising and aborting the others
             result = palmer.pdsi(

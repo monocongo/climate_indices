@@ -77,8 +77,14 @@ fill a missing month with a constant monthly value before the computation.
 - A location cannot be calibrated when a month is missing before the calibration
   period ends, or when a K factor is not finite (for example, a calendar month
   whose mean absolute departure is zero). A single series raises
-  `ConvergenceError`; in a spatial block that cell is NaN and a
-  `MissingDataWarning` counts it.
+  `ConvergenceError`; in a spatial block that cell is NaN.
+- A calibration period that ends in a partial final year cannot be calibrated.
+  The xarray entry point therefore infers a final calibration year whose December
+  is in the record.
+- A spatial block issues one `MissingDataWarning` per call with two counts: cells
+  that cannot be calibrated, excluding cells with no precipitation at all, and
+  cells cut short after the calibration period. A single series cut short does not
+  warn.
 
 `scpdsi()` is not covered by the end-of-record rule.
 

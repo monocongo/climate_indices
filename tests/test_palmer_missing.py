@@ -10,6 +10,7 @@ import xarray as xr
 import climate_indices
 from climate_indices.drought import palmer
 from climate_indices.exceptions import ConvergenceError, MissingDataWarning
+from tests.conftest import NativeRecorder, import_native
 
 _N_MONTHS = 480
 _AWC = 6.0
@@ -17,12 +18,18 @@ _YEARS = (1981, 1981, 2000)  # data start, calibration initial, calibration fina
 _CALIBRATION_END = 20 * 12  # first month after the calibration period
 
 
-@pytest.fixture(params=["default", "python"], autouse=True)
+@pytest.fixture(params=["native", "python"], autouse=True)
 def backend(request, monkeypatch):
-    """Run every test on the installed backend and on the pure-Python path."""
+    """Run every test on the Rust kernels and on the pure-Python path."""
     if request.param == "python":
         monkeypatch.setattr(palmer, "_native", None)
-    return request.param
+        yield None
+        return
+    recorder = NativeRecorder(import_native())
+    monkeypatch.setattr(palmer, "_native", recorder)
+    # the kernels run only when no NumPy floating-point reporting is requested
+    with np.errstate(all="ignore"):
+        yield recorder
 
 
 @pytest.fixture
@@ -58,12 +65,14 @@ def test_zero_departure_record_raises_for_a_single_series(series):
 
 
 @pytest.mark.parametrize("month", range(_CALIBRATION_END, _N_MONTHS))
-def test_gap_after_calibration_ends_the_record(series, month):
+def test_gap_after_calibration_ends_the_record(backend, series, month):
     precips, pet = series
 
     gapped = palmer.pdsi(_with_gap(precips, month), pet, _AWC, *_YEARS)[:4]
     truncated = palmer.pdsi(precips[:month], pet[:month], _AWC, *_YEARS)[:4]
 
+    if backend is not None:
+        assert "palmer_pdi" in backend.calls
     for values, expected in zip(gapped, truncated, strict=True):
         np.testing.assert_array_equal(values[:month], expected)
         assert np.isfinite(values[:month]).all()
@@ -132,3 +141,47 @@ def test_xarray_station_dimension_isolates_uncomputable_stations(series):
     np.testing.assert_array_equal(result["pdsi"].isel(station=0).values, expected)
     for name in result.data_vars:
         assert np.isnan(result[name].isel(station=1).values).all()
+
+
+def test_partial_final_calibration_year_is_named_as_the_reason(series):
+    """No month is missing from the data: the calibration period outruns the record."""
+    precips, pet = series
+
+    with pytest.raises(ConvergenceError, match="final calibration year is incomplete.*month index 234"):
+        palmer.pdsi(precips[:235], pet[:235], _AWC, *_YEARS)
+
+
+def _monthly(values: np.ndarray, *dims: str) -> xr.DataArray:
+    coords = {"time": pd.date_range("1981-01-01", periods=values.shape[0], freq="MS")}
+    return xr.DataArray(values, coords=coords, dims=("time", *dims), attrs={"units": "inches"})
+
+
+def test_xarray_default_calibration_ends_at_the_last_complete_year(series):
+    precips, pet = series
+
+    result = climate_indices.pdsi(_monthly(precips[:475]), _monthly(pet[:475]), _AWC)
+
+    expected = palmer.pdsi(precips[:475], pet[:475], _AWC, 1981, 1981, 2019)[0]
+    np.testing.assert_array_equal(result["pdsi"].values, expected)
+    assert np.isfinite(expected).all()
+
+
+def test_xarray_cell_dimension_only_on_pet_isolates_uncomputable_cells(series):
+    precips, pet = series
+    pets = _monthly(np.stack([pet, _with_gap(pet, 200)], axis=1), "station")
+
+    with pytest.warns(MissingDataWarning):
+        result = climate_indices.pdsi(
+            _monthly(precips), pets, _AWC, calibration_year_initial=1981, calibration_year_final=2000
+        )
+
+    values = result["pdsi"].transpose("time", "station").values
+    np.testing.assert_array_equal(values[:, 0], palmer.pdsi(precips, pet, _AWC, *_YEARS)[0])
+    assert np.isnan(values[:, 1]).all()
+
+
+def test_xarray_record_without_a_complete_year_names_the_incomplete_year(series):
+    precips, pet = series
+
+    with pytest.raises(ConvergenceError, match="final calibration year is incomplete"):
+        climate_indices.pdsi(_monthly(precips[:6]), _monthly(pet[:6]), _AWC)

@@ -110,6 +110,11 @@ sum across workers stays proportional to the grid).
 
 ## A block cell that is entirely missing
 
+*Superseded for `pdsi()` by #1710: the separate post-pass is gone. The first missing
+or uncomputable month now ends each cell's record, which leaves a fully missing cell
+NaN in all four outputs; see {doc}`../algorithm_refs/palmer`. The text below records
+the earlier behaviour.*
+
 A standalone call on an all-missing series short-circuits before the recursion runs and
 returns NaN for all four outputs. Inside a block that is not entirely missing, that
 shortcut never fires for one merely-all-missing cell: the recursion runs, and

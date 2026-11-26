@@ -1235,10 +1235,11 @@ def _palmers(
             parameters["calibration_end_year"],
             spatial_time_major=spatial_time_major,
         )
-    except ConvergenceError:
+    except ConvergenceError as error:
         # a block marks its own uncalibratable cells; a single location raises
         if spatial_time_major:
             raise
+        _logger.warning("PDSI left missing for one location: %s", error)
         computed_pdsi, computed_phdi, computed_pmdi, computed_zindex = (
             np.full(np.shape(precips), np.nan) for _ in range(4)
         )
