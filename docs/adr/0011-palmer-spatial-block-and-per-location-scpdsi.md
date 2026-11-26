@@ -14,6 +14,12 @@ across all four recursions (`drought/palmer.py`, `_calculate_scpdsi_prepared`), 
 fits are one pair, not four. The decision — scPDSI stays on the per-location
 path — is unchanged.
 
+Amended by #1710: the "A block cell that is entirely missing" post-pass below is
+superseded for `pdsi()`. The first missing or uncomputable month now ends each
+cell's record, so a fully missing cell is NaN in all four outputs without a
+separate post-pass. The spatial-block and per-location scPDSI contracts are
+unchanged.
+
 ADR-0001 named Palmer the documented exception to the modern xarray API and required
 a separate, explicit decision before it could grow one: "Adding xarray support for
 Palmer indices requires a separate, explicit architecture decision rather than
