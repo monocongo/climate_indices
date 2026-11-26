@@ -1243,6 +1243,10 @@ def _palmers(
         computed_pdsi, computed_phdi, computed_pmdi, computed_zindex = (
             np.full(np.shape(precips), np.nan) for _ in range(4)
         )
+        # the all-missing contract covers scPDSI too, even though it calibrates
+        # independently: a location that cannot calibrate is left fully missing
+        computed_scpdsi = np.full(np.shape(precips), np.nan)
+        return computed_pdsi, computed_phdi, computed_pmdi, computed_zindex, computed_scpdsi
     computed_scpdsi = _palmers_scpdsi(precips, pet, awc, parameters, spatial_time_major)
     return computed_pdsi, computed_phdi, computed_pmdi, computed_zindex, computed_scpdsi
 
