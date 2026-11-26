@@ -21,12 +21,7 @@ from hypothesis.extra import numpy as npst
 
 from climate_indices import compute
 from climate_indices.drought import eto, indices, palmer
-from climate_indices.exceptions import (
-    ConvergenceError,
-    GoodnessOfFitWarning,
-    MissingDataWarning,
-    ShortCalibrationWarning,
-)
+from climate_indices.exceptions import GoodnessOfFitWarning, MissingDataWarning, ShortCalibrationWarning
 
 
 # disable logging output during hypothesis test runs to reduce noise
@@ -431,16 +426,6 @@ def test_pet_thornthwaite_increases_with_temperature(temp_base: np.ndarray) -> N
 
 # ============================================================================
 # Group C: Symmetry Tests
-def _pdsi_or_reject(*args, **kwargs):
-    """``palmer.pdsi()``, discarding a draw it cannot calibrate (e.g. identical years)."""
-    try:
-        return palmer.pdsi(*args, **kwargs)
-    except ConvergenceError as error:
-        if error.algorithm != "PDSI calibration":
-            raise
-        assume(False)
-
-
 # ============================================================================
 
 
@@ -512,105 +497,46 @@ def test_spi_output_shape_matches_input(precip: np.ndarray, scale: int) -> None:
 # ============================================================================
 
 
-@pytest.mark.slow
-@given(
-    precip=monthly_precipitation_array(num_years=10),  # use fewer years for slow PDSI
-    pet_array=monthly_precipitation_array(num_years=10),
-    awc=st.floats(min_value=1.0, max_value=10.0, allow_nan=False, allow_infinity=False),
-)
-# [-30, 30] is an empirical bound, not an invariant of the algorithm: the strategy
-# draws precipitation and PET independently over 0-500 mm, so it can pose physically
-# impossible climates (0.125 mm of rain against 220 mm of PET every month) whose
-# moisture anomalies drive |Z| past 60 and PDSI past the bound. Runs are reproducible
-# because conftest derandomizes by default; the bound itself and the over-broad
-# strategy still want a dedicated fix. Verified against main: pdsi() output is
-# unchanged by the scPDSI refactor, so this is not a regression.
-@settings(max_examples=5, deadline=None, suppress_health_check=[HealthCheck.too_slow])
-def test_pdsi_bounded_range(precip: np.ndarray, pet_array: np.ndarray, awc: float) -> None:
-    """Verify PDSI falls within expected range [-30, 30].
-
-    Property: Palmer Drought Severity Index typically ranges from
-    approximately -10 (extreme drought) to +10 (extreme wetness).
-    With Hypothesis-generated edge-case data (e.g., all-zero precip,
-    constant PET), values can exceed the empirical [-10, 10] range.
-    Use [-30, 30] as conservative bounds that accommodate extreme inputs
-    while still catching algorithmic errors.
-    """
-    # ensure arrays are same length
-    min_length = min(len(precip), len(pet_array))
-    precip = precip[:min_length]
-    pet_array = pet_array[:min_length]
-
-    # filter degenerate inputs where both arrays are near-zero
-    # (produces meaningless calibration coefficients)
-    assume(np.sum(precip) > 1.0 or np.sum(pet_array) > 1.0)
-
-    # pdsi expects inches - convert from mm if needed (assume input is mm, divide by 25.4)
-    precip_inches = precip / 25.4
-    pet_inches = pet_array / 25.4
-
-    # suppress expected warnings
-    with warnings.catch_warnings():
-        warnings.filterwarnings("ignore", category=RuntimeWarning)
-
-        pdsi_values, phdi, pmdi, zindex, fitting_params = _pdsi_or_reject(
-            precip_inches,
-            pet_inches,
-            awc,
-            data_start_year=1950,
-            calibration_year_initial=1950,
-            calibration_year_final=1950 + min_length // 12 - 1,
-        )
-
-    # check non-NaN values are within expected range
-    valid_values = pdsi_values[~np.isnan(pdsi_values)]
-    if len(valid_values) > 0:
-        # filter out infinite values that may occur with edge-case data
-        finite_values = valid_values[np.isfinite(valid_values)]
-        if len(finite_values) > 0:
-            assert np.all(finite_values >= -30.0), "PDSI values below expected minimum -30"
-            assert np.all(finite_values <= 30.0), "PDSI values above expected maximum 30"
+@st.composite
+def _palmer_monthly_inputs(
+    draw: st.DrawFn, minimum: float = 1.0, maximum: float = 5.0
+) -> tuple[np.ndarray, np.ndarray]:
+    """Draw ten years of precipitation and PET in inches with year-to-year variation."""
+    monthly = npst.arrays(np.float64, 96, elements=st.floats(min_value=minimum, max_value=maximum))
+    precips = draw(monthly)
+    pet = draw(monthly)
+    # In these two wet years, soil stays full and every calendar month has
+    # matching water-balance terms but different precipitation departures.
+    return np.concatenate((np.repeat([6.0, 8.0], 12), precips)), np.concatenate((np.full(24, 2.0), pet))
 
 
 @pytest.mark.slow
-@given(
-    precip=monthly_precipitation_array(num_years=10),
-    pet_array=monthly_precipitation_array(num_years=10),
-    awc=st.floats(min_value=1.0, max_value=10.0, allow_nan=False, allow_infinity=False),
-)
+@given(inputs=_palmer_monthly_inputs(), awc=st.floats(min_value=1.0, max_value=10.0))
 @settings(max_examples=5, deadline=None, suppress_health_check=[HealthCheck.too_slow])
-def test_pdsi_shape_preservation(precip: np.ndarray, pet_array: np.ndarray, awc: float) -> None:
+def test_pdsi_bounded_range(inputs: tuple[np.ndarray, np.ndarray], awc: float) -> None:
+    """Verify the empirical bounds [-30, 30] for these synthetic inputs."""
+    pdsi_values, _, _, _, _ = palmer.pdsi(*inputs, awc, 1950, 1950, 1959)
+
+    assert np.isfinite(pdsi_values).all()
+    assert np.all(pdsi_values >= -30.0), "PDSI values below expected minimum -30"
+    assert np.all(pdsi_values <= 30.0), "PDSI values above expected maximum 30"
+
+
+@pytest.mark.slow
+@given(inputs=_palmer_monthly_inputs(minimum=0.0, maximum=500.0 / 25.4), awc=st.floats(min_value=1.0, max_value=10.0))
+@settings(max_examples=5, deadline=None, suppress_health_check=[HealthCheck.too_slow])
+def test_pdsi_shape_preservation(inputs: tuple[np.ndarray, np.ndarray], awc: float) -> None:
     """Verify all Palmer outputs have same shape as input time series.
 
     Property: Palmer returns a 5-tuple where the first four elements
     (PDSI, PHDI, PMDI, Z-Index) must each have the same length as the
     input precipitation/PET arrays.
     """
-    # ensure arrays are same length
-    min_length = min(len(precip), len(pet_array))
-    precip = precip[:min_length]
-    pet_array = pet_array[:min_length]
+    result = palmer.pdsi(*inputs, awc, 1950, 1950, 1959)
 
-    precip_inches = precip / 25.4
-    pet_inches = pet_array / 25.4
-
-    with warnings.catch_warnings():
-        warnings.filterwarnings("ignore", category=RuntimeWarning)
-
-        pdsi_values, phdi, pmdi, zindex, params = _pdsi_or_reject(
-            precip_inches,
-            pet_inches,
-            awc,
-            data_start_year=1950,
-            calibration_year_initial=1950,
-            calibration_year_final=1950 + min_length // 12 - 1,
-        )
-
-    # all four output arrays must have the same length as the input
-    assert pdsi_values.shape == (min_length,), f"PDSI shape {pdsi_values.shape} != input ({min_length},)"
-    assert phdi.shape == (min_length,), f"PHDI shape {phdi.shape} != input ({min_length},)"
-    assert pmdi.shape == (min_length,), f"PMDI shape {pmdi.shape} != input ({min_length},)"
-    assert zindex.shape == (min_length,), f"Z-Index shape {zindex.shape} != input ({min_length},)"
+    for name, values in zip(("PDSI", "PHDI", "PMDI", "Z-Index"), result[:4], strict=True):
+        assert values.shape == inputs[0].shape, f"{name} shape {values.shape} != input {inputs[0].shape}"
+        assert np.isfinite(values).all()
 
 
 @pytest.mark.slow
@@ -729,13 +655,9 @@ def test_pdsi_all_nan_returns_nan() -> None:
 
 
 @pytest.mark.slow
-@given(
-    precip=monthly_precipitation_array(num_years=10),
-    pet_array=monthly_precipitation_array(num_years=10),
-    awc=st.floats(min_value=1.0, max_value=10.0, allow_nan=False, allow_infinity=False),
-)
+@given(inputs=_palmer_monthly_inputs(), awc=st.floats(min_value=1.0, max_value=10.0))
 @settings(max_examples=5, deadline=None, suppress_health_check=[HealthCheck.too_slow])
-def test_pdsi_phdi_pmdi_bounded(precip: np.ndarray, pet_array: np.ndarray, awc: float) -> None:
+def test_pdsi_phdi_pmdi_bounded(inputs: tuple[np.ndarray, np.ndarray], awc: float) -> None:
     """Verify PHDI and PMDI are bounded within [-30, 30].
 
     Property: The Palmer Hydrological Drought Index and Modified Drought
@@ -743,39 +665,12 @@ def test_pdsi_phdi_pmdi_bounded(precip: np.ndarray, pet_array: np.ndarray, awc: 
     Hypothesis-generated inputs, values can exceed the empirical [-10, 10]
     range, so we use [-30, 30] as conservative bounds.
     """
-    min_length = min(len(precip), len(pet_array))
-    precip = precip[:min_length]
-    pet_array = pet_array[:min_length]
+    _, phdi, pmdi, _, _ = palmer.pdsi(*inputs, awc, 1950, 1950, 1959)
 
-    # filter degenerate inputs
-    assume(np.sum(precip) > 1.0 or np.sum(pet_array) > 1.0)
-
-    precip_inches = precip / 25.4
-    pet_inches = pet_array / 25.4
-
-    with warnings.catch_warnings():
-        warnings.filterwarnings("ignore", category=RuntimeWarning)
-
-        _, phdi, pmdi, _, _ = _pdsi_or_reject(
-            precip_inches,
-            pet_inches,
-            awc,
-            data_start_year=1950,
-            calibration_year_initial=1950,
-            calibration_year_final=1950 + min_length // 12 - 1,
-        )
-
-    # check PHDI bounds
-    finite_phdi = phdi[np.isfinite(phdi)]
-    if len(finite_phdi) > 0:
-        assert np.all(finite_phdi >= -30.0), "PHDI values below expected minimum -30"
-        assert np.all(finite_phdi <= 30.0), "PHDI values above expected maximum 30"
-
-    # check PMDI bounds
-    finite_pmdi = pmdi[np.isfinite(pmdi)]
-    if len(finite_pmdi) > 0:
-        assert np.all(finite_pmdi >= -30.0), "PMDI values below expected minimum -30"
-        assert np.all(finite_pmdi <= 30.0), "PMDI values above expected maximum 30"
+    for name, values in (("PHDI", phdi), ("PMDI", pmdi)):
+        assert np.isfinite(values).all()
+        assert np.all(values >= -30.0), f"{name} values below expected minimum -30"
+        assert np.all(values <= 30.0), f"{name} values above expected maximum 30"
 
 
 # ============================================================================
