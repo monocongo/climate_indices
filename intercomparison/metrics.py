@@ -432,14 +432,15 @@ def null_band(
 ) -> dict[str, Any]:
     """Row 12: 2.5th and 97.5th percentile limits of each C4 statistic under the null.
 
-    No band is available when ``p0`` is unknown, or when ``p0 > 0`` and the zero-handling rule
-    gives no single finite zero score.
+    No band is available when ``p0`` is unknown (``None`` or NaN), or when ``p0 > 0`` and the
+    zero-handling rule gives no single finite zero score. ``p0 = 1`` (an all-zero period) has a
+    band: every draw is the zero score.
     """
     key = {"n": n, "p0": p0, "zero_handling": zero_handling, "zero_score": zero_score}
-    if p0 is None:
+    if p0 is None or math.isnan(p0):
         return {**key, "available": False, "reason": "p0 is unknown"}
-    if not 0 <= p0 < 1:
-        raise ValueError(f"p0 must be in [0, 1), got {p0}")
+    if not 0 <= p0 <= 1:
+        raise ValueError(f"p0 must be in [0, 1], got {p0}")
     if p0 > 0 and (zero_score is None or not math.isfinite(zero_score)):
         return {**key, "available": False, "reason": "no single finite zero score"}
     samples = null_samples(n, p0, zero_score, seed=seed, draws=draws)

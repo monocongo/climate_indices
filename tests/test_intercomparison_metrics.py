@@ -343,10 +343,19 @@ def test_null_samples_with_a_zero_mass_follow_the_protocol_recipe() -> None:
 
 def test_null_band_is_unavailable_without_its_inputs() -> None:
     assert not metrics.null_band(30, None, seed=1)["available"]
+    assert not metrics.null_band(30, nan, seed=1)["available"]
     assert not metrics.null_band(30, 0.2, seed=1)["available"]
     assert not metrics.null_band(30, 0.2, seed=1, zero_score=nan)["available"]
     with pytest.raises(ValueError, match="p0"):
-        metrics.null_band(30, 1.0, seed=1, zero_score=0.0)
+        metrics.null_band(30, 1.5, seed=1, zero_score=0.0)
+
+
+def test_null_band_of_an_all_zero_period_is_the_zero_score() -> None:
+    band = metrics.null_band(30, 1.0, seed=1, zero_score=-3.09, draws=100)["statistics"]
+    assert (band["mean"]["lower"], band["mean"]["upper"]) == (-3.09, -3.09)
+    assert (band["sd"]["lower"], band["sd"]["upper"]) == (0.0, 0.0)
+    assert band["skewness"]["n_finite"] == 0  # every draw is constant
+    assert math.isnan(band["skewness"]["upper"])
 
 
 def test_outside_band_share() -> None:
