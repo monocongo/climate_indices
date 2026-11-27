@@ -137,6 +137,50 @@ def test_tolerance_comparison_allows_representation_error_only() -> None:
     assert not metrics.within_tolerance(0.00501, 0.005)
 
 
+# Thresholds and edges the protocol fixes
+
+
+@pytest.mark.parametrize(
+    ("d", "expected"),
+    [
+        (1e-10, "numerically identical"),
+        (2e-10, "equivalent"),
+        (1e-6, "equivalent"),
+        (2e-6, "below reporting precision"),
+        (0.005, "below reporting precision"),
+        (0.006, "category-preserving"),
+    ],
+)
+def test_difference_class_thresholds(d: float, expected: str) -> None:
+    assert metrics.difference_class([0.0], [d])["class"] == expected
+
+
+def test_error_bands_take_their_lower_edge_and_need_30_observations() -> None:
+    # 30 at |z*| = 1 (in [1, 2)), 29 at |z*| = 2 (in [2, inf), too few), 30 at 0.999 (in [0, 1))
+    truth = np.r_[np.full(30, 1.0), np.full(29, -2.0), np.full(30, 0.999)]
+    low, middle, high = metrics.error_by_band(truth + 0.1, truth)["bands"]
+    assert (low["n"], middle["n"], high["n"]) == (30, 30, 29)
+    assert middle["bias"] == approx(0.1)
+    assert math.isnan(high["bias"])
+
+
+def test_a_value_on_a_band_limit_is_inside() -> None:
+    band = {"available": True, "statistics": {name: {"lower": -0.3, "upper": 0.3} for name in ("mean", "residual")}}
+    assert metrics.outside_band_share([-0.3, 0.3], [band, band], "mean")["share"] == 0.0
+    assert metrics.outside_band_share([0.3], [band], "residual")["share"] == 0.0
+
+
+def test_null_samples_draw_the_protocol_count() -> None:
+    assert metrics.null_samples(12, 0.0, None, seed=1).shape == (10_000, 12)
+    assert metrics.null_samples(12, 0.2, -1.0, seed=1).shape == (10_000, 12)
+
+
+def test_drought_share_on_the_eleven_class_scale() -> None:
+    # 1.0 -> 1.5 changes a wet class; -0.6 -> -0.9 changes a drought class
+    shares = metrics.class_change_share([1.0, -0.6], [1.5, -0.9], scale="eleven")
+    assert (shares["share"], shares["share_touching_drought"]) == (1.0, 0.5)
+
+
 # C1, C2
 
 
@@ -444,6 +488,19 @@ def test_robustness_outcome_mixed_case_lists_each_value_and_respects_the_mask() 
         metrics.robustness_outcome([1.0], expected=1.0, affected_mask=[False], tolerance=0.0, warned=False)
 
 
+@pytest.mark.parametrize(("warned", "outcome"), [(True, "wrong with warning"), (False, "silently wrong")])
+def test_a_wrong_value_outranks_a_nan_in_the_same_case(warned: bool, outcome: str) -> None:
+    result = metrics.robustness_outcome(
+        [1.5, nan], expected=[1.0, 1.0], affected_mask=[True, True], tolerance=0.0, warned=warned
+    )
+    assert result["outcome"] == outcome
+
+
+def test_error_by_band_checks_the_exclude_length() -> None:
+    with pytest.raises(ValueError, match="exclude"):
+        metrics.error_by_band([0.0, 1.0], [0.0, 1.0], exclude=[True])
+
+
 def test_robustness_outcome_of_an_exception() -> None:
     kwargs: dict[str, Any] = {"expected": 1.0, "affected_mask": [True], "tolerance": 0.0, "warned": False}
     result = metrics.robustness_outcome(None, exception=ValueError("too few values"), error_clear=True, **kwargs)
@@ -574,8 +631,9 @@ def test_performance_summary() -> None:
 @st.composite
 def pairs(draw: Any) -> tuple[np.ndarray, np.ndarray]:
     n = draw(st.integers(1, 30))
-    values = st.one_of(st.floats(-4, 4), st.sampled_from([nan, -0.5, 0.5, -1.3, -2.0]))
-    return draw(arrays(np.float64, n, elements=values)), draw(arrays(np.float64, n, elements=values))
+    values = st.one_of(st.floats(-4, 4, width=32), st.sampled_from([nan, inf, -inf, -0.5, 0.5, -1.3, -2.0]))
+    width = draw(st.sampled_from([np.float64, np.float32]))  # the first series may be float32
+    return draw(arrays(width, n, elements=values)), draw(arrays(np.float64, n, elements=values))
 
 
 @settings(max_examples=60, deadline=None)
@@ -778,6 +836,15 @@ def test_library_reproduces_the_pilot_comparison_metrics(seed: int) -> None:
     assert set(got) == set(figures)
     for name, value in got.items():
         assert value == pytest.approx(expected[name], rel=REL, abs=1e-15), name
+
+
+@pytest.mark.parametrize(("ours", "theirs"), [([nan], [1.0]), ([0.1], [0.2])])
+def test_library_reproduces_the_pilot_with_no_pair_or_one_pair(ours: list[float], theirs: list[float]) -> None:
+    expected = pilot.comparison_metrics(ours, theirs)
+    got = pilot.library_metrics(ours, theirs)
+    for name, value in expected.items():
+        if name in got:
+            assert got[name] == pytest.approx(value, nan_ok=True), name
 
 
 def _pilot_inputs(seed: int) -> tuple[dict[str, xr.DataArray], xr.Dataset]:
