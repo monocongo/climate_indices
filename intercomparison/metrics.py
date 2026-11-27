@@ -618,6 +618,14 @@ def block_interval(
 # Comparison ladder
 
 
+def _rung_pairs(rungs: Sequence[tuple[Any, Any]]) -> tuple[list[tuple[np.ndarray, np.ndarray, np.ndarray]], np.ndarray]:
+    pairs = [_pair(a, b) for a, b in rungs]
+    if len({xa.size for xa, _, _ in pairs}) > 1:
+        raise ValueError("every rung must have the same time axis")
+    common: np.ndarray = np.logical_and.reduce([mask for _, _, mask in pairs])
+    return pairs, common
+
+
 def rung_effects(
     rungs: Sequence[tuple[Any, Any]], measure: Callable[[np.ndarray, np.ndarray], float]
 ) -> dict[str, Any]:
@@ -626,10 +634,7 @@ def rung_effects(
     ``rungs`` holds the unit's pair at each rung, lowest first. Every rung is measured on the
     time steps finite in both series at every rung.
     """
-    pairs = [_pair(a, b) for a, b in rungs]
-    if len({xa.size for xa, _, _ in pairs}) > 1:
-        raise ValueError("every rung must have the same time axis")
-    common = np.logical_and.reduce([mask for _, _, mask in pairs])
+    pairs, common = _rung_pairs(rungs)
     values = [float(measure(xa[common], xb[common])) for xa, xb, _ in pairs]
     return {
         "values": values,
@@ -641,19 +646,24 @@ def rung_effects(
 def rung_categories(
     rungs: Sequence[tuple[Any, Any]], *, scale: ScaleOrEdges = "six", rule: Rule = "upper_inclusive"
 ) -> dict[str, Any]:
-    """Row 19, categorical measures for one unit: the difference class, the confusion matrix and
-    the mask mismatch at each rung on that rung's own finite pairs, and the cell-wise change of
-    the confusion matrix between adjacent rungs.
+    """Row 19, categorical measures for one unit: the difference class and the confusion matrix
+    at each rung, the cell-wise change of the confusion matrix between adjacent rungs, and the
+    mask mismatch at each rung.
 
-    The difference class uses the six-class scale for a named scale (protocol, Difference
-    classes) and the study's own edges when it passes them.
+    The class and the confusion matrix use the time steps finite in both series at every rung,
+    as the scalar effects do, so a confusion delta counts class changes rather than steps that
+    pair up at one rung only. The mask mismatch uses each rung's own masks, because common finite
+    pairs would hide a mask change (protocol, Comparison ladder). The difference class uses the
+    six-class scale for a named scale (protocol, Difference classes) and the study's own edges
+    when it passes them.
     """
+    pairs, common = _rung_pairs(rungs)
     edges = SCALES["six"] if isinstance(scale, str) else class_edges(scale)
-    classes = [difference_class(a, b, edges=edges, rule=rule)["class"] for a, b in rungs]
-    confusion = [confusion_matrix(a, b, scale=scale, rule=rule) for a, b in rungs]
+    classes = [difference_class(xa[common], xb[common], edges=edges, rule=rule)["class"] for xa, xb, _ in pairs]
+    confusion = [confusion_matrix(xa[common], xb[common], scale=scale, rule=rule) for xa, xb, _ in pairs]
     return {
         "classes": classes,
-        "mask_mismatch": [mask_mismatch(a, b) for a, b in rungs],
+        "mask_mismatch": [mask_mismatch(xa, xb) for xa, xb, _ in pairs],
         "confusion": confusion,
         "confusion_deltas": [hi - lo for lo, hi in itertools.pairwise(confusion)],
     }

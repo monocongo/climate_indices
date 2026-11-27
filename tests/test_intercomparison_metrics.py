@@ -525,6 +525,13 @@ def test_rung_categories_and_transitions() -> None:
     assert counts == [
         Counter({("category-changing", "below reporting precision"): 1, ("category-changing", "category-changing"): 1})
     ]
+    # a step that pairs up at one rung only changes the mask mismatch, not the confusion matrix
+    masked = metrics.rung_categories([([-1.0, 0.0, nan], [0.0, 0.0, 0.0]), ([-1.0, 0.0, 0.0], [0.0, 0.0, 0.0])])
+    assert masked["mask_mismatch"] == [pytest.approx(1 / 3), 0.0]
+    assert not masked["confusion_deltas"][0].any()
+    assert int(masked["confusion"][0].sum()) == 2
+    with pytest.raises(ValueError, match="time axis"):
+        metrics.rung_categories([([0.0], [0.0]), ([0.0, 1.0], [0.0, 1.0])])
     with pytest.raises(ValueError, match="same rungs"):
         metrics.transition_counts([["a", "b"], ["a"]])
 
