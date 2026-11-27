@@ -290,6 +290,7 @@ def difference_class(
     ``edges=None`` is for an index with no class edges: a pair above 0.005 is then
     *above reporting precision*. A study of a non-normal index passes the edges it pre-registered.
     """
+    edges = None if edges is None else class_edges(edges)
     xa, xb, mask = _pair(a, b)
     if not mask.any():
         return {"class": NO_OVERLAP, "d": math.nan}
@@ -492,7 +493,9 @@ def output_bound_share(values: Any, output_bound: float | None) -> float | str:
         return NOT_APPLICABLE
     x = series(values)
     x = x[np.isfinite(x)]
-    return float(np.mean(np.abs(x) >= x.dtype.type(output_bound))) if x.size else math.nan
+    with np.errstate(over="ignore"):  # a bound beyond the width's range casts to inf, which no value reaches
+        bound = x.dtype.type(output_bound)
+    return float(np.mean(np.abs(x) >= bound)) if x.size else math.nan
 
 
 # C5
@@ -567,6 +570,8 @@ def median_interval(values: Any, *, seed: int, row: int, draws: int = N_DRAWS) -
     ``row`` is the Measure reference row of the statistic (for example 4 for RMSE): it keys
     stream 2, so statistics of the same row and sample size reuse the same index draws.
     """
+    if draws < 1:
+        raise ValueError("draws must be at least 1")
     v = series(values).astype(np.float64)
     defined = np.sort(v[np.isfinite(v)])
     if defined.size < 2:

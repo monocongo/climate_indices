@@ -323,6 +323,8 @@ def test_category_measures_accept_pre_registered_edges() -> None:
         metrics.category_agreement(a, b, scale=(1.0, 0.0))
     with pytest.raises(ValueError, match="unknown scale"):
         metrics.category_agreement(a, b, scale="seven")
+    with pytest.raises(ValueError, match="strictly increasing"):
+        metrics.difference_class(a, b, edges=[nan])
 
 
 # C4
@@ -441,6 +443,9 @@ def test_output_bound_share() -> None:
     # a float32 output clipped at the library's own bound counts as at the bound
     clipped = np.clip(np.array([-9.0, 9.0, 0.0, 3.0], np.float32), -3.09, 3.09)
     assert metrics.output_bound_share(clipped, 3.09) == 0.5
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")  # a bound beyond float32's range is not an overflow warning
+        assert metrics.output_bound_share(clipped, 1e60) == 0.0
     assert math.isnan(metrics.output_bound_share([nan], 3.09))
 
 
@@ -535,6 +540,8 @@ def test_median_interval_reproduces_its_stream_with_independent_code(
     np.testing.assert_allclose(metrics.median_interval(values, seed=seed, row=row, draws=draws), expected, rtol=1e-12)
     assert metrics.median_interval([2.0, 2.0, 2.0], seed=seed, row=row) == (2.0, 2.0)
     assert all(math.isnan(v) for v in metrics.median_interval([1.0, nan], seed=seed, row=row))
+    with pytest.raises(ValueError, match="draws"):
+        metrics.median_interval([1.0, 2.0], seed=seed, row=row, draws=0)
 
 
 def test_block_interval_reproduces_its_stream_with_independent_code() -> None:
