@@ -44,17 +44,20 @@ redundant either: right after a spell ends, with `probability == 100`, a `z` exa
 threshold restarts the spell and one ulp below continues the abatement, and a test pins
 that case.
 
-Cross-platform results come from `.github/workflows/palmer-reproducibility.yml` (manual
-dispatch; first run 2026-11-27 at `b3854aaf`). On all five release targets the Rust and
-Python paths agree: byte-identical on four, and within 7.4e-14 on Linux x86-64, with no
-sign or NaN-position mismatch. The outputs are not bit-identical across platforms, and
-bit-for-bit cross-platform reproducibility is not part of this contract. The only
-transcendental in the Palmer paths, `log10` in the K' factor, comes from the platform math
-library on the Rust path; on every target except Linux x86-64 the NumPy-path outputs
-match the Rust path byte for byte. glibc's
-differs from Apple's by one ulp in 16% of the K' values. Between macOS arm64 and the glibc
-builds (Linux aarch64, and the Rust path on Linux x86-64), that moves 233 of the 344
-divisions by at most 7.4e-14. On Linux x86-64 the two paths differ in 1,981 outputs. NumPy's
-`log10` probably does not return glibc's values there, perhaps because NumPy dispatches it
-to its own SIMD implementation; the dispatch was not recorded.
+The [five-platform run](https://github.com/monocongo/climate_indices/actions/runs/46069019548)
+measured the 344-division fixture at `b3854aaf` on 2026-11-27. On the same platform,
+Rust and Python outputs were byte-identical on four targets and within 7.4e-14 (absolute)
+on Linux x86-64. No index month differed in sign or NaN position. In contrast, the
+cross-platform Rust digest comparison failed because the bytes differed between targets.
+This contract does not require bit-for-bit agreement across platforms.
+
+In local arm64 reproductions, 16% of the `log10` results used to compute K′ differed
+by one ulp between glibc and Apple's math library. Substituting the glibc values on the
+macOS arm64 Python path reproduced the Linux aarch64 Python output digests. The outputs
+of these two platforms differed in 233 divisions, by at most 7.4e-14. Rust uses the
+platform math library for `log10`. Its output digests match Python's on both platforms,
+which supports the same explanation for the Rust results.
+
+On Linux x86-64, the two paths differ in 1,981 outputs. NumPy may use its own SIMD
+implementation of `log10` there. The run did not identify which implementation ran.
 The study record is `docs/research/reference-papers/palmer-rust-parity.md`.
