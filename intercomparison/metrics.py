@@ -100,6 +100,7 @@ STREAM_UNIT_BOOTSTRAP = 2
 STREAM_BLOCK_BOOTSTRAP = 3
 STREAM_SYNTHETIC = 4
 N_DRAWS = 10_000
+_CHUNK_ELEMENTS = 1 << 22  # bootstrap indices drawn per chunk: about 100 MB of work arrays at a time
 MIN_PERIOD_VALUES = 10
 MIN_BAND_OBSERVATIONS = 30
 _LAST_UNIFORM = math.nextafter(1.0, 0.0)
@@ -565,8 +566,15 @@ def median_interval(values: Any, *, seed: int, row: int, draws: int = N_DRAWS) -
     defined = np.sort(v[np.isfinite(v)])
     if defined.size < 2:
         return (math.nan, math.nan)
-    index = rng(seed, STREAM_UNIT_BOOTSTRAP, row).integers(0, defined.size, size=(draws, defined.size))
-    low, high = _percentiles(np.median(defined[index], axis=1), (2.5, 97.5))
+    m, generator = defined.size, rng(seed, STREAM_UNIT_BOOTSTRAP, row)
+    # drawn in blocks of rows, which gives the same stream as one (draws, m) draw but bounds memory
+    # at grid scale (10,000 x 470,000 indices would be 38 GB)
+    rows = max(1, _CHUNK_ELEMENTS // m)
+    medians = [
+        np.median(defined[generator.integers(0, m, size=(min(rows, draws - start), m))], axis=1)
+        for start in range(0, draws, rows)
+    ]
+    low, high = _percentiles(np.concatenate(medians), (2.5, 97.5))
     return (low, high)
 
 
@@ -594,10 +602,14 @@ def block_interval(
     if n <= length:
         return {"lower": math.nan, "upper": math.nan, "skipped": True, "n_finite": 0}
     starts = rng(seed, STREAM_BLOCK_BOOTSTRAP, unit_index).integers(0, n - length + 1, size=(draws, -(-n // length)))
-    index = (starts[:, :, None] + np.arange(length)).reshape(draws, -1)[:, :n]
+    offsets = np.arange(length)
     # ponytail: one Python call per resample (about 0.5 s per statistic at 10,000 draws); accept a
-    # vectorized statistic if a study needs many units
-    values = np.array([statistic(xa[row], xb[row]) for row in index], dtype=np.float64)
+    # vectorized statistic if a study needs many units. Each row's indices are built as it is used,
+    # so memory does not grow with draws x n.
+    values = np.array(
+        [statistic(xa[i], xb[i]) for i in ((row[:, None] + offsets).ravel()[:n] for row in starts)],
+        dtype=np.float64,
+    )
     finite = values[np.isfinite(values)]
     low, high = _percentiles(finite, (2.5, 97.5))
     return {"lower": low, "upper": high, "skipped": False, "n_finite": int(finite.size)}

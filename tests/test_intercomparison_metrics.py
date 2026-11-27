@@ -454,7 +454,11 @@ def test_across_unit_summary() -> None:
     }
 
 
-def test_median_interval_reproduces_its_stream_with_independent_code() -> None:
+@pytest.mark.parametrize("chunk_elements", [1 << 22, 7])  # 7 draws one row per chunk
+def test_median_interval_reproduces_its_stream_with_independent_code(
+    chunk_elements: int, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(metrics, "_CHUNK_ELEMENTS", chunk_elements)
     values, seed, row, draws = [3.0, 1.0, nan, 2.0, 5.0, 4.0], 11, 4, 500
     defined = np.array([1.0, 2.0, 3.0, 4.0, 5.0])
     index = np.random.Generator(np.random.PCG64(np.random.SeedSequence([seed, 2, row]))).integers(0, 5, size=(draws, 5))
