@@ -36,7 +36,8 @@ ATOL = 1e-10
 # REFIMPL-34 (#1636) measured every output of pdsi() and scpdsi() on the 344 divisions
 # as bit-identical between the two paths on macOS arm64 (docs/research/reference-papers/
 # palmer-rust-parity.md), so that platform pins a maximum of exactly 0.0. Other
-# platforms keep the registry contract until the reproducibility workflow reports them.
+# platforms keep the registry contract; D8 in that record says why the five-platform
+# run left this unchanged.
 _PINNED = (platform.system(), platform.machine()) == ("Darwin", "arm64")
 PINNED_RTOL, PINNED_ATOL = (0.0, 0.0) if _PINNED else (RTOL, ATOL)
 

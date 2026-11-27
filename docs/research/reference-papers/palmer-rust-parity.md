@@ -1,8 +1,8 @@
 # Palmer Rust kernels: parity, branch stability, and cross-platform reproducibility
 
 **Ticket:** REFIMPL-34, [#1636](https://github.com/monocongo/climate_indices/issues/1636). **Map:** [#1602](https://github.com/monocongo/climate_indices/issues/1602).
-**Pinned version:** `380aa01f` (`origin/main`, 2026-11-21) for H1–H3; `b3854aaf` (`origin/main`, 2026-11-27) for the five-platform run.
-**Status:** H1–H3 were measured on macOS arm64, and H1, H2, H4 and H5 on all five release targets ([run 46069019548](https://github.com/monocongo/climate_indices/actions/runs/46069019548)). H4 and H5 are refuted. The split between glibc and Apple's libm is traced to a one-ulp difference in `log10`; the smaller differences on the other targets are attributed to `log10` by inference (see "H4, H5"). The T4 grid is still deferred to [#1612](https://github.com/monocongo/climate_indices/issues/1612). Commit `eb710e28` records the original plan. See D1–D7 for differences between that plan and this record. Reproduce with `uv run python scripts/measure_palmer_parity.py measure --out parity.json` (about 25 seconds on four workers) and `CLIMATE_INDICES_REQUIRE_NATIVE=1 uv run pytest tests/test_native_parity_palmer.py`. `uv run maturin develop --release` builds the extension that the tests need, and the tests run whenever it is present. `CLIMATE_INDICES_REQUIRE_NATIVE=1` makes a missing extension fail instead of skip the module.
+**Pinned version:** `380aa01f` (`origin/main`, 2026-11-21) for H1–H3; `b3854aaf` (`origin/main`, 2026-11-26; run 2026-11-27) for the five-platform run.
+**Status:** H1–H3 were measured on macOS arm64. On all five release targets, the [five-platform run](https://github.com/monocongo/climate_indices/actions/runs/46069019548) measured H1, H2, H4 and H5, and the H3 boundary tests passed on output agreement only. H4 and H5 are refuted. The split between glibc and Apple's libm is traced to a one-ulp difference in `log10`; the smaller differences on the other targets are attributed to `log10` by inference (see "H4, H5"). The T4 grid is still deferred to [#1612](https://github.com/monocongo/climate_indices/issues/1612). Commit `eb710e28` records the original plan. See D1–D8 for differences between that plan and this record. Reproduce with `uv run python scripts/measure_palmer_parity.py measure --out parity.json` (about 25 seconds on four workers) and `CLIMATE_INDICES_REQUIRE_NATIVE=1 uv run pytest tests/test_native_parity_palmer.py`. `uv run maturin develop --release` builds the extension that the tests need, and the tests run whenever it is present. `CLIMATE_INDICES_REQUIRE_NATIVE=1` makes a missing extension fail instead of skip the module.
 
 ## Question
 
@@ -39,7 +39,7 @@ None of these is a finding yet. Each is a lead to confirm or refute at the pinne
 
 H2 and H3 state the original hypotheses. The tests observe the returned values, not the internal spell state or branch decisions. Output agreement alone cannot confirm the internal claims.
 
-H5 is a control: if H4 holds and H5 does not, the Python outputs differ end to end across platforms. This does not identify which Python-path operation caused the difference. It also does not show that the Rust intermediate values are platform-invariant. Attribution needs further isolation.
+H5 is a control: if H4 holds and H5 does not, the Python outputs differ end to end across platforms. This does not identify which Python-path operation caused the difference. It also does not show that the Rust intermediate values are platform-invariant. Attribution needs further isolation; "H4, H5" does it by substituting the `log10` values.
 
 ## Method
 
@@ -73,7 +73,7 @@ Performance ([#1637](https://github.com/monocongo/climate_indices/issues/1637));
 The study recorded these deviations after the first measurement run.
 
 - **D1.** The plan said a `--digest` flag would add SHA-256 digests. The script records them always, for both the Rust and the Python path, because H5 needs the Python digests and a measurement without them cannot be compared later.
-- **D2.** The plan said to pin the measured maxima. Only macOS arm64 is measured, so only that platform pins `0.0` (`PINNED_RTOL`, `PINNED_ATOL` in `tests/test_native_parity_palmer.py`); every other platform keeps the registry's `1e-10` until the workflow reports it. A `0.0` pin on an unmeasured platform would be a guess.
+- **D2.** The plan said to pin the measured maxima. When the pin was set, only macOS arm64 had been measured, so only that platform pins `0.0` (`PINNED_RTOL`, `PINNED_ATOL` in `tests/test_native_parity_palmer.py`). Every other platform keeps the registry's `1e-10`; D8 says why the five-platform run left this unchanged. A `0.0` pin on an unmeasured platform would be a guess.
 - **D3.** The first boundary tests put one boundary value in a series and compared the two paths. They passed, but a probe showed they were vacuous: a lone `z` on a threshold gives `z / 3` whichever branch is taken, and an injected Rust mutant (`pv > 0.0` in place of `pv >= 0.0`) was not caught. They were replaced by corpora of (one ulp below, on, one ulp above) triples with a floor on how many triples change the answer, and the mutants were then caught (see "Results").
 - **D4.** The plan listed NaN gaps as a new case. `test_missing_months_match` already covers them, so only zero precipitation was added.
 - **D5.** The first macOS arm64 measurement was invalid and was discarded. The script took the extension from `palmer._native`, which each call left switched off, so every division after a pool worker's first compared Python with Python and reported identical. Found in pre-PR review, fixed in `0508b366` (the extension now comes from the backend module and is restored in a `finally`), and the full measurement re-run; the numbers below are from the re-run. The per-division pytest tests were never affected.
@@ -122,7 +122,7 @@ The Wells entry test is **not** redundant. It is equivalent to the abatement pat
 
 ### H4, H5: cross-platform
 
-[Run 46069019548](https://github.com/monocongo/climate_indices/actions/runs/46069019548) at `b3854aaf`, 2026-11-27. On every target the measurement and the Palmer parity tests passed (789 tests each). The compare job failed for both the Rust and the Python digests. Counts are out of 3,440 outputs: 344 divisions, 2 indices, and 5 outputs (PDSI, PHDI, PMDI, Z-Index, fitted parameters).
+[Run 46069019548](https://github.com/monocongo/climate_indices/actions/runs/46069019548) at `b3854aaf`, 2026-11-27. On every target the measurement and the Palmer parity tests passed (789 tests each). The compare job failed on the Rust comparison. The Python control does not gate the job, and it also listed differing outputs. Counts are out of 3,440 outputs: 344 divisions, 2 indices, and 5 outputs (PDSI, PHDI, PMDI, Z-Index, fitted parameters).
 
 | Platform | Runner | Rust vs Python max abs (max rel) | Rust outputs differing from macOS arm64 | Python outputs differing from macOS arm64 | Rust max abs difference from macOS arm64 |
 | --- | --- | --- | --- | --- | --- |
