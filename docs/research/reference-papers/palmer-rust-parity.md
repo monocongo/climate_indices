@@ -1,8 +1,8 @@
 # Palmer Rust kernels: parity, branch stability, and cross-platform reproducibility
 
 **Ticket:** REFIMPL-34, [#1636](https://github.com/monocongo/climate_indices/issues/1636). **Map:** [#1602](https://github.com/monocongo/climate_indices/issues/1602).
-**Pinned version:** `380aa01f` (`origin/main`, 2026-11-21).
-**Status:** The study measured macOS arm64. The other four platforms remain unmeasured. Commit `eb710e28` records the original plan. See D1–D7 for differences between that plan and this record. Reproduce with `uv run python scripts/measure_palmer_parity.py measure --out parity.json` (about 25 seconds on four workers) and `CLIMATE_INDICES_REQUIRE_NATIVE=1 uv run pytest tests/test_native_parity_palmer.py`. `uv run maturin develop --release` builds the extension that the tests need, and the tests run whenever it is present. `CLIMATE_INDICES_REQUIRE_NATIVE=1` makes a missing extension fail instead of skip the module.
+**Pinned version:** `380aa01f` (`origin/main`, 2026-11-21) for H1–H3; `b3854aaf` (`origin/main`, 2026-11-27) for the five-platform run.
+**Status:** H1–H3 were measured on macOS arm64, and H1, H2, H4 and H5 on all five release targets ([run 46069019548](https://github.com/monocongo/climate_indices/actions/runs/46069019548)). H4 and H5 are refuted; the cause is a one-ulp `log10` difference between platform math libraries (see "H4, H5"). The T4 grid is still deferred to [#1612](https://github.com/monocongo/climate_indices/issues/1612). Commit `eb710e28` records the original plan. See D1–D7 for differences between that plan and this record. Reproduce with `uv run python scripts/measure_palmer_parity.py measure --out parity.json` (about 25 seconds on four workers) and `CLIMATE_INDICES_REQUIRE_NATIVE=1 uv run pytest tests/test_native_parity_palmer.py`. `uv run maturin develop --release` builds the extension that the tests need, and the tests run whenever it is present. `CLIMATE_INDICES_REQUIRE_NATIVE=1` makes a missing extension fail instead of skip the module.
 
 ## Question
 
@@ -79,10 +79,11 @@ The study recorded these deviations after the first measurement run.
 - **D5.** The first macOS arm64 measurement was invalid and was discarded. The script took the extension from `palmer._native`, which each call left switched off, so every division after a pool worker's first compared Python with Python and reported identical. Found in pre-PR review, fixed in `0508b366` (the extension now comes from the backend module and is restored in a `finally`), and the full measurement re-run; the numbers below are from the re-run. The per-division pytest tests were never affected.
 - **D6.** An earlier draft called the Wells entry-threshold mutant equivalent, on the strength of identical output on 300 random series and on the spell corpus. Review produced a counterexample (see "Which boundaries are live"), a deterministic test now pins it, and the Rust mutant fails it.
 - **D7.** After the first measurement, the Claims table clarified which stages run in Rust or NumPy. The Method clarified which toolchain details the script records and removed the planned `--digest` option (D1). The Branch inventory corrected the Wells signed continuation threshold and the conditions for its probability checks. The Thresholds section now distinguishes the measured maximum from the test tolerance (D2).
+- **D8.** H4 was expected to hold. The five-platform run refuted it, and H5 with it. The workflow's compare step stays failing, because it is the hypothesis test, and the difference was traced instead. The trace added steps the plan did not have: two local reproductions checked against the CI digests, a `log10` substitution, and a correct-rounding check against `decimal`. Their scripts are not committed; "H4, H5" gives the procedure. D2 is unchanged: the run reports `0.0` on three more targets, but the pin stays on macOS arm64 only, because those targets run only in the dispatch workflow and the June-cut test is outside the measurement.
 
 ## Results
 
-Pinned version `380aa01f`, rustc 1.99.0 (LLVM 23.1.1), `aarch64-apple-darwin`, Python 3.14.7, NumPy 2.4.6, release profile `lto = "thin"`, `codegen-units = 1`, no `target-cpu` flag.
+H1–H3: pinned version `380aa01f`, rustc 1.99.0 (LLVM 23.1.1), `aarch64-apple-darwin`, Python 3.14.7, NumPy 2.4.6, release profile `lto = "thin"`, `codegen-units = 1`, no `target-cpu` flag.
 
 ### H1, H2: 344 divisions, macOS arm64
 
@@ -121,16 +122,33 @@ The Wells entry test is **not** redundant. It is equivalent to the abatement pat
 
 ### H4, H5: cross-platform
 
-| Platform | Rust vs Python max abs difference | Rust digests equal to macOS arm64 | Python digests equal to macOS arm64 |
-| --- | --- | --- | --- |
-| macOS arm64 (`aarch64-apple-darwin`) | 0.0 | reference | reference |
-| Linux x86-64 | not run | not run | not run |
-| Linux aarch64 | not run | not run | not run |
-| macOS x86-64 | not run | not run | not run |
-| Windows x86-64 | not run | not run | not run |
+[Run 46069019548](https://github.com/monocongo/climate_indices/actions/runs/46069019548) at `b3854aaf`, 2026-11-27. On every target the measurement and the Palmer parity tests passed (789 tests each). The compare job failed for both the Rust and the Python digests. Counts are out of 3,440 outputs: 344 divisions, 2 indices, and 5 outputs (PDSI, PHDI, PMDI, Z-Index, fitted parameters).
 
-H4 and H5 are open. `.github/workflows/palmer-reproducibility.yml` runs all five targets and compares the digests; it has not been dispatched. What can be said without it: the Palmer kernels contain no `mul_add`, the build sets no `target-cpu` and no fast-math flag, and the scPDSI rescale and percentile run in NumPy on both paths, so the floating-point work specific to the Rust path is exactly the kernels it dispatches: the water balance, K-prime and dbar, the raw Z-Index, and either `palmer_pdi` (`pdsi()`) or `palmer_wells` with `scpdsi_duration_factors` (`scpdsi()`). The CAFEC coefficients and `trat` are NumPy on both paths. A difference on another platform would most plausibly come from the math library (`log10` in the K' factor) or from NumPy's own vectorized kernels. The Python control shows only whether the Python outputs differ end to end; it does not attribute the difference.
+| Platform | Runner | Rust vs Python max abs (max rel) | Rust outputs differing from macOS arm64 | Python outputs differing from macOS arm64 | Rust max abs difference from macOS arm64 |
+| --- | --- | --- | --- | --- | --- |
+| macOS arm64 (`aarch64-apple-darwin`) | `macos-latest`, macOS 26.7.2 | 0.0 | reference | reference | reference |
+| Linux aarch64 (`aarch64-unknown-linux-gnu`) | `ubuntu-24.04-arm`, glibc 2.39 | 0.0 | 1,980 in 233 divisions | 1,980 in 233 divisions | 7.38e-14 |
+| Linux x86-64 (`x86_64-unknown-linux-gnu`) | `ubuntu-latest`, glibc 2.43 | 7.38e-14 (8.1e-10) | 1,980 in 233 divisions, bytes equal to Linux aarch64 | 23 in 3 divisions (0805, 1109, 4505) | 7.38e-14 |
+| macOS x86-64 (`x86_64-apple-darwin`) | `macos-15-intel`, macOS 15.7.9 | 0.0 | 9 in division 0505 | the same 9 | not measured |
+| Windows x86-64 (`x86_64-pc-windows-msvc`) | `windows-latest`, Windows Server 2025 | 0.0 | 14 in divisions 1409 and 4505 | the same 14 | not measured |
+
+No platform had a sign, NaN-position or infinity mismatch between paths, so H1 and the output criteria of H2 hold on all five. On Linux x86-64 the Rust-versus-Python maxima are 4.4e-15 (PDSI, PHDI, PMDI) and 5.3e-15 (Z-Index) for `pdsi()`, and 5.2e-14, 6.2e-14, 7.4e-14 and 3.9e-14 for `scpdsi()`, with 3.5e-14 in the scPDSI parameters. The 8.1e-10 relative maximum is on a near-zero PMDI value. The last column comes from the local reproductions described below, and it is the same comparison as the Linux x86-64 Rust-versus-Python one: the per-output maxima agree exactly.
+
+All targets use rustc 1.99.0 (LLVM 23.1.1) with the release profile `lto = "thin"` and `codegen-units = 1`, no `target-cpu` and no fast-math flag; the Palmer kernels contain no `mul_add`. Default target features from `rustc --print cfg` (compile-time defaults, not the runner CPU): macOS arm64 28 features including `neon`, `fp16`, `dotprod`, `fcma` and `jsconv`; Linux aarch64 `neon`; Linux x86-64 `fxsr`, `sse`, `sse2`; macOS x86-64 up to `sse4.1`, `ssse3`, `cmpxchg16b`; Windows up to `sse3`, `cmpxchg16b`. Python 3.14.10 (3.14.7 on macOS x86-64) and NumPy 2.4.6 everywhere. NumPy picks its SIMD kernels at run time, and the report does not record which kernels ran.
+
+**Cause.** H4 and H5 fail for one reason: `log10` in the K′ factor, `1.5 * log10((trat + 2.8) / dbar) + 0.5`, which is `palmer_k_prime` (`palmer_zindex.rs`) in Rust and `_calc_k_prime_and_dbar` in NumPy. It is the only transcendental function in either path and runs 12 times per division; everything else is IEEE basic arithmetic. The evidence:
+
+1. Two local builds of `b3854aaf` returned float64 bytes equal to the CI reports on all 3,440 outputs, for both paths. One build ran natively on macOS arm64, the other on Linux aarch64 in a Debian trixie container (glibc 2.41, CPython 3.14.3). Their raw arrays therefore stand for the CI ones.
+2. The K′ `log10` arguments are bit-identical on the two platforms. The results differ by exactly one ulp in 663 of the 4,128 calls (16%), in 301 divisions. Every division with an output difference is one of those 301. In the other 68 divisions, the one-ulp change rounds away downstream.
+3. The macOS arm64 Python path was run with glibc's `log10` results substituted for the 688 K′ evaluations (344 divisions, 2 indices). It reproduced the Linux aarch64 digests on all 3,440 outputs, so the one-ulp `log10` difference accounts for the whole glibc–Apple split.
+4. Against an 80-digit `decimal` reference, Apple's arm64 `log10` is correctly rounded on 4,127 of the 4,128 arguments. glibc's is correctly rounded on 3,464: it is one ulp off on 664, including the one where both libraries return the same wrong value.
+
+glibc returned the same bytes on two architectures and three versions (2.39, 2.41, 2.43), which is why Linux x86-64 Rust equals Linux aarch64. On Linux x86-64, NumPy's `log10` does not return glibc's values. NumPy ships its own vectorized `log10` for x86-64. As a result, Rust and Python differ on that one platform, and Linux x86-64 Python matches macOS arm64 except in three divisions.
+
+The remaining differences among the platforms outside glibc are attributed by inference, because their arrays were not recovered: macOS x86-64 in 0505, Windows in 1409 and 4505, and Linux x86-64 NumPy in 0805, 1109 and 4505. Rank the 344 divisions by how close their nearest K′ `log10` value lies to a rounding midpoint. Divisions 1409 and 4505 rank first and second (1.97e-6 and 1.58e-5 ulp from the midpoint), and 1109, 0805 and 0505 rank 7th, 10th and 17th. Math libraries that are accurate but not correctly rounded disagree first on exactly such arguments, so the same mechanism is the likely cause. The magnitude of these differences is not measured.
+
+Between macOS arm64 and the glibc targets, the largest difference is 7.38e-14 (scPDSI PMDI, division 2001) and 5.3e-15 for `pdsi()`. No month changed sign or NaN position. Neither path is at fault: the Rust kernels inherit the platform `log10` exactly as NumPy does, except where NumPy brings its own.
 
 ### Sentence for the manuscript
 
-On macOS arm64, Rust and Python returned byte-identical outputs and fitted parameters for `pdsi()` and `scpdsi()` across 344 climate divisions. The boundary tests use `rtol = atol = 1e-10`. The outputs agreed within that test tolerance across 2,868 engineered boundary triples, 12 divergence sequences, two mirrored Wells spell-termination triples, and the zero-precipitation case. The tests did not compare internal branch decisions. The other four release targets remain unmeasured.
+On each of the five release targets (Linux x86-64 and aarch64, macOS arm64 and x86-64, Windows x86-64), Rust and Python `pdsi()` and `scpdsi()` agreed across 344 climate divisions. They were byte-identical on four targets and within 7.4e-14 (absolute) on Linux x86-64, and no month differed in sign or NaN position. Results are not bit-reproducible across platforms. The `log10` in the K′ factor comes from the platform math library, and glibc's differs from Apple's by one ulp in 16% of the K′ values. Between macOS arm64 and Linux, this changes 233 of the 344 divisions by at most 7.4e-14, again with no change in sign. macOS x86-64 and Windows differ from macOS arm64 in one and two divisions; the size of those differences was not measured. The boundary tests (`rtol = atol = 1e-10`) passed on all five targets across 2,868 engineered boundary triples, 12 divergence sequences, two mirrored Wells spell-termination triples and the zero-precipitation case. They did not compare internal branch decisions.

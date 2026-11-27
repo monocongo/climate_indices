@@ -44,7 +44,13 @@ redundant either: right after a spell ends, with `probability == 100`, a `z` exa
 threshold restarts the spell and one ulp below continues the abatement, and a test pins
 that case.
 
-Cross-platform results for Linux (x86-64 and
-aarch64), macOS x86-64 and Windows come from `.github/workflows/palmer-reproducibility.yml`
-(manual dispatch); until it has been run, only macOS arm64 is measured. The study record
-is `docs/research/reference-papers/palmer-rust-parity.md`.
+Cross-platform results come from `.github/workflows/palmer-reproducibility.yml` (manual
+dispatch; first run 2026-11-27 at `b3854aaf`). On all five release targets the Rust and
+Python paths agree: byte-identical on four, and within 7.4e-14 on Linux x86-64, with no
+sign or NaN-position mismatch. The outputs are not bit-identical across platforms, and
+bit-for-bit cross-platform reproducibility is not part of this contract. The only
+transcendental in the Palmer paths, `log10` in the K' factor, comes from the platform math
+library. glibc's differs from Apple's by one ulp in 16% of the K' values, which moves 233
+of the 344 divisions by at most 7.4e-14 between macOS arm64 and Linux. On Linux x86-64,
+NumPy's `log10` does not return glibc's values, which is why the two paths differ there.
+The study record is `docs/research/reference-papers/palmer-rust-parity.md`.
