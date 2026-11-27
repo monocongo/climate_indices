@@ -95,8 +95,13 @@
         "pooled": {"type": "boolean", "description": "True when several units were flattened into one pair to reproduce a published figure."},
         "period_label": {"type": "integer"},
         "options": {"type": "object", "description": "Arguments of the measure, such as scale, boundary_rule, seed and block_length."},
-        "values": {"type": "object"}
-      }
+        "values": {
+          "type": "object",
+          "description": "The measure's output. A measure that returns a mapping stores its keys; one that returns a single value (rows 1, 8, 9, 11, 14 and 17) stores it as {\"value\": ...}. NaN is stored as null. metrics.write_metrics also checks that measure is the name of row."
+        }
+      },
+      "if": {"properties": {"row": {"enum": [1, 8, 9, 11, 14, 17]}}, "required": ["row"]},
+      "then": {"properties": {"values": {"required": ["value"]}}}
     }
   }
 }

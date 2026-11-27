@@ -51,6 +51,29 @@ ScaleOrEdges = Scale | Sequence[float]  # a named scale, or the class edges a st
 Rule = Literal["upper_inclusive", "lower_inclusive"]
 _SIDE: dict[str, Literal["left", "right"]] = {"upper_inclusive": "left", "lower_inclusive": "right"}
 
+MEASURES = (  # the Measure reference, in row order; row n is MEASURES[n - 1]
+    "printed-value pass",
+    "error, by band",
+    "replicate summary",
+    "pair agreement",
+    "difference class",
+    "class-change share",
+    "same-class and within-one share",
+    "confusion matrix",
+    "mask mismatch",
+    "calendar-period moments",
+    "quantile residual",
+    "null band",
+    "outside-band share",
+    "output-bound share",
+    "robustness outcome",
+    "across-unit summary",
+    "bootstrap interval of a median",
+    "block bootstrap interval",
+    "rung effect",
+    "performance",
+)
+
 DIFFERENCE_CLASSES = (
     "numerically identical",
     "equivalent",
@@ -693,10 +716,35 @@ def jsonable(value: Any) -> Any:
     return value
 
 
+def record(row: int, values: Any, *, implementations: Sequence[str], unit: str | None, **fields: Any) -> dict[str, Any]:
+    """One record of a metrics document for the output ``values`` of Measure reference ``row``.
+
+    A mapping is stored as it is; a single value (a share, a matrix, an interval) is stored as
+    ``{"value": values}``. ``fields`` are the optional record fields of ``metrics.schema.json``:
+    ``independence``, ``rung``, ``pooled``, ``period_label`` and ``options``.
+    """
+    if not 1 <= row <= len(MEASURES):
+        raise ValueError(f"row must be 1 to {len(MEASURES)}, got {row}")
+    stored = dict(values) if isinstance(values, Mapping) else {"value": values}
+    return {
+        "row": row,
+        "measure": MEASURES[row - 1],
+        "implementations": list(implementations),
+        "unit": unit,
+        **fields,
+        "values": stored,
+    }
+
+
 def _validate(document: Mapping[str, Any]) -> None:
     import jsonschema  # type: ignore[import-untyped]
 
     jsonschema.validate(document, contract.read_json(SCHEMA_PATH))
+    for i, entry in enumerate(document["records"]):
+        if entry["measure"] != MEASURES[entry["row"] - 1]:
+            raise jsonschema.ValidationError(
+                f"records[{i}]: row {entry['row']} is {MEASURES[entry['row'] - 1]!r}, not {entry['measure']!r}"
+            )
 
 
 def write_metrics(path: Path, document: Mapping[str, Any]) -> None:

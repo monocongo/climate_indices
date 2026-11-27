@@ -624,18 +624,15 @@ def test_metrics_document_round_trips_with_nan_as_null(tmp_path: Path) -> None:
         "options": {},
         "values": metrics.pair_agreement([1.0], [np.float32(2.0)]),  # r is NaN
     }
-    confusion = {
-        **record,
-        "row": 8,
-        "measure": "confusion matrix",
-        "values": {"counts": metrics.confusion_matrix(A, B)},
-    }
+    confusion = metrics.record(
+        8, metrics.confusion_matrix(A, B), implementations=["climate_indices", "xclim"], unit="0101"
+    )
     path = tmp_path / "metrics.json"
     metrics.write_metrics(path, _document([record, confusion]))
     stored = metrics.read_metrics(path)
     assert stored["records"][0]["values"]["r"] is None
     assert stored["records"][0]["values"]["bias"] == -1.0
-    assert stored["records"][1]["values"]["counts"][5][5] == 3
+    assert stored["records"][1]["values"]["value"][5][5] == 3
 
 
 def test_metrics_document_rejects_a_bad_header_or_record(tmp_path: Path) -> None:
@@ -650,6 +647,52 @@ def test_metrics_document_rejects_a_bad_header_or_record(tmp_path: Path) -> None
     assert not (tmp_path / "metrics.json").exists()
 
 
+def test_every_measure_output_is_a_valid_record(tmp_path: Path) -> None:
+    pytest.importorskip("jsonschema")
+    a, b = A[np.isfinite(A)], B[np.isfinite(A)]
+    band = metrics.null_band(12, 0.0, seed=1, draws=200)
+    outputs = {
+        1: metrics.printed_value_pass(1.255, 1.26, 2),
+        2: metrics.error_by_band(a, b),
+        3: metrics.replicate_summary([1.0, nan]),
+        4: metrics.pair_agreement(a, b),
+        5: metrics.difference_class(a, b),
+        6: metrics.class_change_share(a, b),
+        7: metrics.category_agreement(a, b),
+        8: metrics.confusion_matrix(a, b),
+        9: metrics.mask_mismatch(A, B),
+        10: metrics.period_moments(np.arange(12.0)),
+        11: metrics.quantile_residual(np.arange(12.0)),
+        12: band,
+        13: metrics.outside_band_share([0.0], [band], "mean"),
+        14: metrics.output_bound_share(a, None),
+        15: metrics.robustness_outcome([1.0], expected=1.0, affected_mask=[True], tolerance=0.0, warned=False),
+        16: metrics.across_unit_summary([1.0, 2.0]),
+        17: metrics.median_interval([1.0, 2.0, 3.0], seed=1, row=4, draws=50),
+        18: metrics.block_interval(a, b, lambda x, y: 0.0, block_length=2, seed=1, unit_index=0, draws=20),
+        19: metrics.rung_categories([(a, b), (a, a)]),
+        20: metrics.performance_summary([1.0, 2.0, 3.0], [1, 2, 3], maxrss_unit="KiB", n_series=1),
+    }
+    records = [metrics.record(row, value, implementations=["a", "b"], unit="u") for row, value in outputs.items()]
+    path = tmp_path / "metrics.json"
+    metrics.write_metrics(path, _document(records))
+    stored = metrics.read_metrics(path)["records"]
+    assert [entry["measure"] for entry in stored] == list(metrics.MEASURES)
+    assert stored[0]["values"] == {"value": True}
+    assert stored[13]["values"] == {"value": "not applicable"}
+
+
+def test_record_rejects_a_measure_that_is_not_its_row(tmp_path: Path) -> None:
+    jsonschema = pytest.importorskip("jsonschema")
+    mislabelled = {**metrics.record(4, {"bias": 0.0}, implementations=["a"], unit="u"), "measure": "confusion matrix"}
+    unwrapped = {**metrics.record(9, 0.25, implementations=["a"], unit="u"), "values": {"share": 0.25}}
+    for entry in (mislabelled, unwrapped):
+        with pytest.raises(jsonschema.ValidationError):
+            metrics.write_metrics(tmp_path / "metrics.json", _document([entry]))
+    with pytest.raises(ValueError, match="row"):
+        metrics.record(21, {}, implementations=["a"], unit="u")
+
+
 def test_schema_names_every_measure_of_the_protocol_in_row_order() -> None:
     protocol = (ROOT / "docs/research/reference-papers/protocol.md").read_text(encoding="utf-8")
     table = protocol.split("## Measure reference", 1)[1].split("\n## ", 1)[0]
@@ -657,6 +700,7 @@ def test_schema_names_every_measure_of_the_protocol_in_row_order() -> None:
     assert [n for n, _ in rows] == list(range(1, 21))
     schema = json.loads(metrics.SCHEMA_PATH.read_text(encoding="utf-8"))
     assert schema["$defs"]["record"]["properties"]["measure"]["enum"] == [name for _, name in rows]
+    assert list(metrics.MEASURES) == [name for _, name in rows]
     assert metrics.PROTOCOL_VERSION in protocol.split("\n", 5)[3]  # the "Version:" line
 
 
