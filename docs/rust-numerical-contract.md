@@ -50,9 +50,11 @@ Python paths agree: byte-identical on four, and within 7.4e-14 on Linux x86-64, 
 sign or NaN-position mismatch. The outputs are not bit-identical across platforms, and
 bit-for-bit cross-platform reproducibility is not part of this contract. The only
 transcendental in the Palmer paths, `log10` in the K' factor, comes from the platform math
-library. glibc's differs from Apple's by one ulp in 16% of the K' values. Between macOS
-arm64 and the glibc builds (Linux aarch64, and the Rust path on Linux x86-64), that moves
-233 of the 344 divisions by at most 7.4e-14. On Linux x86-64, NumPy's `log10` differs from
-glibc's on some arguments, probably because NumPy dispatches it to its own implementation
-there. That is why the two paths differ on that platform.
+library on the Rust path; on every target except Linux x86-64 the NumPy-path outputs
+match the Rust path byte for byte. glibc's
+differs from Apple's by one ulp in 16% of the K' values. Between macOS arm64 and the glibc
+builds (Linux aarch64, and the Rust path on Linux x86-64), that moves 233 of the 344
+divisions by at most 7.4e-14. On Linux x86-64 the two paths differ in 1,981 outputs. NumPy's
+`log10` probably does not return glibc's values there, perhaps because NumPy dispatches it
+to its own SIMD implementation; the dispatch was not recorded.
 The study record is `docs/research/reference-papers/palmer-rust-parity.md`.
