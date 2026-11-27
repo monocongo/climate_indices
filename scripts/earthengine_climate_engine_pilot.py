@@ -31,15 +31,21 @@ Credentials (never logged, never committed):
   reported as pending and only reference A runs.
 
 Run: ``uv run --extra earthengine scripts/earthengine_climate_engine_pilot.py``
+
+Add ``--check-metrics-library`` to recompute reference A through the protocol measures in
+``intercomparison/metrics.py`` (REFIMPL-16) and compare them with this script's own figures and the
+committed ``pilot-metrics.json``; it writes nothing.
 """
 
 from __future__ import annotations
 
 import argparse
 import calendar
+import functools
 import gzip
 import hashlib
 import http.client
+import importlib.util
 import json
 import math
 import os
@@ -49,6 +55,7 @@ import tempfile
 import time
 import urllib.error
 import urllib.request
+from collections.abc import Iterator
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from email.message import Message
@@ -118,6 +125,8 @@ CE_RETRY_DELAY_SECONDS = 15
 SYSTEM_INDEX = "system:index"
 SYSTEM_VERSION = "system:version"
 METRICS_FILENAME = "pilot-metrics.json"
+# The protocol measures of REFIMPL-16, which --check-metrics-library runs the pilot through.
+METRICS_LIBRARY = Path(__file__).resolve().parents[1] / "intercomparison" / "metrics.py"
 MANIFEST_FILENAME = "tukey-image-manifest.json.gz"
 FOLLOWUP_KEY = "tukey_followup_1571"
 CONTROL_TOLERANCE_A = "all original reference A metrics match to absolute tolerance 1e-10"
@@ -574,13 +583,11 @@ def band_for(key: str) -> str:
     return f"{index}{SCALES[int(scale)]}"
 
 
-def compare(
+def aligned_pairs(
     ours: dict[str, xr.DataArray], reference: xr.Dataset
-) -> tuple[dict[str, dict[str, float]], dict[str, xr.DataArray]]:
-    """Compare every index and scale pair over the comparison window."""
+) -> Iterator[tuple[str, str, xr.DataArray, xr.DataArray]]:
+    """Yield each index and scale with its catalog band, both aligned over the comparison window."""
     window = slice(f"{COMPARISON_YEARS[0]}-01-01", f"{COMPARISON_YEARS[1]}-12-31")
-    metrics: dict[str, dict[str, float]] = {}
-    fields: dict[str, xr.DataArray] = {}
     for key, ours_da in ours.items():
         band = band_for(key)
         if band not in reference:
@@ -588,12 +595,81 @@ def compare(
         ours_window, reference_window = xr.align(
             ours_da.sel(time=window), reference[band].sel(time=window), join="inner"
         )
+        yield key, band, ours_window, reference_window
+
+
+def compare(
+    ours: dict[str, xr.DataArray], reference: xr.Dataset
+) -> tuple[dict[str, dict[str, float]], dict[str, xr.DataArray]]:
+    """Compare every index and scale pair over the comparison window."""
+    metrics: dict[str, dict[str, float]] = {}
+    fields: dict[str, xr.DataArray] = {}
+    for key, band, ours_window, reference_window in aligned_pairs(ours, reference):
         metrics[key] = comparison_metrics(ours_window.values, reference_window.values)
         fields[key] = (ours_window - reference_window).assign_attrs(
             long_name=f"{key} difference (climate_indices minus {band})",
             units="standard deviations",
         )
     return metrics, fields
+
+
+@functools.cache
+def metrics_library() -> Any:
+    """Load ``intercomparison/metrics.py``, which is a harness file and not an installed module."""
+    spec = importlib.util.spec_from_file_location("intercomparison_metrics", METRICS_LIBRARY)
+    if spec is None or spec.loader is None:
+        raise ImportError(f"cannot load {METRICS_LIBRARY}")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def library_metrics(ours: Any, theirs: Any) -> dict[str, float]:
+    """The figures of :func:`comparison_metrics`, recomputed through the protocol measures.
+
+    The pilot pools every cell-month into one pair, widens both arrays to float64 and bins with
+    inclusive lower edges, so the library runs on the same flattened float64 pair with the
+    eleven-class scale and ``lower_inclusive`` (protocol, Conventions and Category scales).
+    """
+    library = metrics_library()
+    a = np.asarray(ours, dtype="float64").ravel()
+    b = np.asarray(theirs, dtype="float64").ravel()
+    agreement = library.pair_agreement(a, b)
+    categories = library.category_agreement(a, b, scale="eleven", rule="lower_inclusive")
+    return {
+        "n": float(agreement["n"]),
+        "bias": agreement["bias"],
+        "mae": agreement["mae"],
+        "rmse": agreement["rmse"],
+        "correlation": agreement["r"],
+        "max_abs_difference": agreement["max_abs"],
+        "category_agreement": categories["same_class"],
+        "category_within_one": categories["within_one"],
+    }
+
+
+def check_metrics_library(ours: dict[str, xr.DataArray], reference: xr.Dataset, published: dict[str, Any]) -> int:
+    """Recompute reference A through the metrics library and write nothing (REFIMPL-16).
+
+    A figure fails when the library and :func:`comparison_metrics` disagree on the same arrays. A
+    difference from the committed ``published`` figure is printed but is not a failure: a new
+    collection revision changes the inputs, not the library.
+    """
+    failures = 0
+    for key, _band, ours_window, reference_window in aligned_pairs(ours, reference):
+        expected = comparison_metrics(ours_window.values, reference_window.values)
+        got = library_metrics(ours_window.values, reference_window.values)
+        for name in [name for name in got if name in expected]:  # the pilot's extra figures are not measures
+            value = expected[name]
+            agree = math.isclose(got[name], value, rel_tol=1e-12, abs_tol=1e-12) or (
+                math.isnan(value) and math.isnan(got[name])
+            )
+            failures += not agree
+            committed = published.get(key, {}).get(name)
+            drift = "" if committed is None else f", committed {committed!r} ({got[name] - committed:+.3g})"
+            print(f"{key} {name}: library {got[name]!r}, pilot {value!r}{'' if agree else ' MISMATCH'}{drift}")
+    print(f"{failures} figure(s) where the library and the pilot disagree")
+    return 1 if failures else 0
 
 
 def _retryable(status: int) -> bool:
@@ -1116,7 +1192,17 @@ def main(argv: list[str] | None = None) -> int:
         default="sei",
         help="tukey runs the paired #1571 follow-up; sei keeps the original pilot",
     )
+    parser.add_argument(
+        "--check-metrics-library",
+        action="store_true",
+        help="recompute reference A through intercomparison/metrics.py, compare, and write nothing",
+    )
     arguments = parser.parse_args(argv)
+    published: dict[str, Any] = {}
+    if arguments.check_metrics_library:
+        if arguments.spi_spei_position != "sei":
+            parser.error("--check-metrics-library reproduces the original pilot; drop --spi-spei-position tukey")
+        published = json.loads((arguments.output_dir / METRICS_FILENAME).read_text(encoding="utf-8"))["reference_a"]
 
     project = require_ee_project()
     ee = initialize_ee(project)
@@ -1143,6 +1229,8 @@ def main(argv: list[str] | None = None) -> int:
             dataset, reference, anchor, manifest, arguments.output_dir, arguments.skip_climate_engine
         )
     ours = compute_indices(dataset)
+    if arguments.check_metrics_library:
+        return check_metrics_library(ours, reference, published)
     metrics, fields = compare(ours, reference)
 
     arguments.output_dir.mkdir(parents=True, exist_ok=True)
