@@ -62,7 +62,7 @@ Observation, not a result (metrics are REFIMPL-16): 1,534 of 1,536 months are pa
 ## Not done here
 
 - Adapters beyond the slice (REFIMPL-12 to REFIMPL-15), and moving the survey containers.
-- Metrics, the results schema and figures (REFIMPL-16, [#1618](https://github.com/monocongo/climate_indices/issues/1618); REFIMPL-40, [#1642](https://github.com/monocongo/climate_indices/issues/1642)).
+- Figures (REFIMPL-40, [#1642](https://github.com/monocongo/climate_indices/issues/1642)). The metrics and the results schema are `intercomparison/metrics.py` and `metrics.schema.json` (REFIMPL-16, [#1618](https://github.com/monocongo/climate_indices/issues/1618)); no study's metrics are committed yet.
 - A CI job that runs a comparator. Heavy runs stay manual, as for the Earth Engine pilot (`scripts/earthengine_climate_engine_pilot.py`).
 - A native x86_64 run of the slice, and a CI run of the Linux smoke in `containers/linux-smoke/` (both assigned to REFIMPL-08 in `comparators.md`). The slice ran on macOS arm64 only.
 - A zero-heavy division, to exercise `zero_handling`.
