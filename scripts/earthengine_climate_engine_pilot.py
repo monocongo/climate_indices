@@ -653,13 +653,19 @@ def check_metrics_library(ours: dict[str, xr.DataArray], reference: xr.Dataset, 
 
     A figure fails when the library and :func:`comparison_metrics` disagree on the same arrays. A
     difference from the committed ``published`` figure is printed but is not a failure: a new
-    collection revision changes the inputs, not the library.
+    collection revision or a newer ``climate_indices`` changes the inputs, not the library. A key
+    with no figure in common, or a run that compares nothing, fails.
     """
-    failures = 0
+    failures = compared = 0
     for key, _band, ours_window, reference_window in aligned_pairs(ours, reference):
         expected = comparison_metrics(ours_window.values, reference_window.values)
         got = library_metrics(ours_window.values, reference_window.values)
-        for name in [name for name in got if name in expected]:  # the pilot's extra figures are not measures
+        names = [name for name in got if name in expected]  # the pilot's extra figures are not measures
+        if not names:
+            failures += 1
+            print(f"{key}: no figure in common with the pilot MISMATCH")
+        compared += len(names)
+        for name in names:
             value = expected[name]
             agree = math.isclose(got[name], value, rel_tol=1e-12, abs_tol=1e-12) or (
                 math.isnan(value) and math.isnan(got[name])
@@ -668,7 +674,9 @@ def check_metrics_library(ours: dict[str, xr.DataArray], reference: xr.Dataset, 
             committed = published.get(key, {}).get(name)
             drift = "" if committed is None else f", committed {committed!r} ({got[name] - committed:+.3g})"
             print(f"{key} {name}: library {got[name]!r}, pilot {value!r}{'' if agree else ' MISMATCH'}{drift}")
-    print(f"{failures} figure(s) where the library and the pilot disagree")
+    if not compared:
+        failures += 1
+    print(f"{failures} figure(s) where the library and the pilot disagree, of {compared} compared")
     return 1 if failures else 0
 
 
@@ -1198,11 +1206,11 @@ def main(argv: list[str] | None = None) -> int:
         help="recompute reference A through intercomparison/metrics.py, compare, and write nothing",
     )
     arguments = parser.parse_args(argv)
-    published: dict[str, Any] = {}
+    committed: dict[str, Any] = {}
     if arguments.check_metrics_library:
         if arguments.spi_spei_position != "sei":
             parser.error("--check-metrics-library reproduces the original pilot; drop --spi-spei-position tukey")
-        published = json.loads((arguments.output_dir / METRICS_FILENAME).read_text(encoding="utf-8"))["reference_a"]
+        committed = json.loads((arguments.output_dir / METRICS_FILENAME).read_text(encoding="utf-8"))
 
     project = require_ee_project()
     ee = initialize_ee(project)
@@ -1230,7 +1238,9 @@ def main(argv: list[str] | None = None) -> int:
         )
     ours = compute_indices(dataset)
     if arguments.check_metrics_library:
-        return check_metrics_library(ours, reference, published)
+        same = all(committed["collections"].get(name) == revision for name, revision in revisions.items())
+        print(f"collection revisions {'match' if same else 'differ from'} the committed run")
+        return check_metrics_library(ours, reference, committed["reference_a"])
     metrics, fields = compare(ours, reference)
 
     arguments.output_dir.mkdir(parents=True, exist_ok=True)

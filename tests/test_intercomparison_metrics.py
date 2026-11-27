@@ -806,6 +806,16 @@ def test_check_metrics_library_fails_when_the_library_disagrees(
     assert "rmse: library 9.0" in capsys.readouterr().out
 
 
+def test_check_metrics_library_fails_when_nothing_is_compared(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    ours, reference = _pilot_inputs(0)
+    assert pilot.check_metrics_library(ours, xr.Dataset(), {}) == 1  # no band matches a key
+    monkeypatch.setattr(pilot, "comparison_metrics", lambda a, b: {"renamed": 0.0})
+    assert pilot.check_metrics_library(ours, reference, {}) == 1
+    assert "no figure in common" in capsys.readouterr().out
+
+
 def test_check_metrics_library_refuses_the_tukey_followup() -> None:
     with pytest.raises(SystemExit):
         pilot.main(["--check-metrics-library", "--spi-spei-position", "tukey"])
