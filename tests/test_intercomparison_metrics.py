@@ -115,8 +115,18 @@ def test_series_casts_integers_keeps_float32_and_fills_masked_values() -> None:
     assert np.isnan(masked[1])
     with pytest.raises(TypeError, match="object"):
         metrics.series(np.array([1.0, None], dtype=object))
+    with pytest.raises(TypeError, match="object"):
+        metrics.series(np.ma.array(np.array([1.0, None], dtype=object), mask=[False, True]))
+    for wrong in (np.array(["1.5"]), np.array([1 + 2j])):
+        with pytest.raises(TypeError, match="numeric"):
+            metrics.series(wrong)
     with pytest.raises(ValueError, match="1-D"):
         metrics.series(np.zeros((2, 2)))
+    masked = np.ma.array([1.0, 2.0, 3.0], mask=[False, False, True])
+    assert metrics.replicate_summary(masked)["n_non_empty"] == 2
+    assert metrics.across_unit_summary(masked)["n_units_defined"] == 2
+    with pytest.raises(ValueError, match="1-D"):
+        metrics.across_unit_summary(np.ones((2, 3)))
     with pytest.raises(ValueError, match="length mismatch"):
         metrics.pair_agreement([1.0, 2.0], [1.0])
 
@@ -133,6 +143,8 @@ def test_tolerance_comparison_allows_representation_error_only() -> None:
 def test_printed_value_pass() -> None:
     assert metrics.printed_value_pass(1.255, 1.26, 2)
     assert not metrics.printed_value_pass(1.2549, 1.26, 2)
+    # float32 1.255 is 1.2549999952 and misses 1.26 by 5.0000048e-3 once widened
+    assert not metrics.printed_value_pass(np.float32(1.255), 1.26, 2)
     assert metrics.printed_value_pass(1.30, 1.26, 2, tolerance=0.05)
     assert not metrics.printed_value_pass(nan, 1.0, 1)
     assert not metrics.printed_value_pass(inf, 1.0, 1)

@@ -112,13 +112,14 @@ BAND_STATISTICS = (*_MOMENTS, "residual")
 
 
 def series(values: Any) -> np.ndarray:
-    """Return a 1-D float series: masked values become NaN, int and bool become float64."""
-    if np.ma.isMaskedArray(values):
-        x = np.ma.filled(values if np.issubdtype(values.dtype, np.floating) else values.astype(np.float64), np.nan)
-    else:
-        x = np.asarray(values)
-    if x.dtype == object:
-        raise TypeError("object arrays are not accepted; pass numbers")
+    """Return a 1-D float series: masked values become NaN, int and bool become float64.
+
+    Object, string and complex arrays are rejected, masked or not.
+    """
+    raw = values if np.ma.isMaskedArray(values) else np.asarray(values)
+    if raw.dtype.kind not in "biuf":
+        raise TypeError(f"expected a numeric series, got dtype {raw.dtype}; object arrays are not accepted")
+    x = np.ma.filled(raw if raw.dtype.kind == "f" else raw.astype(np.float64), np.nan)
     if x.ndim != 1:
         raise ValueError(f"expected a 1-D series, got shape {x.shape}")
     return x if np.issubdtype(x.dtype, np.floating) else x.astype(np.float64)
@@ -138,7 +139,7 @@ def _differences(xa: np.ndarray, xb: np.ndarray, mask: np.ndarray) -> np.ndarray
 
 def within_tolerance(error: float, tolerance: float) -> bool:
     """Compare a nonnegative error with its tolerance, allowing binary64 representation error."""
-    return bool(error <= tolerance * (1 + 1e-9))
+    return bool(float(error) <= float(tolerance) * (1 + 1e-9))
 
 
 def rng(seed: int, stream: int, key: int) -> np.random.Generator:
@@ -196,9 +197,10 @@ def printed_value_pass(computed: float, printed: float, k: int, tolerance: float
     """Row 1: does a computed value reproduce a value printed with ``k`` decimals?"""
     if k < 0:
         raise ValueError("k counts printed decimals and cannot be negative")
-    if not math.isfinite(computed):
+    value = float(computed)  # a float32 scalar would otherwise subtract at float32 width
+    if not math.isfinite(value):
         return False
-    return within_tolerance(abs(computed - printed), 0.5 * 10.0**-k if tolerance is None else tolerance)
+    return within_tolerance(abs(value - float(printed)), 0.5 * 10.0**-k if tolerance is None else tolerance)
 
 
 def _error_stats(e: np.ndarray) -> dict[str, float]:
@@ -252,7 +254,7 @@ def error_by_band(
 
 def replicate_summary(values: Any) -> dict[str, float]:
     """Row 3: median and 2.5th and 97.5th percentiles over the non-empty replicates."""
-    v = np.asarray(values, dtype=np.float64)
+    v = series(values).astype(np.float64)
     v = v[np.isfinite(v)]
     median, low, high = _percentiles(v, (50, 2.5, 97.5))
     return {"median": median, "p2_5": low, "p97_5": high, "n_non_empty": int(v.size)}
@@ -550,7 +552,7 @@ def robustness_outcome(
 
 def across_unit_summary(values: Any) -> dict[str, float]:
     """Row 16: median, 5th and 95th percentiles over the defined units."""
-    v = np.asarray(values, dtype=np.float64)
+    v = series(values).astype(np.float64)
     defined = v[np.isfinite(v)]
     median, low, high = _percentiles(defined, (50, 5, 95))
     return {"median": median, "p5": low, "p95": high, "n_units": int(v.size), "n_units_defined": int(defined.size)}
@@ -562,7 +564,7 @@ def median_interval(values: Any, *, seed: int, row: int, draws: int = N_DRAWS) -
     ``row`` is the Measure reference row of the statistic (for example 4 for RMSE): it keys
     stream 2, so statistics of the same row and sample size reuse the same index draws.
     """
-    v = np.asarray(values, dtype=np.float64)
+    v = series(values).astype(np.float64)
     defined = np.sort(v[np.isfinite(v)])
     if defined.size < 2:
         return (math.nan, math.nan)
