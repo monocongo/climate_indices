@@ -457,13 +457,14 @@ def null_band(
 
 
 def outside_band_share(
-    values: Sequence[float], bands: Sequence[Mapping[str, Any] | None], statistic: str
+    values: Sequence[float | None], bands: Sequence[Mapping[str, Any] | None], statistic: str
 ) -> dict[str, Any]:
     """Row 13: share of scored periods whose ``statistic`` lies outside its matching band.
 
     ``values[i]`` is period ``i``'s statistic and ``bands[i]`` its band from ``null_band`` (or
     ``None``). A period counts only when its value is finite and its band has finite limits for
-    the statistic. The residual is outside only above its upper limit.
+    the statistic. ``None`` counts as undefined, so bands and values read back from a metrics
+    document work as well. The residual is outside only above its upper limit.
     """
     if statistic not in BAND_STATISTICS:
         raise ValueError(f"unknown statistic {statistic!r}")
@@ -472,7 +473,9 @@ def outside_band_share(
     scored = outside = 0
     for value, band in zip(values, bands, strict=True):
         limits = band["statistics"].get(statistic) if band and band.get("available") else None
-        if not math.isfinite(value) or limits is None or not math.isfinite(limits["upper"]):
+        if value is None or not math.isfinite(value) or limits is None or limits["upper"] is None:
+            continue
+        if not math.isfinite(limits["upper"]):
             continue
         scored += 1
         outside += value > limits["upper"] or (statistic != "residual" and value < limits["lower"])
@@ -729,15 +732,22 @@ def independence_class(lineage: Mapping[str, Any], index: str, a: str, b: str) -
 
 
 def jsonable(value: Any) -> Any:
-    """Convert numpy values, tuples and counters for JSON; NaN becomes ``None``."""
+    """Convert numpy values, tuples and counters for JSON.
+
+    NaN (undefined) becomes ``None``; an infinity, such as the open upper edge of the last C2 band,
+    becomes the string ``"inf"`` or ``"-inf"``. A tuple key such as a rung transition becomes
+    ``"from -> to"``.
+    """
     if isinstance(value, Mapping):
-        return {" -> ".join(k) if isinstance(k, tuple) else str(k): jsonable(v) for k, v in value.items()}
+        return {" -> ".join(map(str, k)) if isinstance(k, tuple) else str(k): jsonable(v) for k, v in value.items()}
     if isinstance(value, np.ndarray | list | tuple):
         return [jsonable(v) for v in value]
     if isinstance(value, np.generic):
         value = value.item()
-    if isinstance(value, float) and not math.isfinite(value):
+    if isinstance(value, float) and math.isnan(value):
         return None
+    if isinstance(value, float) and math.isinf(value):
+        return "inf" if value > 0 else "-inf"
     return value
 
 

@@ -41,8 +41,9 @@ Validate a manifest with `manifest.schema.json`.
 
 `metrics.py` implements the measures of the [evaluation protocol](../docs/research/reference-papers/protocol.md)
 (REFIMPL-16, [#1618](https://github.com/monocongo/climate_indices/issues/1618)): one function per row of its Measure reference,
-each naming its row. It needs NumPy and SciPy only. `write_metrics` validates a results document against `metrics.schema.json`
-and needs `jsonschema`; JSON `null` stands for an undefined (NaN) value. Load it the way `run.py` loads `contract.py`:
+each naming its row. It needs NumPy and SciPy only. `write_metrics` and `read_metrics` validate a results document against
+`metrics.schema.json` and need `jsonschema`; build each entry with `record`. JSON `null` stands for an undefined (NaN)
+value and the string `"inf"` or `"-inf"` for an infinity. Load it the way `run.py` loads `contract.py`:
 
 ```python
 import sys

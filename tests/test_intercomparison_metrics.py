@@ -667,6 +667,17 @@ def test_metrics_document_round_trips_with_nan_as_null(tmp_path: Path) -> None:
     assert stored["records"][1]["values"]["value"][5][5] == 3
 
 
+def test_jsonable_keeps_infinities_apart_from_undefined_values() -> None:
+    stored = metrics.jsonable({"upper": inf, "lower": -inf, "r": nan, ("L0", 1): np.int64(2)})
+    assert stored == {"upper": "inf", "lower": "-inf", "r": None, "L0 -> 1": 2}
+
+
+def test_outside_band_share_reads_bands_back_from_json() -> None:
+    band = metrics.jsonable(metrics.null_band(1, 0.0, seed=1, draws=50))  # sd limits are undefined
+    assert metrics.outside_band_share([0.1], [band], "sd")["n_scored"] == 0
+    assert metrics.outside_band_share([None, 0.0], [band, band], "mean")["n_scored"] == 1
+
+
 def test_metrics_document_rejects_a_bad_header_or_record(tmp_path: Path) -> None:
     jsonschema = pytest.importorskip("jsonschema")
     record = {"row": 9, "measure": "mask mismatch", "implementations": ["a", "b"], "unit": "x", "values": {}}
