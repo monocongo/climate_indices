@@ -353,6 +353,9 @@ def test_outside_band_share() -> None:
 def test_output_bound_share() -> None:
     assert metrics.output_bound_share([-3.09, 0.0, 3.09, 4.0, nan], 3.09) == 0.75
     assert metrics.output_bound_share([0.0], None) == "not applicable"
+    # a float32 output clipped at the library's own bound counts as at the bound
+    clipped = np.clip(np.array([-9.0, 9.0, 0.0, 3.0], np.float32), -3.09, 3.09)
+    assert metrics.output_bound_share(clipped, 3.09) == 0.5
     assert math.isnan(metrics.output_bound_share([nan], 3.09))
 
 

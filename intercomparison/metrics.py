@@ -424,11 +424,16 @@ def outside_band_share(
 
 
 def output_bound_share(values: Any, output_bound: float | None) -> float | str:
-    """Row 14: share of finite values with ``|z| >= output_bound``; *not applicable* without one."""
+    """Row 14: share of finite values with ``|z| >= output_bound``; *not applicable* without one.
+
+    The bound is cast to the series' width, as the class edges are: a float32 output clipped at
+    3.09 holds float32(3.09), which is below 3.09 in float64.
+    """
     if output_bound is None:
         return NOT_APPLICABLE
-    x = _finite_float64(values)
-    return float(np.mean(np.abs(x) >= output_bound)) if x.size else math.nan
+    x = series(values)
+    x = x[np.isfinite(x)]
+    return float(np.mean(np.abs(x) >= x.dtype.type(output_bound))) if x.size else math.nan
 
 
 # C5
