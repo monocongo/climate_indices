@@ -249,6 +249,26 @@ def test_class_change_share_leaves_shares_undefined_without_a_denominator() -> N
     assert math.isnan(metrics.category_agreement([nan], [0.0])["same_class"])
 
 
+def test_category_measures_accept_pre_registered_edges() -> None:
+    # a PDSI-like study fixes its own edges: classes (-inf, -3], (-3, -2], (-2, 2], (2, inf)
+    edges = (-3.0, -2.0, 2.0)
+    a, b = [-3.5, -2.5, 0.0, 2.5], [-2.9, -2.5, 1.0, 3.0]
+    assert metrics.class_change_share(a, b, scale=edges, drought_codes=2) == {
+        "share": 0.25,
+        "share_touching_drought": 1.0,
+        "n": 4,
+    }
+    assert metrics.category_agreement(a, b, scale=edges)["same_class"] == 0.75
+    assert metrics.confusion_matrix(a, b, scale=edges).shape == (4, 4)
+    assert metrics.rung_categories([(a, b)], scale=edges)["classes"] == ["category-changing"]
+    with pytest.raises(ValueError, match="drought_codes"):
+        metrics.class_change_share(a, b, scale=edges)
+    with pytest.raises(ValueError, match="strictly increasing"):
+        metrics.category_agreement(a, b, scale=(1.0, 0.0))
+    with pytest.raises(ValueError, match="unknown scale"):
+        metrics.category_agreement(a, b, scale="seven")
+
+
 # C4
 
 

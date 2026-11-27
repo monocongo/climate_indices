@@ -47,6 +47,7 @@ ELEVEN_CLASS_EDGES = (-2.0, -1.6, -1.3, -0.8, -0.5, 0.5, 0.8, 1.3, 1.6, 2.0)
 SCALES = {"six": SIX_CLASS_EDGES, "eleven": ELEVEN_CLASS_EDGES}
 DROUGHT_CODES = 5  # codes below this are drought classes on both scales
 Scale = Literal["six", "eleven"]
+ScaleOrEdges = Scale | Sequence[float]  # a named scale, or the class edges a study pre-registered
 Rule = Literal["upper_inclusive", "lower_inclusive"]
 _SIDE: dict[str, Literal["left", "right"]] = {"upper_inclusive": "left", "lower_inclusive": "right"}
 
@@ -142,9 +143,25 @@ def classify(values: Any, edges: Sequence[float], rule: Rule = "upper_inclusive"
     return codes
 
 
-def _pair_codes(a: Any, b: Any, scale: Scale, rule: Rule) -> tuple[np.ndarray, np.ndarray]:
+def class_edges(scale: ScaleOrEdges) -> tuple[float, ...]:
+    """The edges of a named scale, or a study's own edges checked to be strictly increasing.
+
+    A study of an index that is not normal-scale (PDSI, for example) passes the class edges it
+    fixed in its pre-registration (protocol, Conventions and Difference classes).
+    """
+    if isinstance(scale, str):
+        if scale not in SCALES:
+            raise ValueError(f"unknown scale {scale!r}; use one of {tuple(SCALES)} or a sequence of class edges")
+        return SCALES[scale]
+    edges = tuple(float(edge) for edge in scale)
+    if not edges or not all(math.isfinite(e) for e in edges) or any(lo >= hi for lo, hi in itertools.pairwise(edges)):
+        raise ValueError(f"class edges must be finite and strictly increasing, got {edges}")
+    return edges
+
+
+def _pair_codes(a: Any, b: Any, scale: ScaleOrEdges, rule: Rule) -> tuple[np.ndarray, np.ndarray]:
     xa, xb, mask = _pair(a, b)
-    edges = SCALES[scale]
+    edges = class_edges(scale)
     return classify(xa, edges, rule)[mask], classify(xb, edges, rule)[mask]
 
 
@@ -260,13 +277,23 @@ def difference_class(
     return {"class": DIFFERENCE_CLASSES[3] if same else DIFFERENCE_CLASSES[4], "d": d}
 
 
-def class_change_share(a: Any, b: Any, *, scale: Scale = "six", rule: Rule = "upper_inclusive") -> dict[str, float]:
+def class_change_share(
+    a: Any, b: Any, *, scale: ScaleOrEdges = "six", rule: Rule = "upper_inclusive", drought_codes: int | None = None
+) -> dict[str, float]:
     """Row 6: share of finite pairs that change class, and the share of those changes that start
-    or end in a drought class."""
+    or end in a drought class.
+
+    Codes below ``drought_codes`` are the drought classes: 5 on both named scales. A study that
+    passes its own class edges also passes how many of its lowest classes are drought classes.
+    """
+    if drought_codes is None:
+        if not isinstance(scale, str):
+            raise ValueError("pass drought_codes with pre-registered class edges")
+        drought_codes = DROUGHT_CODES
     ca, cb = _pair_codes(a, b, scale, rule)
     changed = ca != cb
     n_changed = int(np.count_nonzero(changed))
-    touching = changed & ((ca < DROUGHT_CODES) | (cb < DROUGHT_CODES))
+    touching = changed & ((ca < drought_codes) | (cb < drought_codes))
     return {
         "share": n_changed / ca.size if ca.size else math.nan,
         "share_touching_drought": np.count_nonzero(touching) / n_changed if n_changed else math.nan,
@@ -274,7 +301,9 @@ def class_change_share(a: Any, b: Any, *, scale: Scale = "six", rule: Rule = "up
     }
 
 
-def category_agreement(a: Any, b: Any, *, scale: Scale = "six", rule: Rule = "upper_inclusive") -> dict[str, float]:
+def category_agreement(
+    a: Any, b: Any, *, scale: ScaleOrEdges = "six", rule: Rule = "upper_inclusive"
+) -> dict[str, float]:
     """Row 7: same-class share and within-one-class share of the finite pairs."""
     ca, cb = _pair_codes(a, b, scale, rule)
     if ca.size == 0:
@@ -286,10 +315,10 @@ def category_agreement(a: Any, b: Any, *, scale: Scale = "six", rule: Rule = "up
     }
 
 
-def confusion_matrix(a: Any, b: Any, *, scale: Scale = "six", rule: Rule = "upper_inclusive") -> np.ndarray:
+def confusion_matrix(a: Any, b: Any, *, scale: ScaleOrEdges = "six", rule: Rule = "upper_inclusive") -> np.ndarray:
     """Row 8: class counts with rows the product ``b`` and columns the package ``a``."""
     ca, cb = _pair_codes(a, b, scale, rule)
-    k = len(SCALES[scale]) + 1
+    k = len(class_edges(scale)) + 1
     return np.bincount(cb * k + ca, minlength=k * k).reshape(k, k)
 
 
@@ -574,12 +603,17 @@ def rung_effects(
 
 
 def rung_categories(
-    rungs: Sequence[tuple[Any, Any]], *, scale: Scale = "six", rule: Rule = "upper_inclusive"
+    rungs: Sequence[tuple[Any, Any]], *, scale: ScaleOrEdges = "six", rule: Rule = "upper_inclusive"
 ) -> dict[str, Any]:
     """Row 19, categorical measures for one unit: the difference class, the confusion matrix and
     the mask mismatch at each rung on that rung's own finite pairs, and the cell-wise change of
-    the confusion matrix between adjacent rungs."""
-    classes = [difference_class(a, b, edges=SCALES["six"], rule=rule)["class"] for a, b in rungs]
+    the confusion matrix between adjacent rungs.
+
+    The difference class uses the six-class scale for a named scale (protocol, Difference
+    classes) and the study's own edges when it passes them.
+    """
+    edges = SCALES["six"] if isinstance(scale, str) else class_edges(scale)
+    classes = [difference_class(a, b, edges=edges, rule=rule)["class"] for a, b in rungs]
     confusion = [confusion_matrix(a, b, scale=scale, rule=rule) for a, b in rungs]
     return {
         "classes": classes,
