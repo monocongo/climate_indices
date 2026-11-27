@@ -1,0 +1,107 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "climate_indices_intercomparison_metrics_v1",
+  "title": "Intercomparison metrics (REFIMPL-16)",
+  "description": "Measures computed by intercomparison/metrics.py for one study. Each record is one measure of one pair, series or summary; JSON null stands for an undefined (NaN) value. Field names follow docs/research/reference-papers/protocol.md.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "protocol_version",
+    "study",
+    "created",
+    "harness",
+    "preregistration",
+    "manifest_sha256",
+    "records"
+  ],
+  "properties": {
+    "schema_version": {"const": 1},
+    "protocol_version": {"type": "string", "pattern": "^\\d+\\.\\d+\\.\\d+$"},
+    "study": {"type": "string", "minLength": 1},
+    "created": {"type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}$"},
+    "harness": {
+      "type": "object",
+      "required": ["git_commit", "git_dirty"],
+      "additionalProperties": false,
+      "properties": {
+        "git_commit": {"$ref": "#/$defs/commit"},
+        "git_dirty": {"type": "boolean"}
+      }
+    },
+    "preregistration": {
+      "description": "The prereg/<ticket>-<n> tag and its commit; null for an exploratory or unregistered run.",
+      "oneOf": [
+        {"type": "null"},
+        {
+          "type": "object",
+          "required": ["tag", "commit"],
+          "additionalProperties": false,
+          "properties": {
+            "tag": {"type": "string", "pattern": "^prereg/[0-9]+-[0-9]+$"},
+            "commit": {"$ref": "#/$defs/commit"}
+          }
+        }
+      ]
+    },
+    "manifest_sha256": {"$ref": "#/$defs/sha256"},
+    "records": {"type": "array", "items": {"$ref": "#/$defs/record"}}
+  },
+  "$defs": {
+    "sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "commit": {"type": "string", "pattern": "^[a-f0-9]{40}$"},
+    "record": {
+      "type": "object",
+      "required": ["row", "measure", "implementations", "unit", "values"],
+      "additionalProperties": false,
+      "properties": {
+        "row": {"type": "integer", "minimum": 1, "maximum": 20, "description": "Row of the protocol's Measure reference."},
+        "measure": {
+          "enum": [
+            "printed-value pass",
+            "error, by band",
+            "replicate summary",
+            "pair agreement",
+            "difference class",
+            "class-change share",
+            "same-class and within-one share",
+            "confusion matrix",
+            "mask mismatch",
+            "calendar-period moments",
+            "quantile residual",
+            "null band",
+            "outside-band share",
+            "output-bound share",
+            "robustness outcome",
+            "across-unit summary",
+            "bootstrap interval of a median",
+            "block bootstrap interval",
+            "rung effect",
+            "performance"
+          ]
+        },
+        "implementations": {
+          "description": "lineage.json implementation ids: [a, b] for a pair (a the package, b the product or reference), [a] for one series.",
+          "type": "array",
+          "items": {"type": "string", "minLength": 1},
+          "minItems": 1,
+          "maxItems": 2
+        },
+        "independence": {
+          "enum": ["derived", "validated against", "shared numerical routine", "independent", "unknown", null]
+        },
+        "rung": {"enum": ["L0", "L1", "L2", "L3", "L4", null]},
+        "unit": {"type": ["string", "null"], "description": "The unit of replication; null for an across-unit summary."},
+        "pooled": {"type": "boolean", "description": "True when several units were flattened into one pair to reproduce a published figure."},
+        "period_label": {"type": "integer"},
+        "options": {"type": "object", "description": "Arguments of the measure, such as scale, boundary_rule, seed and block_length."},
+        "values": {
+          "type": "object",
+          "description": "The measure's output. A measure that returns a mapping stores its keys; one that returns a single value (rows 1, 8, 9, 11, 14 and 17) stores it as {\"value\": ...}. NaN is stored as null and an infinity as the string \"inf\" or \"-inf\". metrics.write_metrics also checks that measure is the name of row."
+        }
+      },
+      "if": {"properties": {"row": {"enum": [1, 8, 9, 11, 14, 17]}}, "required": ["row"]},
+      "then": {"properties": {"values": {"required": ["value"]}}}
+    }
+  }
+}
